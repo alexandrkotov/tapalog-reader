@@ -1,0 +1,8 @@
+node_modules/
+dist/
+vendor/
+tapalog-reader-data/
+*.log
+
+# Working notes and task specs; only README.md is published
+docs/

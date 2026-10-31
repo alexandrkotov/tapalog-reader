@@ -1,0 +1,25 @@
+{
+  "name": "tapalog-reader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A single-file server that turns a folder of books (PDF, EPUB, FB2, DJVU, CBZ, MOBI, TXT, ecatm) into a web library with built-in readers.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/server/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "compile:linux-x64": "bun build --compile --target=bun-linux-x64 src/server/main.ts --outfile dist/tapalog-reader-linux-x64",
+    "compile:linux-arm64": "bun build --compile --target=bun-linux-arm64 src/server/main.ts --outfile dist/tapalog-reader-linux-arm64",
+    "compile:macos-arm64": "bun build --compile --target=bun-darwin-arm64 src/server/main.ts --outfile dist/tapalog-reader-macos-arm64",
+    "compile:macos-x64": "bun build --compile --target=bun-darwin-x64 src/server/main.ts --outfile dist/tapalog-reader-macos-x64",
+    "compile:windows-x64": "bun build --compile --target=bun-windows-x64 --windows-hide-console src/server/main.ts --outfile dist/tapalog-reader-windows-x64.exe"
+  },
+  "dependencies": {
+    "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.2.0/ecm-viewer-engine-0.2.0.tgz"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

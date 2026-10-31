@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tapalog Reader</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%232459d6%27/%3E%3Cpath d=%27M4 4h8v2H9v6H7V6H4z%27 fill=%27%23fff%27/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <button id="panel-toggle" class="icon-btn" title="Show or hide the library panel" aria-label="Library panel" aria-expanded="true">☰</button>
+      <span class="brand">Tapalog Reader</span>
+      <div class="search">
+        <input id="search" type="search" placeholder="Search by file name…" autocomplete="off" aria-label="Search" />
+        <ul id="search-results" class="search-results" hidden role="listbox"></ul>
+      </div>
+      <span id="scan-state" class="scan-state" hidden>Scanning…</span>
+    </header>
+    <div class="layout">
+      <aside id="panel" class="panel" aria-label="Library"><div id="tree" class="tree"></div></aside>
+      <main id="main" class="main"></main>
+    </div>
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>
