@@ -154,3 +154,7 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .book-toc ul { list-style: none; margin: 0; padding: 0; }
 .book-toc a { display: block; padding: 6px 8px; color: var(--text); text-decoration: none; font-size: 14px; }
 .book-toc a:hover { background: var(--hover); }
+
+.txt-reader { display: flex; flex-direction: column; }
+.txt-scroll { position: absolute; inset: 0; overflow: auto; outline: none; --txt-size: 1; }
+.txt-body { box-sizing: border-box; max-width: 46em; margin: 0 auto; padding: 24px 20px 64px; font: 1rem/1.6 Georgia, "Times New Roman", serif; font-size: calc(1rem * var(--txt-size)); white-space: pre-wrap; overflow-wrap: anywhere; }

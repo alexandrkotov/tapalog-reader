@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { el } from "../ui";
 import type { PageView } from "./types";
 import type { TextView } from "./book";
+import type { TxtView } from "./txt";
 
 /** What the shell needs from whichever reader shows a book. */
 export interface Reader {
@@ -26,7 +27,7 @@ export interface ReaderSpec {
 }
 
 /** Formats whose readers report a view the user can share. */
-export const VIEW_FORMATS = new Set(["pdf", "ecatm", "epub", "fb2", "mobi"]);
+export const VIEW_FORMATS = new Set(["pdf", "ecatm", "epub", "fb2", "mobi", "txt"]);
 
 /** Formats shown by the text engine (foliate-js). */
 const TEXT_FORMATS = new Set(["epub", "fb2", "mobi", "cbz"]);
@@ -62,6 +63,17 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       view: spec.view as PageView | null,
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("pdf.error"), err.message),
+    });
+    return { destroy: () => reader.destroy(), getView: () => reader.getView() };
+  }
+
+  if (spec.ext === "txt") {
+    const { mountTxt } = await import("./txt");
+    const reader = await mountTxt(host, {
+      url: spec.fileUrl,
+      view: spec.view as TxtView | null,
+      onView: (v) => spec.onView?.(v),
+      onError: (err) => spec.onError(t("book.error"), err.message),
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView() };
   }
