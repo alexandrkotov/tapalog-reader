@@ -87,9 +87,9 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 
 /* PDF reader */
 .pdf-reader { display: flex; flex-direction: column; }
-.pdf-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
-.pdf-toolbar button { min-width: 32px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; cursor: pointer; }
-.pdf-toolbar button:hover { background: var(--hover); }
+.pdf-toolbar, .book-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
+.pdf-toolbar button, .book-toolbar button { min-width: 32px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; cursor: pointer; }
+.pdf-toolbar button:hover, .book-toolbar button:hover { background: var(--hover); }
 .pdf-toolbar button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .pdf-page-input { width: 4.5em; height: 30px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; text-align: right; }
 .pdf-zoom { min-width: 3.5em; text-align: center; color: var(--muted); }
@@ -143,3 +143,14 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 
 /* a shared link shows the book and nothing else */
 .share-mode .panel, .share-mode .search, .share-mode #panel-toggle, .share-mode .account, .share-mode .reader-bar .btn { display: none; }
+
+.book-reader { display: flex; flex-direction: column; }
+.book-toolbar .book-chapter { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.book-toolbar button:disabled { opacity: 0.45; cursor: default; }
+.book-frame { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+.book-frame foliate-view { position: absolute; inset: 0; display: block; }
+.book-toc { position: absolute; z-index: 10; top: 0; bottom: 0; left: 0; width: min(320px, 85%); overflow: auto; background: var(--panel-bg); border-right: 1px solid var(--border); box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2); transform: translateX(-102%); visibility: hidden; transition: transform 0.15s, visibility 0.15s; }
+.book-toc.open { transform: none; visibility: visible; }
+.book-toc ul { list-style: none; margin: 0; padding: 0; }
+.book-toc a { display: block; padding: 6px 8px; color: var(--text); text-decoration: none; font-size: 14px; }
+.book-toc a:hover { background: var(--hover); }

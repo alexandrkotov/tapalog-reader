@@ -17,6 +17,7 @@ Early. Working now:
 - Collapsible tree panel, search by file name with a drop-down list, format badges
 - `.ecatm` catalogs in the built-in viewer (region selection, search, PDF export)
 - PDF reader (pdf.js, loaded on demand; works for scans too: JBIG2/JPEG 2000 decoders, fonts and CMaps are embedded). The address bar always holds the current *view*: page, position, zoom and an optional highlighted rectangle drawn with **Area**; the same link reproduces it in a window of any size
+- EPUB, FB2 and MOBI/AZW3 reader and a CBZ comic viewer ([foliate-js](https://github.com/johnfactotum/foliate-js), MIT, loaded on demand): contents, pages or continuous scroll, text size, arrow keys. A passage selected with **Mark** is highlighted, and the address bar holds the position and the mark (as EPUB CFIs, so they survive another window or text size). Books are third-party content: the page's Content-Security-Policy stops scripts and inline handlers inside an EPUB from running, and links in a book open only if they are http(s) or mailto
 - Accounts: the first administrator is created on the computer that runs the server; readers can create their own accounts (optional, from the local network). Passwords are argon2id hashes, sessions are random cookies stored hashed, repeated failed logins are slowed down
 - Share links with a QR code: `/s/<token>` opens exactly one book, optionally at an exact view, with no sign-in; a link can expire and be revoked
 - Internet access through a Cloudflare quick tunnel (embedded `cloudflared`, no account or port forwarding). The tunnel enters through a separate loopback listener, so a request is known to come from the internet by the socket it arrived on, not by a header; over the tunnel the library always needs sign-in, and the first-run setup and self-registration are refused
@@ -24,7 +25,7 @@ Early. Working now:
 - Interface in English, Russian and Ukrainian
 - Range requests for book files; everything the app creates lives in `tapalog-reader-data/` next to the executable (falls back to `~/.tapalog-reader-data` if that is not writable)
 
-Planned: readers for EPUB, FB2, DJVU, CBZ, MOBI, TXT; cover and page previews; full-text index (optional);
+Planned: readers for DJVU and TXT; cover and page previews; full-text index (optional);
 bookmarks per user; edit mode (drag and drop, rename); print / save to PDF; backup.
 
 ## Run

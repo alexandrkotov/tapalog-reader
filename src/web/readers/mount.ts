@@ -4,6 +4,7 @@ import pdfFontUrl from "@ecm/viewer-engine/fonts/DejaVuSans.ttf";
 import { t } from "../i18n";
 import { el } from "../ui";
 import type { PageView } from "./types";
+import type { TextView } from "./book";
 
 /** What the shell needs from whichever reader shows a book. */
 export interface Reader {
@@ -25,7 +26,10 @@ export interface ReaderSpec {
 }
 
 /** Formats whose readers report a view the user can share. */
-export const VIEW_FORMATS = new Set(["pdf", "ecatm"]);
+export const VIEW_FORMATS = new Set(["pdf", "ecatm", "epub", "fb2", "mobi"]);
+
+/** Formats shown by the text engine (foliate-js). */
+const TEXT_FORMATS = new Set(["epub", "fb2", "mobi", "cbz"]);
 
 const dark = () => matchMedia("(prefers-color-scheme: dark)").matches;
 
@@ -58,6 +62,19 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       view: spec.view as PageView | null,
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("pdf.error"), err.message),
+    });
+    return { destroy: () => reader.destroy(), getView: () => reader.getView() };
+  }
+
+  if (TEXT_FORMATS.has(spec.ext)) {
+    // Loaded on first use, like pdf.js: the text engine is only needed for these formats.
+    const { mountBook } = await import("./book");
+    const reader = await mountBook(host, {
+      url: spec.fileUrl,
+      ext: spec.ext,
+      view: spec.view as TextView | null,
+      onView: (v) => spec.onView?.(v),
+      onError: (err) => spec.onError(t("book.error"), err.message),
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView() };
   }

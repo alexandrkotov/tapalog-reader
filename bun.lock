@@ -6,6 +6,7 @@
       "name": "tapalog-reader",
       "dependencies": {
         "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.2.0/ecm-viewer-engine-0.2.0.tgz",
+        "foliate-js": "github:johnfactotum/foliate-js#78914aef4466eb960965702401634c2cb348e9b1",
         "pdfjs-dist": "^6.4.299",
         "qrcode-generator": "^2.0.4",
       },
@@ -91,6 +92,8 @@
     "@typescript/typescript-win32-x64": ["@typescript/typescript-win32-x64@7.0.2", "", { "os": "win32", "cpu": "x64" }, "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g=="],
 
     "bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
+
+    "foliate-js": ["foliate-js@github:johnfactotum/foliate-js#78914ae", {}, "johnfactotum-foliate-js-78914ae", "sha512-SrsmoMV2WpMXgoD+CAXtRfYZ8b1XGfOiP8YvdqNh/XCVuRAiuFIp1oGF7gddpYEUKPzvFG+w2c0JnwdxTqi2kQ=="],
 
     "pdfjs-dist": ["pdfjs-dist@6.4.299", "", { "optionalDependencies": { "@napi-rs/canvas": "^1.0.10" } }, "sha512-AVl138zALtfaAPvADulE0PZThbYzCBS79nL4pOSL/6Sm/4AH5A21BD9VHt97OlCuzJuCpmeZtAtkinisF4Vb1g=="],
 
