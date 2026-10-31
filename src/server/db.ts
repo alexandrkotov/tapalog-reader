@@ -19,5 +19,26 @@ export function openDb(dataDir: string): Database {
   )`);
   db.run("CREATE INDEX IF NOT EXISTS books_id ON books(id)");
   db.run("CREATE TABLE IF NOT EXISTS folders (path TEXT PRIMARY KEY)");
+  db.run("PRAGMA foreign_keys = ON");
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    hash       TEXT NOT NULL,                 -- argon2id, see auth.ts
+    role       TEXT NOT NULL DEFAULT 'user',  -- 'admin' | 'user'
+    created_at INTEGER NOT NULL
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,              -- sha256 of the cookie value: a leaked database can't be replayed
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS shares (
+    token      TEXT PRIMARY KEY,              -- random, goes into the link
+    book_id    TEXT NOT NULL,                 -- content id, so a moved or renamed book keeps its links
+    view       TEXT,                          -- JSON view (page, position, highlighted area) or NULL
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER                        -- NULL = never
+  )`);
   return db;
 }

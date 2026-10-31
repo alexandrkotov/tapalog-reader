@@ -1,7 +1,9 @@
-import { createPdfExporter, mountViewerInShadow, type EcatmView } from "@ecm/viewer-engine";
-import wasmUrl from "@ecm/viewer-engine/sql-wasm.wasm";
-import type { PageView } from "./readers/types";
-import pdfFontUrl from "@ecm/viewer-engine/fonts/DejaVuSans.ttf";
+import { authScreen, openAuthDialog, setupScreen, signOut, type Me } from "./account";
+import { openAdmin } from "./admin";
+import { LANGS, lang, setLang, t, type Lang } from "./i18n";
+import { mountReader, VIEW_FORMATS, type Reader } from "./readers/mount";
+import { openMyLinks, openShareDialog } from "./share";
+import { api, ApiError, badge, el, store } from "./ui";
 
 interface Book {
   id: string;
@@ -11,7 +13,7 @@ interface Book {
   size: number;
 }
 interface Status {
-  libraryPath: string | null;
+  configured: boolean;
   books: number;
   scanning: boolean;
   lastScan: { books: number; added: number; removed: number; ms: number } | null;
@@ -31,42 +33,17 @@ const panelEl = $("panel");
 const searchEl = $<HTMLInputElement>("search");
 const resultsEl = $("search-results");
 const scanEl = $("scan-state");
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  const { class: cls, ...rest } = props;
-  if (cls) node.className = cls;
-  Object.assign(node, rest);
-  node.append(...children);
-  return node;
-}
-
-/** localStorage may throw (private windows, blocked storage); the UI must work without it. */
-const store = {
-  get(key: string): string | null {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  },
-  set(key: string, value: string): void {
-    try {
-      localStorage.setItem(key, value);
-    } catch {
-      /* not persisted */
-    }
-  },
-};
-
-const badge = (ext: string) => el("span", { class: `badge badge-${ext}`, textContent: ext });
+const accountEl = $("account");
+const langEl = $<HTMLSelectElement>("lang");
+const toggleEl = $("panel-toggle");
 
 // ---------- library state and tree ----------
 
+let me: Me | null = null;
 let books: Book[] = [];
 let booksById = new Map<string, Book>();
 let root: FolderNode = { path: "", name: "", folders: [], books: [], total: 0 };
-let expanded = new Set<string>(JSON.parse(store.get("expanded") ?? "[]") as string[]);
+const expanded = new Set<string>(JSON.parse(store.get("expanded") ?? "[]") as string[]);
 let currentId: string | null = null;
 
 function buildTree(folders: string[], list: Book[]): FolderNode {
@@ -83,8 +60,7 @@ function buildTree(folders: string[], list: Book[]): FolderNode {
   for (const f of folders) ensure(f);
   for (const b of list) {
     const slash = b.path.lastIndexOf("/");
-    const node = ensure(slash < 0 ? "" : b.path.slice(0, slash));
-    node.books.push(b);
+    ensure(slash < 0 ? "" : b.path.slice(0, slash)).books.push(b);
   }
   const count = (n: FolderNode): number => (n.total = n.books.length + n.folders.reduce((s, f) => s + count(f), 0));
   count(nodes.get("")!);
@@ -138,7 +114,7 @@ function reveal(book: Book): void {
 }
 
 async function loadLibrary(): Promise<void> {
-  const data = (await (await fetch("/api/library")).json()) as { folders: string[]; books: Book[] };
+  const data = await api<{ folders: string[]; books: Book[] }>("/api/library");
   books = data.books;
   booksById = new Map(books.map((b) => [b.id, b]));
   root = buildTree(data.folders, books);
@@ -147,7 +123,6 @@ async function loadLibrary(): Promise<void> {
 
 // ---------- panel toggle ----------
 
-const toggleEl = $("panel-toggle");
 function setPanel(visible: boolean): void {
   panelEl.hidden = !visible;
   toggleEl.setAttribute("aria-expanded", String(visible));
@@ -167,9 +142,7 @@ function showHits(list: Book[], query: string): void {
   hits = list;
   activeHit = list.length ? 0 : -1;
   resultsEl.replaceChildren();
-  if (!list.length) {
-    resultsEl.append(el("li", { class: "empty", textContent: `Nothing found for “${query}”` }));
-  }
+  if (!list.length) resultsEl.append(el("li", { class: "empty", textContent: t("search.none", { q: query }) }));
   list.forEach((book, i) => {
     const li = el("li", { class: i === 0 ? "active" : "", role: "option" }, badge(book.ext), el("span", { textContent: book.name }), el("span", { class: "path", textContent: book.path }));
     li.dataset.index = String(i);
@@ -198,7 +171,7 @@ searchEl.addEventListener("input", () => {
     searchAbort = new AbortController();
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: searchAbort.signal });
-      showHits(((await res.json()) as { books: Book[] }).books, q);
+      if (res.ok) showHits(((await res.json()) as { books: Book[] }).books, q);
     } catch {
       /* superseded by a newer query */
     }
@@ -230,13 +203,17 @@ searchEl.addEventListener("focus", () => {
 
 // ---------- reader ----------
 
-/** Whatever is currently showing a book; the engine's viewer and the PDF reader both fit. */
-let viewer: { destroy(): void } | null = null;
-let openToken = 0; // a reader is loaded lazily: a stale load must not replace the book opened after it
+let reader: Reader | null = null;
+let openToken = 0; // readers load lazily: a stale load must not replace the book opened after it
+
+function stopReader(): void {
+  openToken++;
+  reader?.destroy();
+  reader = null;
+}
 
 function message(title: string, text: string, ...extra: Node[]): void {
-  viewer?.destroy();
-  viewer = null;
+  stopReader();
   mainEl.replaceChildren(el("div", { class: "message" }, el("h2", { textContent: title }), el("p", { textContent: text }), ...extra));
 }
 
@@ -255,109 +232,122 @@ function parseHash(): { book: string | null; view: unknown } {
 
 const writeView = (book: Book, view: unknown) => history.replaceState(null, "", `#book=${book.id}&view=${encodeURIComponent(JSON.stringify(view))}`);
 
-function openBook(book: Book, view: unknown): void {
+/** Shows a reader in the main area under a title bar. `bar` adds buttons at its right end. */
+function showReader(spec: { name: string; ext: string; path?: string; fileUrl: string; view: unknown; onView?: (view: unknown) => void; bar?: (current: () => Reader | null) => HTMLElement[] }): void {
   const token = ++openToken;
-  currentId = book.id;
-  renderTree();
-  viewer?.destroy();
-  viewer = null;
+  reader?.destroy();
+  reader = null;
   const host = el("div", { class: "reader-host" });
   mainEl.replaceChildren(
-    el("div", { class: "reader-bar" }, badge(book.ext), el("span", { class: "title", textContent: book.name }), el("span", { class: "path", textContent: book.path })),
+    el("div", { class: "reader-bar" }, badge(spec.ext), el("span", { class: "title", textContent: spec.name }), el("span", { class: "path grow", textContent: spec.path ?? "" }), ...(spec.bar?.(() => reader) ?? [])),
     host,
   );
-  document.title = `${book.name} — Tapalog Reader`;
-
-  if (book.ext === "ecatm") {
-    const v = mountViewerInShadow(host, {
-      mode: "reader",
-      wasmUrl,
-      exportPdf: createPdfExporter(pdfFontUrl),
-      theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-      persist: false,
-      analytics: false,
-      regionSelect: true,
-      // Keep the address bar a deep link to exactly what is on screen.
-      onEvent: (type, detail) => {
-        if (type === "view") writeView(book, detail);
-      },
+  document.title = `${spec.name} — ${t("app.title")}`;
+  mountReader(host, { ...spec, onError: (title, text) => token === openToken && message(title, text) })
+    .then((r) => {
+      if (token === openToken) reader = r;
+      else r.destroy();
+    })
+    .catch((err: unknown) => {
+      if (token === openToken) message(t("pdf.error"), err instanceof Error ? err.message : String(err));
     });
-    viewer = v;
-    void v.openUrl(`/api/file/${book.id}`, { fetchInit: { credentials: "include" }, view: (view as EcatmView | null) ?? undefined }).catch((err: unknown) => {
-      message("Could not open this catalog", err instanceof Error ? err.message : String(err));
-    });
-    return;
-  }
+}
 
-  if (book.ext === "pdf") {
-    // Loaded on first use: pdf.js is ~1 MB the catalog and text readers never need.
-    void import("./readers/pdf")
-      .then(({ mountPdf }) =>
-        mountPdf(host, {
-          url: `/api/file/${book.id}`,
-          view: view as PageView | null,
-          onView: (v) => writeView(book, v),
-          onError: (err) => message("Could not open this PDF", err.message),
-        }),
-      )
-      .then((reader) => {
-        if (token === openToken) viewer = reader;
-        else reader.destroy();
-      })
-      .catch((err: unknown) => {
-        if (token === openToken) message("Could not open this PDF", err instanceof Error ? err.message : String(err));
-      });
-    return;
-  }
-
-  host.replaceChildren(
-    el("div", { class: "message" }, el("h2", { textContent: book.name }), el("p", { textContent: `A built-in reader for ${book.ext.toUpperCase()} is coming soon.` }), el("a", { class: "button", href: `/api/file/${book.id}`, textContent: "Download the file" })),
-  );
+function openBook(book: Book, view: unknown): void {
+  currentId = book.id;
+  renderTree();
+  const share = el("button", { type: "button", class: "btn", textContent: t("share.button") });
+  showReader({
+    name: book.name,
+    ext: book.ext,
+    path: book.path,
+    fileUrl: `/api/file/${book.id}`,
+    view,
+    onView: (v) => writeView(book, v),
+    bar: (current) => {
+      share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.name, ext: book.ext, view: VIEW_FORMATS.has(book.ext) ? (current()?.getView?.() ?? null) : null }));
+      return [share];
+    },
+  });
 }
 
 function route(): void {
   const { book, view } = parseHash();
   if (!book) {
     currentId = null;
-    document.title = "Tapalog Reader";
+    document.title = t("app.title");
     renderTree();
-    message("Pick a book", books.length ? "Choose one in the panel on the left, or use the search box." : "The library is empty.");
+    message(t("pick.title"), books.length ? t("pick.some") : t("pick.empty"));
     return;
   }
   const found = booksById.get(book);
-  if (!found) {
-    message("Book not found", "It may have been moved or deleted from the library folder.");
-    return;
-  }
+  if (!found) return message(t("book.missing.title"), t("book.missing.text"));
   openBook(found, view);
   reveal(found);
 }
-addEventListener("hashchange", route);
+addEventListener("hashchange", () => {
+  if (!sharePage) route();
+});
 
-// ---------- first run and background refresh ----------
+// ---------- top bar: language and account ----------
 
-function setupScreen(): void {
+function applyStaticText(): void {
+  document.title = t("app.title");
+  $("brand").textContent = t("app.title");
+  toggleEl.title = t("panel.toggle");
+  toggleEl.setAttribute("aria-label", t("panel.toggle"));
+  searchEl.placeholder = t("search.placeholder");
+  scanEl.textContent = t("scan.running");
+  langEl.replaceChildren(...(Object.entries(LANGS) as [Lang, string][]).map(([code, name]) => el("option", { value: code, textContent: name, selected: code === lang() })));
+}
+langEl.addEventListener("change", () => {
+  setLang(langEl.value as Lang);
+  void (sharePage ? bootShare(sharePage) : boot());
+});
+
+function renderAccount(): void {
+  const buttons: HTMLElement[] = [];
+  const button = (label: string, onClick: () => void) => {
+    const b = el("button", { type: "button", class: "btn", textContent: label });
+    b.addEventListener("click", onClick);
+    return b;
+  };
+  if (me?.user) {
+    buttons.push(el("span", { class: "who", textContent: me.user.name }));
+    buttons.push(button(t("account.links"), () => void openMyLinks()));
+    if (me.user.role === "admin") buttons.push(button(t("account.settings"), () => void openAdmin(me!.user!, () => void refreshLibrary())));
+    buttons.push(button(t("account.signOut"), async () => (await signOut(), void boot())));
+  } else if (me && !me.setupNeeded) {
+    buttons.push(button(t("account.signIn"), () => openAuthDialog(me!, () => void boot())));
+  }
+  accountEl.replaceChildren(...buttons);
+}
+
+// ---------- first run, sign-in and background refresh ----------
+
+function folderScreen(): HTMLElement {
   const input = el("input", { type: "text", placeholder: "/path/to/your/books", autocomplete: "off" });
   const error = el("div", { class: "error" });
-  const form = el("form", {}, input, el("button", { type: "submit", textContent: "Use this folder" }));
+  const form = el("form", {}, input, el("button", { type: "submit", class: "btn primary", textContent: t("library.button") }));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     error.textContent = "";
-    const res = await fetch("/api/library/path", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: input.value.trim() }) });
-    if (res.ok) {
-      await boot();
-    } else {
-      error.textContent = ((await res.json().catch(() => ({}))) as { error?: string }).error === "admin only" ? "The folder can only be chosen on the computer that runs the server." : "That is not a folder this computer can read.";
+    try {
+      await api("/api/library/path", { path: input.value.trim() });
+      void boot();
+    } catch (err) {
+      error.textContent = err instanceof ApiError && err.status === 400 ? t("library.error") : String(err);
     }
   });
-  message("Choose the library folder", "Type the full path of the folder with your books. Subfolders are included.", form, error);
-  input.focus();
+  queueMicrotask(() => input.focus());
+  return el("div", { class: "message" }, el("h2", { textContent: t("library.title") }), el("p", { textContent: t("library.text") }), form, error);
 }
 
 let lastScanKey: string | null = null;
-/** Polls the server; a finished rescan refreshes the tree but never touches the book being read. */
+let pollTimer: ReturnType<typeof setInterval> | undefined;
+
 async function pollStatus(): Promise<Status> {
-  const status = (await (await fetch("/api/status")).json()) as Status;
+  const status = await api<Status>("/api/status");
   scanEl.hidden = !status.scanning;
   const key = JSON.stringify(status.lastScan);
   if (lastScanKey !== null && key !== lastScanKey) await loadLibrary();
@@ -365,19 +355,67 @@ async function pollStatus(): Promise<Status> {
   return status;
 }
 
-async function boot(): Promise<void> {
-  let status = await pollStatus();
-  if (status.libraryPath && status.scanning) {
-    // First scan still running: wait for it so the tree isn't drawn empty.
-    while (status.scanning) {
-      await new Promise((r) => setTimeout(r, 400));
-      status = await pollStatus();
-    }
+/** After the admin changes the library folder or rescans: wait for the scan, then redraw the tree. */
+async function refreshLibrary(): Promise<void> {
+  lastScanKey = null;
+  for (let i = 0; i < 100; i++) {
+    await new Promise((r) => setTimeout(r, 300));
+    const status = await pollStatus().catch(() => null);
+    if (status && !status.scanning) break;
   }
-  if (!status.libraryPath) return setupScreen();
   await loadLibrary();
-  route();
+  if (!parseHash().book) route();
 }
 
-void boot();
-setInterval(() => void pollStatus().catch(() => {}), 4000);
+async function boot(): Promise<void> {
+  clearInterval(pollTimer);
+  stopReader();
+  applyStaticText();
+  me = await api<Me>("/api/me");
+  renderAccount();
+  books = [];
+  root = buildTree([], []);
+  renderTree();
+
+  if (me.setupNeeded && me.setupPossible) return void mainEl.replaceChildren(setupScreen(me, () => void boot()));
+  if (!me.canBrowse) {
+    stopReader();
+    return void mainEl.replaceChildren(authScreen(me, () => void boot()));
+  }
+  let status: Status;
+  try {
+    status = await pollStatus();
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return void boot();
+    throw err;
+  }
+  if (!status.configured) {
+    if (me.user?.role === "admin") return void mainEl.replaceChildren(folderScreen());
+    return message(t("library.title"), t("library.wait"));
+  }
+  while (status.scanning) {
+    await new Promise((r) => setTimeout(r, 400)); // let the first scan finish so the tree isn't drawn empty
+    status = await pollStatus();
+  }
+  await loadLibrary();
+  route();
+  pollTimer = setInterval(() => void pollStatus().catch((err: unknown) => err instanceof ApiError && err.status === 401 && void boot()), 4000);
+}
+
+// ---------- a shared link: one book, nothing else ----------
+
+const sharePage = location.pathname.startsWith("/s/") ? decodeURIComponent(location.pathname.slice(3).replace(/\/$/, "")) : null;
+
+async function bootShare(token: string): Promise<void> {
+  document.body.classList.add("share-mode");
+  applyStaticText();
+  try {
+    const info = await api<{ name: string; ext: string; view: unknown }>(`/api/share/${encodeURIComponent(token)}`);
+    showReader({ name: info.name, ext: info.ext, fileUrl: `/api/share/${encodeURIComponent(token)}/file`, view: info.view });
+  } catch {
+    message(t("shared.gone.title"), t("shared.gone.text"));
+  }
+}
+
+if (sharePage) void bootShare(sharePage);
+else void boot();

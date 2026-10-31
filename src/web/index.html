@@ -10,12 +10,14 @@
   <body>
     <header class="topbar">
       <button id="panel-toggle" class="icon-btn" title="Show or hide the library panel" aria-label="Library panel" aria-expanded="true">☰</button>
-      <span class="brand">Tapalog Reader</span>
+      <span class="brand" id="brand">Tapalog Reader</span>
       <div class="search">
         <input id="search" type="search" placeholder="Search by file name…" autocomplete="off" aria-label="Search" />
         <ul id="search-results" class="search-results" hidden role="listbox"></ul>
       </div>
-      <span id="scan-state" class="scan-state" hidden>Scanning…</span>
+      <span id="scan-state" class="scan-state" hidden></span>
+      <div id="account" class="account"></div>
+      <select id="lang" class="lang" aria-label="Language"></select>
     </header>
     <div class="layout">
       <aside id="panel" class="panel" aria-label="Library"><div id="tree" class="tree"></div></aside>

@@ -98,3 +98,48 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .pdf-scroll.selecting { cursor: crosshair; touch-action: none; user-select: none; }
 .pdf-region { position: absolute; z-index: 5; box-sizing: border-box; border: 2px solid #ff9f0a; background: rgba(255, 200, 0, 0.28); mix-blend-mode: multiply; pointer-events: none; }
 .pdf-region-draft { border-style: dashed; }
+
+/* account, language, dialogs, forms */
+.account { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.who { color: var(--muted); font-size: 13px; padding: 0 4px; }
+.lang { border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; height: 34px; padding: 0 6px; }
+.btn { height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--hover); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+.link { border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; padding: 0; text-align: left; }
+.grow { flex: 1; min-width: 0; }
+.muted { color: var(--muted); font-size: 13px; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row input[type="text"] { flex: 1; min-width: 0; }
+.stack { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.stack label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; min-width: 0; }
+.message.narrow { max-width: 340px; }
+.message .stack .btn { margin-top: 4px; }
+.reader-bar .btn { margin-left: 4px; }
+
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 12px; background: rgba(0, 0, 0, 0.45); overflow: auto; }
+.modal { width: min(640px, 100%); background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.modal-head h2 { margin: 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.section { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.section:last-child { border-bottom: 0; padding-bottom: 0; }
+.section h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.choice { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.field-row { display: flex; align-items: center; gap: 10px; }
+.reader-title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.user-row, .share-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.user-row input, .user-row select { width: 9em; }
+.link-results { display: flex; flex-direction: column; gap: 10px; }
+.link-card { display: flex; gap: 14px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; align-items: center; }
+.link-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.link-info input { flex: 1; min-width: 0; }
+.qr { flex: none; width: 150px; height: 150px; background: #fff; border-radius: 6px; padding: 2px; }
+.qr svg { width: 100%; height: 100%; display: block; }
+@media (max-width: 520px) { .link-card { flex-direction: column; align-items: stretch; } .qr { align-self: center; } }
+
+/* a shared link shows the book and nothing else */
+.share-mode .panel, .share-mode .search, .share-mode #panel-toggle, .share-mode .account, .share-mode .reader-bar .btn { display: none; }

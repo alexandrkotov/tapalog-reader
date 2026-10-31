@@ -1,19 +1,45 @@
-import { join, sep } from "node:path";
+import { join } from "node:path";
 import type { Server } from "bun";
+import type { Auth, User } from "./auth";
+import { validateName, validatePassword } from "./auth";
+import type { ConfigStore } from "./config";
 import { MIME, type Format } from "./formats";
 import type { Library } from "./library";
-import index from "../web/index.html";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
+import type { Shares } from "./shares";
+import type { TunnelController } from "./tunnelController";
+import index from "../web/index.html";
 
-function json(data: unknown, status = 200): Response {
-  return Response.json(data, { status });
+export interface App {
+  library: Library;
+  auth: Auth;
+  shares: Shares;
+  config: ConfigStore;
+  tunnel: TunnelController;
+  /** Addresses of this computer on the local network, for share links. */
+  lanUrls(): string[];
+  /** Persists the mode and starts or stops the tunnel. */
+  setMode(mode: "lan" | "internet"): void;
 }
 
-/** Admin-only actions are limited to the machine the app runs on until real accounts exist. */
-function isLocal(server: Server<unknown>, req: Request): boolean {
-  const ip = server.requestIP(req)?.address ?? "";
-  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+export interface Servers {
+  lan: Server<unknown>;
+  /** Loopback-only listener the tunnel forwards to. */
+  internal: Server<unknown>;
+  stop(): void;
 }
+
+/**
+ * Where a request came from. The tunnel is pointed at a separate loopback
+ * listener, so "came through the internet" is decided by *which socket
+ * accepted it*, never by a header a visitor could forge. (A tunnel's requests
+ * all arrive from 127.0.0.1, so the peer address alone can't tell them apart
+ * from a person sitting at the computer.)
+ */
+type Origin = "lan" | "tunnel";
+
+const json = (data: unknown, status = 200, headers?: HeadersInit) => Response.json(data, { status, headers });
+const notFound = () => new Response("Not found", { status: 404 });
 
 /** Serves one book file, honouring a single `Range` so readers can fetch big PDFs in pieces. */
 function serveFile(absPath: string, mime: string, rangeHeader: string | null, fileName: string): Response {
@@ -45,73 +71,281 @@ function serveFile(absPath: string, mime: string, rangeHeader: string | null, fi
   return new Response(file, { headers: { ...headers, "Content-Length": String(size) } });
 }
 
-const ASSET_TYPES: Record<string, string> = {
-  mjs: "text/javascript",
-  wasm: "application/wasm",
-  ttf: "font/ttf",
-};
+const ASSET_TYPES: Record<string, string> = { mjs: "text/javascript", wasm: "application/wasm", ttf: "font/ttf" };
 
 /** The runtime files pdf.js loads itself: worker, image decoders, fonts, CMaps (see scripts/gen-pdfjs-assets.ts). */
 function servePdfjsAsset(req: Request): Response {
   const name = decodeURIComponent(new URL(req.url).pathname.slice("/pdfjs/".length));
   const path = Object.hasOwn(PDFJS_ASSETS, name) ? PDFJS_ASSETS[name] : undefined; // a fixed list: no path from the request reaches the disk
-  if (!path) return new Response("Not found", { status: 404 });
+  if (!path) return notFound();
   const ext = name.slice(name.lastIndexOf(".") + 1);
-  return new Response(Bun.file(path), {
-    headers: { "Content-Type": ASSET_TYPES[ext] ?? "application/octet-stream", "Cache-Control": "public, max-age=86400" },
-  });
+  return new Response(Bun.file(path), { headers: { "Content-Type": ASSET_TYPES[ext] ?? "application/octet-stream", "Cache-Control": "public, max-age=86400" } });
 }
 
-export function startServer(library: Library, opts: { hostname: string; port: number }): Server<unknown> {
-  const server: Server<unknown> = Bun.serve({
-    hostname: opts.hostname,
-    port: opts.port,
-    routes: {
-      "/": index,
-      "/pdfjs/*": servePdfjsAsset,
-      "/api/status": () =>
-        json({
-          libraryPath: library.root,
-          books: library.count(),
-          scanning: library.scanning,
-          lastScan: library.lastScan,
-        }),
-      "/api/library": () => json({ folders: library.folders(), books: library.books() }),
-      "/api/search": (req) => {
-        const q = new URL(req.url).searchParams.get("q") ?? "";
-        return json({ books: library.searchNames(q) });
-      },
-      "/api/file/:id": (req) => {
-        // Only ids from our own index map to a path: there is no way to name an arbitrary file.
-        const book = library.byId(req.params.id);
-        const root = library.root;
-        if (!book || !root) return new Response("Not found", { status: 404 });
-        const abs = join(root, ...book.path.split("/"));
-        const fileName = book.path.slice(book.path.lastIndexOf("/") + 1);
-        return serveFile(abs, MIME[book.ext as Format] ?? "application/octet-stream", req.headers.get("range"), fileName);
-      },
-      "/api/rescan": {
-        POST: async (req) => {
-          if (!isLocal(server, req)) return json({ error: "admin only" }, 403);
-          void library.rescan();
-          return json({ ok: true });
-        },
-      },
-      "/api/library/path": {
-        POST: async (req) => {
-          if (!isLocal(server, req)) return json({ error: "admin only" }, 403);
-          const body = (await req.json().catch(() => null)) as { path?: string } | null;
-          if (!body?.path) return json({ error: "path required" }, 400);
-          try {
-            await library.setRoot(body.path);
-            return json({ ok: true });
-          } catch (err) {
-            return json({ error: err instanceof Error ? err.message : String(err) }, 400);
-          }
-        },
+const param = (req: Bun.BunRequest, name: string) => req.params[name] ?? "";
+const isLoopback = (ip: string) => ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+
+type Handler = (req: Bun.BunRequest, server: Server<unknown>) => Response | Promise<Response>;
+
+function buildRoutes(app: App, origin: Origin) {
+  const secureCookie = origin === "tunnel"; // the tunnel always speaks https to the visitor
+  const user = (req: Request): User | null => app.auth.userFor(req);
+  const canBrowse = (req: Request) => user(req) !== null || (origin === "lan" && app.config.get().lanAccess === "open");
+  const clientIp = (req: Request, server: Server<unknown>) =>
+    origin === "tunnel" ? (req.headers.get("cf-connecting-ip") ?? "tunnel") : (server.requestIP(req)?.address ?? "?"); // the header is trustworthy here: only the tunnel process reaches this socket
+
+  const unauthorized = () => json({ error: "sign-in required" }, 401);
+  const forbidden = () => json({ error: "forbidden" }, 403);
+
+  /** Browsing the library: a signed-in user, or anyone on the local network when the admin left it open. */
+  const browse = (handler: Handler): Handler => (req, server) => (canBrowse(req) ? handler(req, server) : unauthorized());
+  const admin = (handler: (req: Bun.BunRequest, server: Server<unknown>, me: User) => Response | Promise<Response>): Handler => (req, server) => {
+    const me = user(req);
+    if (!me) return unauthorized();
+    return me.role === "admin" ? handler(req, server, me) : forbidden();
+  };
+
+  /** State-changing requests must be JSON from our own pages: a cross-site form post can't send that. */
+  async function body(req: Request): Promise<Record<string, unknown> | null> {
+    if (!(req.headers.get("content-type") ?? "").includes("application/json")) return null;
+    const originHeader = req.headers.get("origin");
+    if (originHeader) {
+      try {
+        if (new URL(originHeader).host !== req.headers.get("host")) return null;
+      } catch {
+        return null;
+      }
+    }
+    const data = await req.json().catch(() => null);
+    return data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
+  }
+  const bad = (message = "bad request") => json({ error: message }, 400);
+
+  async function signIn(me: User): Promise<Response> {
+    const session = app.auth.startSession(me.id);
+    return json({ user: me }, 200, { "Set-Cookie": app.auth.sessionCookie(session.token, session.maxAgeSeconds, secureCookie) });
+  }
+
+  const settingsView = () => ({
+    libraryPath: app.library.root,
+    lanAccess: app.config.get().lanAccess,
+    allowRegistration: app.config.get().allowRegistration,
+    mode: app.config.get().mode,
+    tunnel: { state: app.tunnel.state, url: app.tunnel.url, error: app.tunnel.error },
+    users: app.auth.listUsers(),
+  });
+
+  const routes: Record<string, unknown> = {
+    "/": index,
+    "/s/:token": index,
+    "/pdfjs/*": servePdfjsAsset,
+
+    // ----- who am I -----
+    "/api/me": (req: Request, server: Server<unknown>) => {
+      const me = user(req);
+      const noUsers = app.auth.userCount() === 0;
+      return json({
+        user: me,
+        origin,
+        canBrowse: canBrowse(req),
+        lanAccess: app.config.get().lanAccess,
+        setupNeeded: noUsers,
+        setupPossible: noUsers && origin === "lan" && isLoopback(server.requestIP(req)?.address ?? ""),
+        canRegister: origin === "lan" && app.config.get().allowRegistration && !noUsers,
+      });
+    },
+    "/api/setup": {
+      POST: async (req: Request, server: Server<unknown>) => {
+        const data = await body(req);
+        const name = validateName(data?.name);
+        const password = validatePassword(data?.password);
+        if (!name || !password) return bad("name or password too short");
+        // The first administrator can only be created from the computer that runs the server.
+        if (origin !== "lan" || !isLoopback(server.requestIP(req)?.address ?? "") || app.auth.userCount() > 0) return forbidden();
+        return signIn(await app.auth.createUser(name, password, "admin"));
       },
     },
-    fetch: () => new Response("Not found", { status: 404 }),
+    "/api/register": {
+      POST: async (req: Request) => {
+        const data = await body(req);
+        const name = validateName(data?.name);
+        const password = validatePassword(data?.password);
+        if (!name || !password) return bad("name or password too short");
+        if (origin !== "lan" || !app.config.get().allowRegistration || app.auth.userCount() === 0) return forbidden();
+        try {
+          return signIn(await app.auth.createUser(name, password, "user"));
+        } catch {
+          return json({ error: "name taken" }, 409);
+        }
+      },
+    },
+    "/api/login": {
+      POST: async (req: Request, server: Server<unknown>) => {
+        const data = await body(req);
+        const name = typeof data?.name === "string" ? data.name.trim() : "";
+        const password = typeof data?.password === "string" ? data.password : "";
+        if (!name || !password) return bad();
+        const key = `${clientIp(req, server)}|${name.toLowerCase()}`;
+        if (app.auth.locked(key)) return json({ error: "too many attempts" }, 429);
+        const me = await app.auth.verify(name, password, key);
+        return me ? signIn(me) : json({ error: "wrong name or password" }, 401);
+      },
+    },
+    "/api/logout": {
+      POST: async (req: Request) => {
+        app.auth.endSession(req);
+        return json({ ok: true }, 200, { "Set-Cookie": app.auth.clearCookie(secureCookie) });
+      },
+    },
+
+    // ----- the library -----
+    "/api/status": browse(() =>
+      json({
+        configured: app.library.root !== null,
+        books: app.library.count(),
+        scanning: app.library.scanning,
+        lastScan: app.library.lastScan,
+        tunnelUrl: app.tunnel.url,
+        lanUrls: app.lanUrls(),
+      }),
+    ),
+    "/api/library": browse(() => json({ folders: app.library.folders(), books: app.library.books() })),
+    "/api/search": browse((req) => json({ books: app.library.searchNames(new URL(req.url).searchParams.get("q") ?? "") })),
+    "/api/file/:id": browse((req) => {
+      // Only ids from our own index map to a path: there is no way to name an arbitrary file.
+      const book = app.library.byId(param(req, "id"));
+      return book ? sendBook(book, req) : notFound();
+    }),
+
+    // ----- share links -----
+    "/api/shares": {
+      GET: browse((req) => {
+        const me = user(req);
+        if (!me) return json({ shares: [] });
+        return json({ shares: app.shares.list(me.role === "admin" ? "all" : me.id) });
+      }),
+      POST: browse(async (req) => {
+        const data = await body(req);
+        const book = typeof data?.bookId === "string" ? app.library.byId(data.bookId) : null;
+        if (!data || !book) return bad("unknown book");
+        const view = data.view ?? null;
+        if (view !== null && (typeof view !== "object" || Array.isArray(view))) return bad("bad view");
+        const days = typeof data.expiresInDays === "number" && data.expiresInDays > 0 && data.expiresInDays <= 3650 ? Math.floor(data.expiresInDays) : null;
+        try {
+          const share = app.shares.create(book.id, view, user(req)?.id ?? null, days);
+          return json({ token: share.token, expiresAt: share.expiresAt });
+        } catch {
+          return bad("view too large");
+        }
+      }),
+    },
+    "/api/shares/:token": {
+      DELETE: browse((req) => (app.shares.revoke(param(req, "token"), user(req)) ? json({ ok: true }) : forbidden())),
+    },
+    // What a link's visitor uses: no sign-in, and only the one book the token names.
+    "/api/share/:token": (req: Bun.BunRequest) => {
+      const share = app.shares.get(param(req, "token"));
+      const book = share ? app.library.byId(share.bookId) : null;
+      return share && book ? json({ name: book.name, ext: book.ext, view: share.view }) : notFound();
+    },
+    "/api/share/:token/file": (req: Bun.BunRequest) => {
+      const share = app.shares.get(param(req, "token"));
+      const book = share ? app.library.byId(share.bookId) : null;
+      return book ? sendBook(book, req) : notFound();
+    },
+
+    // ----- administration -----
+    "/api/admin/settings": {
+      GET: admin(() => json(settingsView())),
+      POST: admin(async (req) => {
+        const data = await body(req);
+        if (!data) return bad();
+        const patch: Partial<{ lanAccess: "open" | "login"; allowRegistration: boolean }> = {};
+        if (data.lanAccess === "open" || data.lanAccess === "login") patch.lanAccess = data.lanAccess;
+        if (typeof data.allowRegistration === "boolean") patch.allowRegistration = data.allowRegistration;
+        app.config.update(patch);
+        if (data.mode === "lan" || data.mode === "internet") app.setMode(data.mode);
+        return json(settingsView());
+      }),
+    },
+    "/api/admin/users": {
+      POST: admin(async (req) => {
+        const data = await body(req);
+        const name = validateName(data?.name);
+        const password = validatePassword(data?.password);
+        if (!name || !password) return bad("name or password too short");
+        try {
+          await app.auth.createUser(name, password, data?.role === "admin" ? "admin" : "user");
+          return json(settingsView());
+        } catch {
+          return json({ error: "name taken" }, 409);
+        }
+      }),
+    },
+    "/api/admin/users/:id": {
+      DELETE: admin((req, _server, me) => {
+        const id = Number(param(req, "id"));
+        if (id === me.id) return json({ error: "cannot delete yourself" }, 400);
+        const result = app.auth.deleteUser(id);
+        return result === "ok" ? json(settingsView()) : result === "missing" ? notFound() : json({ error: "last admin" }, 400);
+      }),
+    },
+    "/api/admin/users/:id/password": {
+      POST: admin(async (req) => {
+        const password = validatePassword((await body(req))?.password);
+        if (!password) return bad("password too short");
+        return (await app.auth.setPassword(Number(param(req, "id")), password)) ? json({ ok: true }) : notFound();
+      }),
+    },
+    "/api/rescan": {
+      POST: admin(async () => {
+        void app.library.rescan();
+        return json({ ok: true });
+      }),
+    },
+    "/api/library/path": {
+      POST: admin(async (req) => {
+        const path = (await body(req))?.path;
+        if (typeof path !== "string" || !path) return bad("path required");
+        try {
+          await app.library.setRoot(path);
+          return json({ ok: true });
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, 400);
+        }
+      }),
+    },
+  };
+
+  function sendBook(book: { path: string; ext: string }, req: Request): Response {
+    const root = app.library.root;
+    if (!root) return notFound();
+    const fileName = book.path.slice(book.path.lastIndexOf("/") + 1);
+    return serveFile(join(root, ...book.path.split("/")), MIME[book.ext as Format] ?? "application/octet-stream", req.headers.get("range"), fileName);
+  }
+
+  return routes;
+}
+
+export function startServers(app: App, opts: { hostname: string; port: number }): Servers {
+  const internal = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    routes: buildRoutes(app, "tunnel") as never,
+    fetch: notFound,
   });
-  return server;
+  try {
+    const lan = Bun.serve({ hostname: opts.hostname, port: opts.port, routes: buildRoutes(app, "lan") as never, fetch: notFound });
+    return {
+      lan,
+      internal,
+      stop() {
+        lan.stop(true);
+        internal.stop(true);
+      },
+    };
+  } catch (err) {
+    internal.stop(true);
+    throw err;
+  }
 }
