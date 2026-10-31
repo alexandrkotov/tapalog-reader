@@ -84,3 +84,17 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
   .panel { position: absolute; z-index: 15; top: 51px; bottom: 0; left: 0; width: 85vw; box-shadow: 4px 0 16px rgba(0, 0, 0, 0.2); }
   .brand { display: none; }
 }
+
+/* PDF reader */
+.pdf-reader { display: flex; flex-direction: column; }
+.pdf-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
+.pdf-toolbar button { min-width: 32px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; cursor: pointer; }
+.pdf-toolbar button:hover { background: var(--hover); }
+.pdf-toolbar button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pdf-page-input { width: 4.5em; height: 30px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; text-align: right; }
+.pdf-zoom { min-width: 3.5em; text-align: center; color: var(--muted); }
+.pdf-frame { flex: 1; min-height: 0; position: relative; }
+.pdf-scroll { position: absolute; inset: 0; overflow: auto; background: #525659; outline: none; }
+.pdf-scroll.selecting { cursor: crosshair; touch-action: none; user-select: none; }
+.pdf-region { position: absolute; z-index: 5; box-sizing: border-box; border: 2px solid #ff9f0a; background: rgba(255, 200, 0, 0.28); mix-blend-mode: multiply; pointer-events: none; }
+.pdf-region-draft { border-style: dashed; }

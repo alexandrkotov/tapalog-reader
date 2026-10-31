@@ -1,5 +1,6 @@
 import { createPdfExporter, mountViewerInShadow, type EcatmView } from "@ecm/viewer-engine";
 import wasmUrl from "@ecm/viewer-engine/sql-wasm.wasm";
+import type { PageView } from "./readers/types";
 import pdfFontUrl from "@ecm/viewer-engine/fonts/DejaVuSans.ttf";
 
 interface Book {
@@ -229,8 +230,9 @@ searchEl.addEventListener("focus", () => {
 
 // ---------- reader ----------
 
-type Viewer = ReturnType<typeof mountViewerInShadow>;
-let viewer: Viewer | null = null;
+/** Whatever is currently showing a book; the engine's viewer and the PDF reader both fit. */
+let viewer: { destroy(): void } | null = null;
+let openToken = 0; // a reader is loaded lazily: a stale load must not replace the book opened after it
 
 function message(title: string, text: string, ...extra: Node[]): void {
   viewer?.destroy();
@@ -238,19 +240,23 @@ function message(title: string, text: string, ...extra: Node[]): void {
   mainEl.replaceChildren(el("div", { class: "message" }, el("h2", { textContent: title }), el("p", { textContent: text }), ...extra));
 }
 
-function parseHash(): { book: string | null; view: EcatmView | null } {
+/** The shape of a view depends on the book's format: EcatmView for catalogs, PageView for paged documents. */
+function parseHash(): { book: string | null; view: unknown } {
   const params = new URLSearchParams(location.hash.slice(1));
-  let view: EcatmView | null = null;
+  let view: unknown = null;
   try {
     const raw = params.get("view");
-    if (raw) view = JSON.parse(raw) as EcatmView;
+    if (raw) view = JSON.parse(raw);
   } catch {
     /* a broken link opens the book at its start */
   }
   return { book: params.get("book"), view };
 }
 
-function openBook(book: Book, view: EcatmView | null): void {
+const writeView = (book: Book, view: unknown) => history.replaceState(null, "", `#book=${book.id}&view=${encodeURIComponent(JSON.stringify(view))}`);
+
+function openBook(book: Book, view: unknown): void {
+  const token = ++openToken;
   currentId = book.id;
   renderTree();
   viewer?.destroy();
@@ -271,16 +277,36 @@ function openBook(book: Book, view: EcatmView | null): void {
       persist: false,
       analytics: false,
       regionSelect: true,
+      // Keep the address bar a deep link to exactly what is on screen.
       onEvent: (type, detail) => {
-        if (type !== "view") return;
-        // Keep the address bar a deep link to exactly what is on screen.
-        history.replaceState(null, "", `#book=${book.id}&view=${encodeURIComponent(JSON.stringify(detail))}`);
+        if (type === "view") writeView(book, detail);
       },
     });
     viewer = v;
-    void v.openUrl(`/api/file/${book.id}`, { fetchInit: { credentials: "include" }, view: view ?? undefined }).catch((err: unknown) => {
+    void v.openUrl(`/api/file/${book.id}`, { fetchInit: { credentials: "include" }, view: (view as EcatmView | null) ?? undefined }).catch((err: unknown) => {
       message("Could not open this catalog", err instanceof Error ? err.message : String(err));
     });
+    return;
+  }
+
+  if (book.ext === "pdf") {
+    // Loaded on first use: pdf.js is ~1 MB the catalog and text readers never need.
+    void import("./readers/pdf")
+      .then(({ mountPdf }) =>
+        mountPdf(host, {
+          url: `/api/file/${book.id}`,
+          view: view as PageView | null,
+          onView: (v) => writeView(book, v),
+          onError: (err) => message("Could not open this PDF", err.message),
+        }),
+      )
+      .then((reader) => {
+        if (token === openToken) viewer = reader;
+        else reader.destroy();
+      })
+      .catch((err: unknown) => {
+        if (token === openToken) message("Could not open this PDF", err instanceof Error ? err.message : String(err));
+      });
     return;
   }
 

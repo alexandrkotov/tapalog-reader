@@ -3,6 +3,7 @@ import type { Server } from "bun";
 import { MIME, type Format } from "./formats";
 import type { Library } from "./library";
 import index from "../web/index.html";
+import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status });
@@ -44,12 +45,30 @@ function serveFile(absPath: string, mime: string, rangeHeader: string | null, fi
   return new Response(file, { headers: { ...headers, "Content-Length": String(size) } });
 }
 
+const ASSET_TYPES: Record<string, string> = {
+  mjs: "text/javascript",
+  wasm: "application/wasm",
+  ttf: "font/ttf",
+};
+
+/** The runtime files pdf.js loads itself: worker, image decoders, fonts, CMaps (see scripts/gen-pdfjs-assets.ts). */
+function servePdfjsAsset(req: Request): Response {
+  const name = decodeURIComponent(new URL(req.url).pathname.slice("/pdfjs/".length));
+  const path = Object.hasOwn(PDFJS_ASSETS, name) ? PDFJS_ASSETS[name] : undefined; // a fixed list: no path from the request reaches the disk
+  if (!path) return new Response("Not found", { status: 404 });
+  const ext = name.slice(name.lastIndexOf(".") + 1);
+  return new Response(Bun.file(path), {
+    headers: { "Content-Type": ASSET_TYPES[ext] ?? "application/octet-stream", "Cache-Control": "public, max-age=86400" },
+  });
+}
+
 export function startServer(library: Library, opts: { hostname: string; port: number }): Server<unknown> {
   const server: Server<unknown> = Bun.serve({
     hostname: opts.hostname,
     port: opts.port,
     routes: {
       "/": index,
+      "/pdfjs/*": servePdfjsAsset,
       "/api/status": () =>
         json({
           libraryPath: library.root,

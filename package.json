@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "bun run src/server/main.ts",
     "typecheck": "tsc --noEmit",
+    "gen:pdfjs": "bun scripts/gen-pdfjs-assets.ts",
     "test": "bun test",
     "compile:linux-x64": "bun build --compile --target=bun-linux-x64 src/server/main.ts --outfile dist/tapalog-reader-linux-x64",
     "compile:linux-arm64": "bun build --compile --target=bun-linux-arm64 src/server/main.ts --outfile dist/tapalog-reader-linux-arm64",
@@ -16,7 +17,8 @@
     "compile:windows-x64": "bun build --compile --target=bun-windows-x64 --windows-hide-console src/server/main.ts --outfile dist/tapalog-reader-windows-x64.exe"
   },
   "dependencies": {
-    "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.2.0/ecm-viewer-engine-0.2.0.tgz"
+    "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.2.0/ecm-viewer-engine-0.2.0.tgz",
+    "pdfjs-dist": "^6.4.299"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",

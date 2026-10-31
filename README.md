@@ -16,9 +16,10 @@ Early. Working now:
 - Automatic change tracking (file watcher + periodic rescan fallback)
 - Collapsible tree panel, search by file name with a drop-down list, format badges
 - `.ecatm` catalogs in the built-in viewer (region selection, search, PDF export)
+- PDF reader (pdf.js, loaded on demand; works for scans too: JBIG2/JPEG 2000 decoders, fonts and CMaps are embedded). The address bar always holds the current *view*: page, position, zoom and an optional highlighted rectangle drawn with **Area**; the same link reproduces it in a window of any size
 - Range requests for book files; everything the app creates lives in `tapalog-reader-data/` next to the executable (falls back to `~/.tapalog-reader-data` if that is not writable)
 
-Planned: readers for PDF, EPUB, FB2, DJVU, CBZ, MOBI, TXT; cover and page previews; full-text index (optional);
+Planned: readers for EPUB, FB2, DJVU, CBZ, MOBI, TXT; cover and page previews; full-text index (optional);
 users with PIN/password and bookmarks; edit mode (drag and drop, rename); links and QR codes with
 internet tunnels; shareable "views" (page + highlighted rectangle); print / save to PDF; backup; ru/en/uk interface.
 
