@@ -21,6 +21,8 @@ export class Library {
   lastScan: ScanResult | null = null;
   private stopWatching: (() => void) | null = null;
   private rescanQueued = false;
+  /** Counts edits the app made itself; a scan that began before one must not write its (now wrong) result. */
+  private edits = 0;
 
   constructor(
     private readonly db: Database,
@@ -67,9 +69,15 @@ export class Library {
     }
     this.scanning = true;
     try {
-      this.lastScan = await scanLibrary(this.db, root, [this.dataDir]);
+      const edits = this.edits;
+      const result = await scanLibrary(this.db, root, [this.dataDir], () => this.edits !== edits);
+      if (!result) {
+        this.rescanQueued = true; // an edit landed while the disk was being read: read it again
+        return null;
+      }
+      this.lastScan = result;
       this.onScan?.();
-      return this.lastScan;
+      return result;
     } finally {
       this.scanning = false;
       if (this.rescanQueued) {
@@ -105,6 +113,7 @@ export class Library {
    * from content.
    */
   applyMove(kind: "book" | "folder", from: string, to: string): void {
+    this.edits++;
     const escape = (p: string) => p.replace(/[\\%_]/g, (c) => `\\${c}`);
     this.db.transaction(() => {
       if (kind === "book") {
@@ -119,6 +128,7 @@ export class Library {
   }
 
   addFolder(path: string): void {
+    this.edits++;
     this.db.run("INSERT OR IGNORE INTO folders (path) VALUES (?)", [path]);
   }
 

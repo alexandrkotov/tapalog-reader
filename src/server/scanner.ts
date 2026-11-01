@@ -69,9 +69,11 @@ async function walk(root: string, skipDirs: Set<string>): Promise<{ folders: str
 /**
  * Brings the books table in line with the folder. Files whose size and mtime
  * didn't change keep their stored id without being read again, so a rescan of
- * ten thousand books is mostly stat calls.
+ * ten thousand books is mostly stat calls. A scan reads the disk first and writes afterwards; if
+ * `stale()` says something changed the tree meanwhile (an edit made by the app), its picture of the
+ * disk is out of date and nothing is written: it returns null and the caller scans again.
  */
-export async function scanLibrary(db: Database, root: string, skipDirs: string[] = []): Promise<ScanResult> {
+export async function scanLibrary(db: Database, root: string, skipDirs: string[] = [], stale: () => boolean = () => false): Promise<ScanResult | null> {
   const started = performance.now();
   const { folders, files } = await walk(root, new Set(skipDirs));
 
@@ -100,6 +102,7 @@ export async function scanLibrary(db: Database, root: string, skipDirs: string[]
   const seen = new Set(files.map((f) => f.path));
   const gone = [...known.keys()].filter((p) => !seen.has(p));
 
+  if (stale()) return null;
   db.transaction(() => {
     for (const f of changed) upsert.run(f.path, f.id, f.name, f.ext, f.size, f.mtime);
     const del = db.prepare("DELETE FROM books WHERE path = ?");

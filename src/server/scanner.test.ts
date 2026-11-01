@@ -64,6 +64,14 @@ test("an unchanged file is not read again and a deleted one disappears", async (
   expect(result).toMatchObject({ books: 1, added: 0, removed: 1 });
 });
 
+test("a scan whose picture of the disk went stale writes nothing", async () => {
+  writeFileSync(join(lib, "x.txt"), "x");
+  const db = database();
+  expect(await scanLibrary(db, lib, [], () => true)).toBeNull();
+  expect(db.query("SELECT COUNT(*) AS n FROM books").get()).toEqual({ n: 0 });
+  expect(await scanLibrary(db, lib)).toMatchObject({ books: 1 }); // the next one, with nothing in between, does
+});
+
 test("the data folder inside the library is never scanned", async () => {
   const inner = join(lib, "tapalog-reader-data");
   mkdirSync(inner);
