@@ -30,6 +30,7 @@ Early. Working now:
 - Internet access through a Cloudflare quick tunnel (embedded `cloudflared`, no account or port forwarding). The tunnel enters through a separate loopback listener, so a request is known to come from the internet by the socket it arrived on, not by a header; over the tunnel the library always needs sign-in, and the first-run setup and self-registration are refused
 - Download a book from Google Drive (administrator, **⬇ Google Drive** in the top bar): paste a share link of a file that is open to anyone with the link (a link wrapped in a Facebook redirect works too). The dialog shows the cover Drive draws for it, the file's name in an editable field (without the extension) and a choice of folder (the library's root by default), and only then downloads, with progress and a Cancel button. The server does the fetching and builds every address itself from the file id in the link, so it only ever talks to Google's hosts (a redirect anywhere else is refused); the file is saved under a hidden name next to its final place, checked to be what its name claims (a web page or a different file type is thrown away), and renamed into the library only when complete, never over an existing file. Folders, Google Docs and files of a format the library can't read are refused with a reason. It relies on the public download address of Drive, not on an API key, so Google may change it. The cover in the library is drawn by the browser from the book itself, as for any other
 - Backup and restore (administrator, in Settings; also offered on the first-run screen of a new computer): one JSON file with the accounts, bookmarks, share links and settings. Passwords are in it only as argon2id hashes, so the same passwords work after a restore, but the file should be kept private, since the share links in it are live. Books, covers and the search index are not included (they are rebuilt from the library folder) and neither is the library folder's path, which belongs to each computer. A restore replaces all accounts, bookmarks and links, signs everybody out, and keeps the administrator who did it signed in when the backup has an account of that name; a file that is not a valid backup is refused and changes nothing
+- Light, dark or the system's theme (the ◐ button in the top bar, remembered in the browser; the readers follow it)
 - Settings for the administrator: library folder, who may browse on the local network, internet tunnel, accounts
 - Interface in English, Russian and Ukrainian
 - Range requests for book files; everything the app creates lives in `tapalog-reader-data/` next to the executable (falls back to `~/.tapalog-reader-data` if that is not writable)
@@ -49,6 +50,10 @@ bun run dev -- --library /path/to/books      # http://localhost:8920
 
 Options: `--library`, `--port` (default 8920), `--host` (default 0.0.0.0), `--data`, `--no-open`.
 The chosen folder is remembered in `tapalog-reader-data/config.json`.
+
+Without `--library` the page asks for the folder: type its full path or press **Browse…**, which lists the folders of the computer that runs the server (drives first on Windows) with the number of books in each. The example path shown is in the style of that computer's system. The same chooser is in Settings.
+
+To stop the program: **Settings → Stop the server** (offered to an administrator on the computer that runs it, not from the network or the internet), or Ctrl+C in its console window.
 
 Notes on access:
 

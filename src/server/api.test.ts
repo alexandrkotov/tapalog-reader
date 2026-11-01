@@ -29,6 +29,7 @@ let library: Library;
 let lan: string;
 let tunnelSide: string; // the loopback socket the internet tunnel forwards to
 const modes: string[] = [];
+const stops: number[] = [];
 
 beforeAll(async () => {
   lib = mkdtempSync(join(tmpdir(), "reader-api-lib-"));
@@ -44,7 +45,7 @@ beforeAll(async () => {
   const auth = new Auth(db);
   const editor = new LibraryEditor(library, data);
   servers = startServers(
-    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), editor, driveImports: new DriveImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
+    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), editor, driveImports: new DriveImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m), stop: () => void stops.push(1) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -314,6 +315,26 @@ test("a book is fetched from a shared Drive link by the administrator only, into
   expect((await call(lan, "/api/admin/import", { body: { link: wrapped, folder: "sub", name: "Fetched" }, cookie: adminCookie })).body).toEqual({ error: "exists" });
   expect((await call(lan, `/api/admin/import/${jobId}`, { method: "DELETE", cookie: adminCookie })).status).toBe(404); // nothing running to cancel
   expect((await call(lan, "/api/admin/import/nope", { cookie: adminCookie })).status).toBe(404);
+});
+
+test("choosing the library folder: only the administrator lists folders, and only from this computer can the program be stopped", async () => {
+  const listing = (path?: string, cookie = adminCookie) => call(lan, `/api/admin/fs/browse${path === undefined ? "" : "?path=" + encodeURIComponent(path)}`, { cookie });
+  expect((await listing(lib, "")).status).toBe(401);
+  expect((await listing(lib, (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!)).status).toBe(403);
+  const here = (await listing(lib)).body;
+  expect(here).toMatchObject({ path: lib, dirs: ["sub"] });
+  expect(here.books).toBeGreaterThan(0);
+  expect((await listing()).body.home).toBeString();
+  expect((await listing("relative")).body).toEqual({ error: "not a folder" });
+
+  expect((await call(lan, "/api/me", { cookie: adminCookie })).body.canStop).toBe(true);
+  expect((await call(tunnelSide, "/api/me")).body.canStop).toBe(false);
+  expect((await call(lan, "/api/admin/stop", { body: {} })).status).toBe(401);
+  expect((await call(tunnelSide, "/api/admin/stop", { body: {}, cookie: adminCookie })).status).toBe(403); // even the administrator, from the internet side
+  expect(stops).toEqual([]);
+  expect((await call(lan, "/api/admin/stop", { body: {}, cookie: adminCookie })).status).toBe(200);
+  await Bun.sleep(400);
+  expect(stops).toEqual([1]);
 });
 
 test("bookmarks belong to the signed-in reader and nobody else", async () => {

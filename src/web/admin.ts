@@ -1,5 +1,6 @@
 import { restoreFromFile } from "./backup";
 import { t } from "./i18n";
+import { pickFolder } from "./folderPicker";
 import { api, ApiError, el, formatBytes, openModal } from "./ui";
 
 interface Settings {
@@ -23,7 +24,7 @@ interface FullTextStatus {
 
 
 /** The administrator's panel: library folder, who may browse, the internet tunnel, accounts. */
-export async function openAdmin(me: { id: number }, onLibraryChanged: () => void): Promise<void> {
+export async function openAdmin(me: { id: number }, onLibraryChanged: () => void, canStop = false): Promise<void> {
   const modal = openModal(t("admin.title"));
   let timer: ReturnType<typeof setTimeout> | undefined;
   let indexTimer: ReturnType<typeof setTimeout> | undefined;
@@ -67,6 +68,11 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
     // library
     const path = el("input", { type: "text", value: s.libraryPath ?? "" });
     const libError = el("div", { class: "error" });
+    const browseFolder = el("button", { type: "button", class: "btn", textContent: t("folder.browse") });
+    browseFolder.addEventListener("click", async () => {
+      const picked = await pickFolder(path.value.trim());
+      if (picked) path.value = picked;
+    });
     const useFolder = el("button", { type: "button", class: "btn", textContent: t("library.button") });
     useFolder.addEventListener("click", async () => {
       libError.textContent = "";
@@ -81,6 +87,17 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
     rescan.addEventListener("click", async () => {
       await api("/api/rescan", {});
       onLibraryChanged();
+    });
+
+    const stopButton = el("button", { type: "button", class: "btn", textContent: t("admin.stop") });
+    stopButton.addEventListener("click", async () => {
+      if (!confirm(t("admin.stop.confirm"))) return;
+      try {
+        await api("/api/admin/stop", {});
+      } catch {
+        return;
+      }
+      document.body.replaceChildren(el("div", { class: "message" }, el("h2", { textContent: t("admin.stop.done") }), el("p", { textContent: t("admin.stop.text") })));
     });
 
     // access
@@ -147,12 +164,13 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
     );
 
     modal.body.replaceChildren(
-      section(t("admin.library"), el("div", { class: "row" }, path, useFolder, rescan), libError),
+      section(t("admin.library"), el("div", { class: "row" }, path, browseFolder, useFolder, rescan), libError),
       section(t("admin.access"), radio("open", t("admin.access.open")), radio("login", t("admin.access.login")), el("label", { class: "choice" }, registration, t("admin.register"))),
       section(t("admin.internet"), el("label", { class: "choice" }, internet, s.mode === "internet" ? t("admin.internet.on") : t("admin.internet.off")), tunnelStatus, note(t("admin.internet.note"))),
       section(t("admin.fulltext"), indexBox),
       section(t("admin.users"), ...users, el("div", { class: "user-row" }, newName, newPass, newRole, add), addError),
       section(t("backup.title"), note(t("backup.note")), el("div", { class: "row" }, download, restore), backupMessage),
+      ...(canStop ? [section(t("admin.server"), note(t("admin.stop.note")), el("div", { class: "row" }, stopButton))] : []),
     );
   }
 

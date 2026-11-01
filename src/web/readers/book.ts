@@ -2,6 +2,7 @@ import "foliate-js/view.js";
 import { Overlayer } from "foliate-js/overlayer.js";
 import { t } from "../i18n";
 import { addHtmlSection, type PrintJob } from "../print";
+import { isDark, onTheme } from "../theme";
 import { mountThumbs, type Thumbs } from "./thumbs";
 
 /**
@@ -141,6 +142,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   let markIndex: number | null = null;
   let selection: { index: number; range: Range } | null = null;
   let destroyed = false;
+  let stopTheme = () => {};
   let lastSent = "";
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -238,8 +240,8 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
 
   // ---------- helpers ----------
   const css = () => `
-    html { color-scheme: light dark; font-size: ${fontPct}% !important; }
-    @media (prefers-color-scheme: dark) { a:link { color: lightblue; } a:visited { color: #c8a8e8; } }
+    html { color-scheme: ${isDark() ? "dark" : "light"}; font-size: ${fontPct}% !important; }
+    ${isDark() ? "a:link { color: lightblue; } a:visited { color: #c8a8e8; }" : ""}
     p, li, blockquote, dd { line-height: 1.5; }
   `;
 
@@ -378,6 +380,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     if (destroyed) return { destroy() {}, getView: () => null, getLabel: () => "", printJob };
     applyFlow();
     setFont(fontPct);
+    stopTheme = onTheme(() => view.renderer.setStyles?.(css()));
     // Comics are pictures: text size, flow and passage marks mean nothing there.
     if (view.isFixedLayout) for (const b of [fontLabel, flowButton, markButton, ...toolbar.querySelectorAll<HTMLElement>("button[title='" + t("book.smaller") + "'], button[title='" + t("book.larger") + "']")]) b.hidden = true;
     if (view.book.toc?.length && options.ext !== "cbz") toc.append(buildToc(view.book.toc)); // a comic's "contents" is its list of file names: the previews replace it
@@ -432,6 +435,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     printJob,
     destroy() {
       destroyed = true;
+      stopTheme();
       if (timer) clearTimeout(timer);
       thumbs?.destroy();
       try {

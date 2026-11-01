@@ -1,9 +1,11 @@
 import { openDriveImport } from "./driveImport";
+import { examplePath, pickFolder } from "./folderPicker";
 import { authScreen, openAuthDialog, setupScreen, signOut, type Me } from "./account";
 import { openAdmin } from "./admin";
 import { openBookmarks } from "./bookmarks";
 import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
+import { nextTheme, setTheme, themeMode, type ThemeMode } from "./theme";
 import { openPrintDialog } from "./print";
 import { mountReader, VIEW_FORMATS, type Reader } from "./readers/mount";
 import { openMyLinks, openShareDialog } from "./share";
@@ -44,6 +46,7 @@ const coverEl = $("cover-state");
 const accountEl = $("account");
 const langEl = $<HTMLSelectElement>("lang");
 const toggleEl = $("panel-toggle");
+const themeEl = $("theme");
 
 // ---------- library state and tree ----------
 
@@ -664,6 +667,7 @@ function applyStaticText(): void {
   toggleEl.setAttribute("aria-label", t("panel.toggle"));
   searchEl.placeholder = t("search.placeholder");
   scanEl.textContent = t("scan.running");
+  drawThemeButton();
   langEl.replaceChildren(...(Object.entries(LANGS) as [Lang, string][]).map(([code, name]) => el("option", { value: code, textContent: name, selected: code === lang() })));
 }
 $("brand").addEventListener("click", (event) => {
@@ -671,6 +675,17 @@ $("brand").addEventListener("click", (event) => {
   if (sharePage || !books.length) return;
   history.pushState(null, "", location.pathname);
   route();
+});
+const THEME_ICON: Record<ThemeMode, string> = { auto: "◐", light: "☀", dark: "☾" };
+function drawThemeButton(): void {
+  const mode = themeMode();
+  themeEl.textContent = THEME_ICON[mode];
+  themeEl.title = `${t("theme.title")}: ${t(`theme.${mode}`)}`;
+  themeEl.setAttribute("aria-label", themeEl.title);
+}
+themeEl.addEventListener("click", () => {
+  setTheme(nextTheme());
+  drawThemeButton();
 });
 langEl.addEventListener("change", () => {
   setLang(langEl.value as Lang);
@@ -711,7 +726,7 @@ function renderAccount(): void {
       }
       buttons.push(drive);
     }
-    if (me.user.role === "admin") buttons.push(button(t("account.settings"), () => void openAdmin(me!.user!, () => void refreshLibrary())));
+    if (me.user.role === "admin") buttons.push(button(t("account.settings"), () => void openAdmin(me!.user!, () => void refreshLibrary(), me!.canStop)));
     buttons.push(button(t("account.signOut"), async () => (await signOut(), void boot())));
   } else if (me && !me.setupNeeded) {
     buttons.push(button(t("account.signIn"), () => openAuthDialog(me!, () => void boot())));
@@ -722,9 +737,15 @@ function renderAccount(): void {
 // ---------- first run, sign-in and background refresh ----------
 
 function folderScreen(): HTMLElement {
-  const input = el("input", { type: "text", placeholder: "/path/to/your/books", autocomplete: "off" });
+  const input = el("input", { type: "text", autocomplete: "off" });
+  void examplePath().then((example) => (input.placeholder = example)); // in the style of this computer's system: C:\Users\Alex\Books or /home/alex/Books
   const error = el("div", { class: "error" });
-  const form = el("form", {}, input, el("button", { type: "submit", class: "btn primary", textContent: t("library.button") }));
+  const browse = el("button", { type: "button", class: "btn", textContent: t("folder.browse") });
+  browse.addEventListener("click", async () => {
+    const picked = await pickFolder(input.value.trim());
+    if (picked) input.value = picked;
+  });
+  const form = el("form", { class: "row" }, input, browse, el("button", { type: "submit", class: "btn primary", textContent: t("library.button") }));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     error.textContent = "";

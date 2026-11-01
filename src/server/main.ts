@@ -62,7 +62,7 @@ const setMode = (mode: "lan" | "internet") => {
 
 for (let port = preferred; port < preferred + 20 && !servers; port++) {
   try {
-    servers = startServers({ library, auth, recovery, shares, config, covers, bookmarks, backup, editor, driveImports, fullText, tunnel, lanUrls, setMode }, { hostname, port });
+    servers = startServers({ library, auth, recovery, shares, config, covers, bookmarks, backup, editor, driveImports, fullText, tunnel, lanUrls, setMode, stop: () => shutdown() }, { hostname, port });
   } catch (err) {
     if ((err as { code?: string }).code !== "EADDRINUSE") throw err;
   }

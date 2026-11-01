@@ -2,6 +2,7 @@ import { createPdfExporter, mountViewerInShadow, type EcatmView } from "@ecm/vie
 import wasmUrl from "@ecm/viewer-engine/sql-wasm.wasm";
 import pdfFontUrl from "@ecm/viewer-engine/fonts/DejaVuSans.ttf";
 import { t } from "../i18n";
+import { isDark, onTheme } from "../theme";
 import type { PrintJob } from "../print";
 import { el } from "../ui";
 import type { PageView } from "./types";
@@ -37,7 +38,6 @@ export const VIEW_FORMATS = new Set(["pdf", "ecatm", "epub", "fb2", "mobi", "txt
 /** Formats shown by the text engine (foliate-js). */
 const TEXT_FORMATS = new Set(["epub", "fb2", "mobi", "cbz"]);
 
-const dark = () => matchMedia("(prefers-color-scheme: dark)").matches;
 
 /** Mounts the right reader for the book's format into `host`. */
 export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<Reader> {
@@ -46,7 +46,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       mode: "reader",
       wasmUrl,
       exportPdf: createPdfExporter(pdfFontUrl),
-      theme: dark() ? "dark" : "light",
+      theme: isDark() ? "dark" : "light",
       persist: false,
       analytics: false,
       regionSelect: true,
@@ -57,7 +57,8 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
     void viewer.openUrl(spec.fileUrl, { fetchInit: { credentials: "include" }, view: (spec.view as EcatmView | null) ?? undefined }).catch((err: unknown) => {
       spec.onError(t("catalog.error"), err instanceof Error ? err.message : String(err));
     });
-    return { destroy: () => viewer.destroy(), getView: () => viewer.getView() };
+    const stopTheme = onTheme(() => viewer.setTheme(isDark() ? "dark" : "light"));
+    return { destroy: () => (stopTheme(), viewer.destroy()), getView: () => viewer.getView() };
   }
 
   if (spec.ext === "pdf") {

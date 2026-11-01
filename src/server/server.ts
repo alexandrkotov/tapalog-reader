@@ -6,6 +6,7 @@ import { BackupError, parseBackup, type Backup, type BackupFile } from "./backup
 import type { Bookmarks } from "./bookmarks";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
+import { BrowseError, browse as listFolders } from "./browse";
 import { ImportError, isFileId, type DriveImports } from "./driveImport";
 import { EditError, type LibraryEditor } from "./editor";
 import { ecatmCover } from "./ecatmCover";
@@ -35,6 +36,8 @@ export interface App {
   lanUrls(): string[];
   /** Persists the mode and starts or stops the tunnel. */
   setMode(mode: "lan" | "internet"): void;
+  /** Shuts the whole program down. */
+  stop(): void;
 }
 
 export interface Servers {
@@ -215,6 +218,7 @@ function buildRoutes(app: App, origin: Origin) {
         setupPossible: noUsers && origin === "lan" && isLoopback(server.requestIP(req)?.address ?? ""),
         canRegister: origin === "lan" && app.config.get().allowRegistration && !noUsers,
         canRecover: origin === "lan" && !noUsers,
+        canStop: origin === "lan" && isLoopback(server.requestIP(req)?.address ?? ""), // the program can be stopped from the computer it runs on, not from afar
       });
     },
     "/api/setup": {
@@ -552,6 +556,24 @@ function buildRoutes(app: App, origin: Origin) {
     "/api/rescan": {
       POST: admin(async () => {
         void app.library.rescan();
+        return json({ ok: true });
+      }),
+    },
+    "/api/admin/fs/browse": {
+      GET: admin(async (req) => {
+        const path = new URL(req.url).searchParams.get("path");
+        try {
+          return json(await listFolders(path));
+        } catch (err) {
+          if (err instanceof BrowseError) return bad(err.message);
+          throw err;
+        }
+      }),
+    },
+    "/api/admin/stop": {
+      POST: admin(async (req, server) => {
+        if (origin !== "lan" || !isLoopback(server.requestIP(req)?.address ?? "") || !(await body(req))) return forbidden();
+        setTimeout(() => app.stop(), 200); // after this answer has gone out
         return json({ ok: true });
       }),
     },

@@ -11,6 +11,7 @@ export interface Me {
   setupPossible: boolean;
   canRegister: boolean;
   canRecover: boolean;
+  canStop: boolean;
 }
 
 export type AuthKind = "signIn" | "register" | "setup";
