@@ -55,8 +55,7 @@ e2e("the library folder is chosen by browsing the computer's folders, not by typ
   await page.waitForSelector(".shelf");
   await page.click("button:has-text('Settings')");
   await page.click("button:has-text('Browse')");
-  await page.waitForSelector(".folder-where");
-  expect(await page.locator(".folder-where").textContent()).toBe(inst.lib); // starts at the current library
+  await page.waitForFunction((lib) => document.querySelector(".folder-where")?.textContent === lib, inst.lib); // starts at the current library, once the list has come in
   await page.click(".folder-list button:has-text('Docs')");
   await page.waitForFunction((lib) => document.querySelector(".folder-where")?.textContent === lib, join(inst.lib, "Docs"));
   expect(await page.locator(".modal .muted.small").last().textContent()).toContain("2"); // Docs holds two books
