@@ -46,7 +46,7 @@ const coverEl = $("cover-state");
 const accountEl = $("account");
 const langEl = $<HTMLSelectElement>("lang");
 const toggleEl = $("panel-toggle");
-const themeEl = $("theme");
+const themeEl = $<HTMLSelectElement>("theme");
 
 // ---------- library state and tree ----------
 
@@ -676,34 +676,15 @@ $("brand").addEventListener("click", (event) => {
   history.pushState(null, "", location.pathname);
   route();
 });
-// Three buttons side by side, so the choice and the current state are visible at once: a sun, a monitor ("as in the system") and a moon.
-const THEME_ICON: Record<ThemeMode, string> = {
-  light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
-  auto: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
-  dark: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
-};
-const themeButtons = (["light", "auto", "dark"] as const).map((mode) => {
-  const button = el("button", { type: "button", class: "theme-btn" });
-  button.dataset.mode = mode;
-  button.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${THEME_ICON[mode]}</svg><span></span>`;
-  button.addEventListener("click", () => {
-    setTheme(mode);
-    drawThemeButton();
-  });
-  return button;
-});
-themeEl.append(...themeButtons);
 function drawThemeButton(): void {
+  themeEl.title = t("theme.title");
   themeEl.setAttribute("aria-label", t("theme.title"));
-  for (const button of themeButtons) {
-    const mode = button.dataset.mode as ThemeMode;
-    button.title = `${t("theme.title")}: ${t(`theme.${mode}`)}`;
-    button.setAttribute("aria-label", button.title);
+  themeEl.replaceChildren(...(["light", "auto", "dark"] as const).map((mode) => {
     const word = t(`theme.${mode}`);
-    button.querySelector("span")!.textContent = word.charAt(0).toUpperCase() + word.slice(1);
-    button.setAttribute("aria-pressed", String(mode === themeMode()));
-  }
+    return el("option", { value: mode, textContent: word.charAt(0).toUpperCase() + word.slice(1), selected: mode === themeMode() });
+  }));
 }
+themeEl.addEventListener("change", () => setTheme(themeEl.value as ThemeMode));
 langEl.addEventListener("change", () => {
   setLang(langEl.value as Lang);
   void (sharePage ? bootShare(sharePage) : boot());

@@ -29,18 +29,18 @@ e2e("the theme can be switched between the system's, light and dark, and is reme
 
   expect(await theme()).toBe("auto");
   expect(await background()).toBe("rgb(20, 23, 28)"); // dark, as the system
-  await page.click("#theme [data-mode=light]");
+  await page.selectOption("#theme", "light");
   expect(await theme()).toBe("light");
   expect(await background()).toBe("rgb(255, 255, 255)");
   await page.reload();
   await page.waitForSelector(".shelf");
   expect(await theme()).toBe("light"); // remembered
-  await page.click("#theme [data-mode=dark]");
+  await page.selectOption("#theme", "dark");
   expect(await theme()).toBe("dark");
   expect(await background()).toBe("rgb(20, 23, 28)");
   await page.emulateMedia({ colorScheme: "light" });
   expect(await background()).toBe("rgb(20, 23, 28)"); // an explicit choice wins over the system
-  await page.click("#theme [data-mode=auto]");
+  await page.selectOption("#theme", "auto");
   expect(await theme()).toBe("auto");
   expect(await background()).toBe("rgb(255, 255, 255)"); // follows the system again (now light)
   expect(errors).toEqual([]);
