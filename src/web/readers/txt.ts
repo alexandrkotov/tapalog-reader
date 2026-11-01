@@ -22,6 +22,8 @@ export interface TxtOptions {
 export interface TxtReader {
   destroy(): void;
   getView(): TxtView;
+  /** A name for the place on screen: how far into the text. */
+  getLabel(): string;
 }
 
 const VIEW_DEBOUNCE_MS = 250;
@@ -250,7 +252,7 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
     const res = await fetch(options.url, { credentials: "include" });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     text = decodeText(new Uint8Array(await res.arrayBuffer()));
-    if (destroyed) return { destroy() {}, getView: () => ({ v: 1, offset: 0 }) };
+    if (destroyed) return { destroy() {}, getView: () => ({ v: 1, offset: 0 }), getLabel: () => "" };
     const initial = cleanView(options.view, text.length);
     mark = initial.range;
     render();
@@ -274,5 +276,6 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
       root.remove();
     },
     getView: currentView,
+    getLabel: () => progress.textContent ?? "",
   };
 }

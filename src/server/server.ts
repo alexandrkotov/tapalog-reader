@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { Server } from "bun";
 import type { Auth, User } from "./auth";
 import { validateName, validatePassword } from "./auth";
+import type { Bookmarks } from "./bookmarks";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
 import { ecatmCover } from "./ecatmCover";
@@ -19,6 +20,7 @@ export interface App {
   shares: Shares;
   config: ConfigStore;
   covers: Covers;
+  bookmarks: Bookmarks;
   fullText: FullText;
   tunnel: TunnelController;
   /** Addresses of this computer on the local network, for share links. */
@@ -240,6 +242,45 @@ function buildRoutes(app: App, origin: Origin) {
       const book = app.library.byId(param(req, "id"));
       return book ? sendBook(book, req) : notFound();
     }),
+
+    // ----- bookmarks: a signed-in reader's own places in books -----
+    "/api/bookmarks": {
+      GET: (req: Request) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const book = new URL(req.url).searchParams.get("book");
+        const list = app.bookmarks.list(me.id, book ?? undefined).flatMap((b) => {
+          const info = app.library.byId(b.bookId);
+          return info ? [{ ...b, book: { name: info.name, ext: info.ext, path: info.path } }] : []; // bookmarks of a book that left the library are kept, just not shown
+        });
+        return json({ bookmarks: list });
+      },
+      POST: async (req: Request) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const data = await body(req);
+        const book = typeof data?.bookId === "string" ? app.library.byId(data.bookId) : null;
+        if (!data || !book || typeof data.label !== "string" || typeof data.view !== "object" || data.view === null || Array.isArray(data.view)) return bad("bad bookmark");
+        try {
+          return json({ bookmark: app.bookmarks.add(me.id, book.id, data.label, data.view) });
+        } catch (err) {
+          return bad(err instanceof Error ? err.message : "bad bookmark");
+        }
+      },
+    },
+    "/api/bookmarks/:id": {
+      DELETE: (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        return app.bookmarks.remove(me.id, Number(param(req, "id"))) ? json({ ok: true }) : notFound();
+      },
+      POST: async (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const label = (await body(req))?.label;
+        return typeof label === "string" && app.bookmarks.rename(me.id, Number(param(req, "id")), label) ? json({ ok: true }) : notFound();
+      },
+    },
 
     // ----- share links -----
     "/api/shares": {

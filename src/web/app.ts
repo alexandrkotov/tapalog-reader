@@ -1,5 +1,6 @@
 import { authScreen, openAuthDialog, setupScreen, signOut, type Me } from "./account";
 import { openAdmin } from "./admin";
+import { openBookmarks } from "./bookmarks";
 import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { mountReader, VIEW_FORMATS, type Reader } from "./readers/mount";
@@ -369,6 +370,7 @@ function openBook(book: Book, view: unknown): void {
   currentId = book.id;
   renderTree();
   const share = el("button", { type: "button", class: "btn", textContent: t("share.button") });
+  const marks = el("button", { type: "button", class: "btn", textContent: `★ ${t("bookmark.title")}` });
   showReader({
     name: book.name,
     ext: book.ext,
@@ -378,7 +380,8 @@ function openBook(book: Book, view: unknown): void {
     onView: (v) => writeView(book, v),
     bar: (current) => {
       share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.name, ext: book.ext, view: VIEW_FORMATS.has(book.ext) ? (current()?.getView?.() ?? null) : null }));
-      return [share];
+      marks.addEventListener("click", () => me && openBookmarks({ me, book, reader: current, onSignedIn: () => void boot() }));
+      return [marks, share];
     },
   });
 }
@@ -434,6 +437,7 @@ function renderAccount(): void {
   };
   if (me?.user) {
     buttons.push(el("span", { class: "who", textContent: me.user.name }));
+    buttons.push(button(t("account.bookmarks"), () => openBookmarks({ me: me!, book: null, reader: () => null, onSignedIn: () => void boot() })));
     buttons.push(button(t("account.links"), () => void openMyLinks()));
     if (me.user.role === "admin") buttons.push(button(t("account.settings"), () => void openAdmin(me!.user!, () => void refreshLibrary())));
     buttons.push(button(t("account.signOut"), async () => (await signOut(), void boot())));

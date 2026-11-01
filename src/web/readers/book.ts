@@ -29,6 +29,8 @@ export interface BookOptions {
 export interface BookReader {
   destroy(): void;
   getView(): TextView | null;
+  /** A name for the place on screen: the chapter and how far in. */
+  getLabel(): string;
 }
 
 interface TocItem {
@@ -311,7 +313,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const file = new File([await res.blob()], `book.${options.ext}`, { type: MIME[options.ext] ?? "" });
     await view.open(file);
-    if (destroyed) return { destroy() {}, getView: () => null };
+    if (destroyed) return { destroy() {}, getView: () => null, getLabel: () => "" };
     applyFlow();
     setFont(fontPct);
     // Comics are pictures: text size, flow and passage marks mean nothing there.
@@ -346,5 +348,6 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
       root.remove();
     },
     getView: currentView,
+    getLabel: () => [chapter.textContent, progress.textContent].filter(Boolean).join(" · "),
   };
 }

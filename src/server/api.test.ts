@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "./auth";
+import { Bookmarks } from "./bookmarks";
 import { Covers } from "./covers";
 import { FullText } from "./fulltext";
 import { ConfigStore } from "./config";
@@ -32,7 +33,7 @@ beforeAll(async () => {
   const library = new Library(db, config, data);
   await library.setRoot(lib);
   servers = startServers(
-    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
+    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -238,4 +239,44 @@ test("search inside books is off until the administrator turns it on, and only t
   expect((await call(tunnelSide, "/api/fulltext?q=second")).status).toBe(401); // the internet side still needs a sign-in
 
   await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie });
+});
+
+test("bookmarks belong to the signed-in reader and nobody else", async () => {
+  const mine = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;
+  const view = { v: 1, page: 4, zoom: 1.5 };
+  expect((await call(lan, "/api/bookmarks")).status).toBe(401); // anonymous readers have none
+  expect((await call(lan, "/api/bookmarks", { body: { bookId, label: "x", view } })).status).toBe(401);
+
+  const made = await call(lan, "/api/bookmarks", { body: { bookId, label: "  Where the river bends  ", view }, cookie: mine });
+  expect(made.status).toBe(200);
+  expect(made.body.bookmark).toMatchObject({ bookId, label: "Where the river bends", view });
+  expect((await call(lan, "/api/bookmarks", { body: { bookId, label: "   ", view }, cookie: mine })).status).toBe(400);
+  expect((await call(lan, "/api/bookmarks", { body: { bookId: "nope", label: "x", view }, cookie: mine })).status).toBe(400);
+  expect((await call(lan, "/api/bookmarks", { body: { bookId, label: "x", view: "page 4" }, cookie: mine })).status).toBe(400);
+  expect((await call(lan, "/api/bookmarks", { body: { bookId, label: "x", view: { blob: "x".repeat(5000) } }, cookie: mine })).status).toBe(400);
+
+  const list = (await call(lan, `/api/bookmarks?book=${bookId}`, { cookie: mine })).body.bookmarks;
+  expect(list).toHaveLength(1);
+  expect(list[0]).toMatchObject({ label: "Where the river bends", book: { name: "one", ext: "txt" } });
+  expect((await call(lan, "/api/bookmarks?book=other", { cookie: mine })).body.bookmarks).toEqual([]);
+
+  // another reader sees none of it and cannot remove or rename it
+  expect((await call(lan, "/api/bookmarks", { cookie: adminCookie })).body.bookmarks).toEqual([]);
+  const id = made.body.bookmark.id;
+  expect((await call(lan, `/api/bookmarks/${id}`, { method: "DELETE", cookie: adminCookie })).status).toBe(404);
+  expect((await call(lan, `/api/bookmarks/${id}`, { body: { label: "mine now" }, cookie: adminCookie })).status).toBe(404);
+  expect((await call(lan, `/api/bookmarks/${id}`, { body: { label: "Renamed" }, cookie: mine })).status).toBe(200);
+  expect((await call(lan, "/api/bookmarks", { cookie: mine })).body.bookmarks[0].label).toBe("Renamed");
+  expect((await call(lan, `/api/bookmarks/${id}`, { method: "DELETE", cookie: mine })).status).toBe(200);
+  expect((await call(lan, "/api/bookmarks", { cookie: mine })).body.bookmarks).toEqual([]);
+});
+
+test("deleting an account deletes its bookmarks", async () => {
+  const users = (await call(lan, "/api/admin/settings", { cookie: adminCookie })).body.users as { id: number; name: string }[];
+  const reader = users.find((u) => u.name === "Reader")!;
+  const mine = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;
+  await call(lan, "/api/bookmarks", { body: { bookId, label: "keep me", view: { v: 1 } }, cookie: mine });
+  expect((db.query("SELECT COUNT(*) AS n FROM bookmarks WHERE user_id = ?").get(reader.id) as { n: number }).n).toBe(1);
+  expect((await call(lan, `/api/admin/users/${reader.id}`, { method: "DELETE", cookie: adminCookie })).status).toBe(200);
+  expect((db.query("SELECT COUNT(*) AS n FROM bookmarks WHERE user_id = ?").get(reader.id) as { n: number }).n).toBe(0);
 });

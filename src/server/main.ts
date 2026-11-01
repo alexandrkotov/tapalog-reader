@@ -8,6 +8,7 @@ import { FullText } from "./fulltext";
 import { Library } from "./library";
 import { openInBrowser } from "./openInBrowser";
 import { Auth } from "./auth";
+import { Bookmarks } from "./bookmarks";
 import { Shares } from "./shares";
 import { startServers } from "./server";
 import { TunnelController } from "./tunnelController";
@@ -23,6 +24,7 @@ const db = openDb(dataDir);
 const library = new Library(db, config, dataDir);
 const auth = new Auth(db);
 const shares = new Shares(db);
+const bookmarks = new Bookmarks(db);
 const covers = new Covers(dataDir);
 const fullText = new FullText(dataDir, library, config);
 library.onScan = () => {
@@ -52,7 +54,7 @@ const setMode = (mode: "lan" | "internet") => {
 
 for (let port = preferred; port < preferred + 20 && !servers; port++) {
   try {
-    servers = startServers({ library, auth, shares, config, covers, fullText, tunnel, lanUrls, setMode }, { hostname, port });
+    servers = startServers({ library, auth, shares, config, covers, bookmarks, fullText, tunnel, lanUrls, setMode }, { hostname, port });
   } catch (err) {
     if ((err as { code?: string }).code !== "EADDRINUSE") throw err;
   }

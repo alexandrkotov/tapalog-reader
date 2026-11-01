@@ -40,5 +40,14 @@ export function openDb(dataDir: string): Database {
     created_at INTEGER NOT NULL,
     expires_at INTEGER                        -- NULL = never
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS bookmarks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    book_id    TEXT NOT NULL,                 -- content id, so a moved or renamed book keeps its bookmarks
+    label      TEXT NOT NULL,
+    view       TEXT NOT NULL,                 -- JSON view, the same shape the reader reports and a share link carries
+    created_at INTEGER NOT NULL
+  )`);
+  db.run("CREATE INDEX IF NOT EXISTS bookmarks_user ON bookmarks(user_id, book_id)");
   return db;
 }

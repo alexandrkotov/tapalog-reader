@@ -12,6 +12,8 @@ export interface Reader {
   destroy(): void;
   /** The current view (page, position, highlighted area), for formats that have one. */
   getView?(): unknown;
+  /** A suggested name for a bookmark at the current place, when one can be worked out. */
+  getLabel?(): string;
 }
 
 export interface ReaderSpec {
@@ -64,7 +66,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("pdf.error"), err.message),
     });
-    return { destroy: () => reader.destroy(), getView: () => reader.getView() };
+    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => t("bookmark.page", { n: reader.getView().page }) };
   }
 
   if (spec.ext === "txt") {
@@ -75,7 +77,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
     });
-    return { destroy: () => reader.destroy(), getView: () => reader.getView() };
+    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel() };
   }
 
   if (TEXT_FORMATS.has(spec.ext)) {
@@ -88,7 +90,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
     });
-    return { destroy: () => reader.destroy(), getView: () => reader.getView() };
+    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel() };
   }
 
   const box = el("div", { class: "message" }, el("h2", { textContent: spec.name }), el("p", { textContent: t("reader.soon", { fmt: spec.ext.toUpperCase() }) }), el("a", { class: "button", href: spec.fileUrl, textContent: t("reader.download") }));

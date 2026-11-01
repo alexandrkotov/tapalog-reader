@@ -191,3 +191,9 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .search-results .name { font-weight: 500; }
 .search-results .snip { flex-basis: 100%; padding-left: 36px; color: var(--muted); font-size: 12px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .search-results .snip mark { background: rgba(255, 179, 0, 0.4); color: var(--text); border-radius: 2px; }
+
+.bookmark-list h3 { margin: 16px 0 6px; font-size: 13px; color: var(--muted); }
+.bookmark-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.bookmark-go { text-align: left; font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
+.muted.small { font-size: 12px; }
+.icon-btn.small { width: 28px; height: 28px; font-size: 14px; flex: none; }
