@@ -41,6 +41,11 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .brand { font-weight: 600; white-space: nowrap; color: inherit; text-decoration: none; }
 .icon-btn { border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 6px; width: 34px; height: 34px; font-size: 16px; cursor: pointer; }
 .icon-btn:hover { background: var(--hover); }
+.theme-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.theme-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 32px; padding: 0 9px; font-size: 13px; white-space: nowrap; border: 0; border-right: 1px solid var(--border); background: var(--bg); color: var(--muted); cursor: pointer; }
+.theme-btn:last-child { border-right: 0; }
+.theme-btn:hover { background: var(--hover); color: var(--text); }
+.theme-btn[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
 .scan-state { color: var(--muted); font-size: 12px; white-space: nowrap; }
 
 .search { position: relative; flex: 1; min-width: 160px; max-width: 520px; }

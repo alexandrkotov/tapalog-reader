@@ -36,9 +36,6 @@ export function setTheme(next: ThemeMode): void {
   apply();
 }
 
-/** Auto → light → dark → auto. */
-export const nextTheme = (): ThemeMode => MODES[(MODES.indexOf(mode) + 1) % MODES.length]!;
-
 /** Readers that draw their own colors follow the theme through this; returns the way to stop. */
 export function onTheme(fn: () => void): () => void {
   listeners.add(fn);

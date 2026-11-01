@@ -91,7 +91,10 @@ export async function openShareDialog(target: ShareTarget): Promise<void> {
         expiresInDays: expires.value ? Number(expires.value) : null,
       });
       const status = await api<Status>("/api/status");
-      results.replaceChildren(...addressesFor(status).map((a) => linkCard(a.label, `${a.base}/s/${made.token}`)));
+      const addresses = addressesFor(status);
+      results.replaceChildren(...addresses.map((a) => linkCard(a.label, `${a.base}/s/${made.token}`)));
+      // a local-network link is a best effort: say so, and what to do instead
+      if (addresses.some((a) => a.label === t("share.lan"))) results.append(el("p", { class: "muted", textContent: t("share.lanNote") }));
       if (!status.tunnelUrl) results.append(el("p", { class: "muted", textContent: t("share.needInternet") }));
     } finally {
       create.disabled = false;
