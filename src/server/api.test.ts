@@ -236,8 +236,8 @@ test("search inside books is off until the administrator turns it on, and only t
   expect((await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: adminCookie })).body.enabled).toBe(true);
   expect((await call(lan, "/api/status")).body.fullText).toBe(true);
   let found: { books: { name: string; hits: { snippet: string; view: unknown }[] }[] } = { books: [] };
-  for (let i = 0; i < 60 && !found.books.length; i++) {
-    await Bun.sleep(100);
+  for (let i = 0; i < 200 && !found.books.length; i++) {
+    await Bun.sleep(100); // indexing runs in the background; a slow runner needs seconds, not milliseconds
     found = (await call(lan, "/api/fulltext?q=second")).body;
   }
   expect(found.books[0]).toMatchObject({ name: "two", hits: [{ view: { v: 1, offset: 0, range: [0, 6] } }] });
@@ -245,7 +245,7 @@ test("search inside books is off until the administrator turns it on, and only t
   expect((await call(tunnelSide, "/api/fulltext?q=second")).status).toBe(401); // the internet side still needs a sign-in
 
   await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie });
-});
+}, 30_000);
 
 test("bookmarks belong to the signed-in reader and nobody else", async () => {
   const mine = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;

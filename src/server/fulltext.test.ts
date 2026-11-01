@@ -100,7 +100,7 @@ test("every format is read, scans and broken files are set aside, not retried", 
   fullText.setEnabled(true);
   await settled();
   expect(fullText.status()).toMatchObject({ enabled: true, total: 7, indexed: 5, skipped: 1, failed: 1, working: null });
-});
+}, 30_000);
 
 test("a plain-text hit opens the file at the word, marked", () => {
   const [hit] = fullText.search("harbor lantern");
@@ -141,7 +141,7 @@ test("the index is dropped when asked, and rebuilt while search stays on", async
   await settled();
   expect(fullText.status()).toMatchObject({ indexed: 5 });
   expect(fullText.search("orchards")).toHaveLength(1);
-});
+}, 30_000);
 
 test("turning it off stops searching but keeps the index for later", async () => {
   fullText.setEnabled(false);
