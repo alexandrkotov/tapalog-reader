@@ -1,3 +1,4 @@
+import { openDriveImport } from "./driveImport";
 import { authScreen, openAuthDialog, setupScreen, signOut, type Me } from "./account";
 import { openAdmin } from "./admin";
 import { openBookmarks } from "./bookmarks";
@@ -694,6 +695,21 @@ function renderAccount(): void {
         edit.title = t("edit.readOnlyLibrary");
       }
       buttons.push(edit);
+    }
+    if (me.user.role === "admin") {
+      const drive = button(t("drive.button"), () =>
+        openDriveImport({
+          folders: [...folderNodes.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+          saved: () => afterEdit(),
+          open: (id) => void (location.hash = `#book=${id}`),
+        }),
+      );
+      drive.title = t("drive.title");
+      if (!writable) {
+        drive.disabled = true;
+        drive.title = t("edit.readOnlyLibrary");
+      }
+      buttons.push(drive);
     }
     if (me.user.role === "admin") buttons.push(button(t("account.settings"), () => void openAdmin(me!.user!, () => void refreshLibrary())));
     buttons.push(button(t("account.signOut"), async () => (await signOut(), void boot())));

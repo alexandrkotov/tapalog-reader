@@ -21,6 +21,7 @@ export class Library {
   lastScan: ScanResult | null = null;
   private stopWatching: (() => void) | null = null;
   private rescanQueued = false;
+  private closed = false;
   /** Counts edits the app made itself; a scan that began before one must not write its (now wrong) result. */
   private edits = 0;
 
@@ -46,12 +47,14 @@ export class Library {
 
   /** Stops watching the folder (a watched folder cannot be deleted on Windows). */
   close(): void {
+    this.closed = true; // a scan still running may find its database closed: that is not an error then
     this.stopWatching?.();
     this.stopWatching = null;
   }
 
   /** Scans now and begins watching for changes. */
   async start(): Promise<void> {
+    this.closed = false;
     this.stopWatching?.();
     this.stopWatching = null;
     const root = this.root;
@@ -78,9 +81,12 @@ export class Library {
       this.lastScan = result;
       this.onScan?.();
       return result;
+    } catch (err) {
+      if (this.closed) return null;
+      throw err;
     } finally {
       this.scanning = false;
-      if (this.rescanQueued) {
+      if (this.rescanQueued && !this.closed) {
         this.rescanQueued = false;
         void this.rescan();
       }
@@ -125,6 +131,12 @@ export class Library {
       this.db.run("UPDATE books SET path = ? || substr(path, ?) WHERE path LIKE ? ESCAPE '\\'", [to, cut, `${escape(from)}/%`]);
       this.db.run("UPDATE folders SET path = ? || substr(path, ?) WHERE path = ? OR path LIKE ? ESCAPE '\\'", [to, cut, from, `${escape(from)}/%`]);
     })();
+  }
+
+  /** A book was put into the folder by the app: scan again (and not trust a scan that began before it). */
+  added(): void {
+    this.edits++;
+    void this.rescan();
   }
 
   addFolder(path: string): void {

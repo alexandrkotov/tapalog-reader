@@ -240,3 +240,15 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .thumb-pic canvas, .thumb-pic img { display: block; width: 100%; height: auto; }
 .has-thumbs .pdf-scroll, .has-thumbs foliate-view { left: 156px; }
 @media (max-width: 720px) { .thumbs { width: 108px; } .thumb-pic { width: 84px; } .has-thumbs .pdf-scroll, .has-thumbs foliate-view { left: 108px; } }
+
+.drive-review { display: flex; gap: 16px; align-items: flex-start; }
+.drive-review .stack { flex: 1; min-width: 0; }
+.drive-cover-frame { flex: none; width: 140px; min-height: 200px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 6px; background: var(--panel, transparent); overflow: hidden; }
+.drive-cover { display: block; width: 100%; height: auto; }
+.drive-info { display: flex; align-items: center; gap: 8px; }
+.drive-name { display: flex; align-items: center; gap: 6px; }
+.drive-name input { flex: 1; min-width: 0; }
+.drive-actions { display: flex; gap: 8px; }
+.drive-thanks { margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--border); }
+.modal-body progress { width: 100%; }
+@media (max-width: 520px) { .drive-review { flex-direction: column; } .drive-cover-frame { width: 100px; min-height: 140px; } }

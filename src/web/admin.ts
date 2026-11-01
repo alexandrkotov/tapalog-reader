@@ -1,6 +1,6 @@
 import { restoreFromFile } from "./backup";
 import { t } from "./i18n";
-import { api, ApiError, el, openModal } from "./ui";
+import { api, ApiError, el, formatBytes, openModal } from "./ui";
 
 interface Settings {
   libraryPath: string | null;
@@ -21,7 +21,6 @@ interface FullTextStatus {
   bytes: number;
 }
 
-const formatBytes = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`);
 
 /** The administrator's panel: library folder, who may browse, the internet tunnel, accounts. */
 export async function openAdmin(me: { id: number }, onLibraryChanged: () => void): Promise<void> {

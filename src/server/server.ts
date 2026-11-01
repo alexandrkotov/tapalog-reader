@@ -6,6 +6,7 @@ import { BackupError, parseBackup, type Backup, type BackupFile } from "./backup
 import type { Bookmarks } from "./bookmarks";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
+import { ImportError, isFileId, type DriveImports } from "./driveImport";
 import { EditError, type LibraryEditor } from "./editor";
 import { ecatmCover } from "./ecatmCover";
 import type { FullText } from "./fulltext";
@@ -27,6 +28,7 @@ export interface App {
   bookmarks: Bookmarks;
   backup: Backup;
   editor: LibraryEditor;
+  driveImports: DriveImports;
   fullText: FullText;
   tunnel: TunnelController;
   /** Addresses of this computer on the local network, for share links. */
@@ -148,6 +150,16 @@ function buildRoutes(app: App, origin: Origin) {
       return json({ ok: true });
     } catch (err) {
       if (err instanceof EditError) return bad(err.code);
+      throw err;
+    }
+  }
+
+  /** A refused import answers with a short code the page turns into words. */
+  async function importing(run: () => Promise<Response>): Promise<Response> {
+    try {
+      return await run();
+    } catch (err) {
+      if (err instanceof ImportError || err instanceof EditError) return bad(err.code);
       throw err;
     }
   }
@@ -499,6 +511,35 @@ function buildRoutes(app: App, origin: Origin) {
       }),
     },
     // ----- editing the library: real changes to the files on disk -----
+    // ----- books fetched from a shared Google Drive link -----
+    "/api/admin/import/inspect": {
+      POST: admin(async (req) => {
+        const data = await body(req);
+        if (!data) return bad();
+        return importing(async () => json(await app.driveImports.inspect(str(data.link))));
+      }),
+    },
+    "/api/admin/import/thumbnail/:id": {
+      GET: admin(async (req) => {
+        const id = param(req, "id");
+        const picture = isFileId(id) ? await app.driveImports.thumbnail(id) : null;
+        return picture ? new Response(picture.bytes, { headers: { "Content-Type": picture.type, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600" } }) : notFound();
+      }),
+    },
+    "/api/admin/import": {
+      POST: admin(async (req) => {
+        const data = await body(req);
+        if (!data) return bad();
+        return importing(async () => json({ job: await app.driveImports.start(str(data.link), str(data.folder), data.name) }));
+      }),
+    },
+    "/api/admin/import/:job": {
+      GET: admin((req) => {
+        const job = app.driveImports.job(param(req, "job"));
+        return job ? json({ job }) : notFound();
+      }),
+      DELETE: admin((req) => (app.driveImports.cancel(param(req, "job")) ? json({ ok: true }) : notFound())),
+    },
     "/api/admin/fs/move": {
       POST: admin((req) => edit(req, (d) => app.editor.move(d.kind === "folder" ? "folder" : "book", str(d.path), str(d.to)))),
     },

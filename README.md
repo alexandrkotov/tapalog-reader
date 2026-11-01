@@ -28,12 +28,17 @@ Early. Working now:
 - Accounts: the first administrator is created on the computer that runs the server; readers can create their own accounts (optional, from the local network). Passwords are argon2id hashes, sessions are random cookies stored hashed, repeated failed logins are slowed down
 - Share links with a QR code: `/s/<token>` opens exactly one book, optionally at an exact view, with no sign-in; a link can expire and be revoked
 - Internet access through a Cloudflare quick tunnel (embedded `cloudflared`, no account or port forwarding). The tunnel enters through a separate loopback listener, so a request is known to come from the internet by the socket it arrived on, not by a header; over the tunnel the library always needs sign-in, and the first-run setup and self-registration are refused
+- Download a book from Google Drive (administrator, **⬇ Google Drive** in the top bar): paste a share link of a file that is open to anyone with the link (a link wrapped in a Facebook redirect works too). The dialog shows the cover Drive draws for it, the file's name in an editable field (without the extension) and a choice of folder (the library's root by default), and only then downloads, with progress and a Cancel button. The server does the fetching and builds every address itself from the file id in the link, so it only ever talks to Google's hosts (a redirect anywhere else is refused); the file is saved under a hidden name next to its final place, checked to be what its name claims (a web page or a different file type is thrown away), and renamed into the library only when complete, never over an existing file. Folders, Google Docs and files of a format the library can't read are refused with a reason. It relies on the public download address of Drive, not on an API key, so Google may change it. The cover in the library is drawn by the browser from the book itself, as for any other
 - Backup and restore (administrator, in Settings; also offered on the first-run screen of a new computer): one JSON file with the accounts, bookmarks, share links and settings. Passwords are in it only as argon2id hashes, so the same passwords work after a restore, but the file should be kept private, since the share links in it are live. Books, covers and the search index are not included (they are rebuilt from the library folder) and neither is the library folder's path, which belongs to each computer. A restore replaces all accounts, bookmarks and links, signs everybody out, and keeps the administrator who did it signed in when the backup has an account of that name; a file that is not a valid backup is refused and changes nothing
 - Settings for the administrator: library folder, who may browse on the local network, internet tunnel, accounts
 - Interface in English, Russian and Ukrainian
 - Range requests for book files; everything the app creates lives in `tapalog-reader-data/` next to the executable (falls back to `~/.tapalog-reader-data` if that is not writable)
 
 Planned: DJVU reader (the only JS decoder, DjVu.js, is GPL v2+, which does not fit MIT, so it is postponed; `.djvu` files are listed and downloadable meanwhile).
+
+## Thanks
+
+The Google Drive download exists because of [Viacheslav Shirshov](https://www.facebook.com/1shirshov/), who shares rare old technical books of the Soviet era every day; the dialog says so too.
 
 ## Run
 

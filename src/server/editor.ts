@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync, mkdirSync, renameSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join, sep } from "node:path";
 import type { Library } from "./library";
 
@@ -101,6 +101,35 @@ export class LibraryEditor {
     const to = joinRel(dirOf(path), clean + ext);
     if (to === path) return;
     this.run(kind, path, to);
+  }
+
+  /**
+   * Room for a new book in `folder`. The download goes to a hidden file beside its final place (the
+   * scanner and the watcher skip those), so finishing is one rename on the same disk, and the final
+   * name is checked now, before anything is fetched, and again when the file is put there.
+   */
+  reserve(folder: string, name: unknown, ext: string): { temp: string; commit(): string } {
+    if (!this.library.root) throw new EditError("no-library");
+    if (!this.library.hasFolder(folder)) throw new EditError("missing");
+    const to = joinRel(folder, `${validName(name)}.${ext}`);
+    const taken = () => existsSync(this.abs(to)) || this.library.bookAt(to) !== null;
+    if (taken()) throw new EditError("exists");
+    const temp = this.abs(joinRel(folder, `.${crypto.randomUUID().slice(0, 8)}.part`));
+    return {
+      temp,
+      commit: () => {
+        if (taken()) throw new EditError("exists");
+        try {
+          renameSync(temp, this.abs(to));
+        } catch (err) {
+          rmSync(temp, { force: true });
+          const code = (err as { code?: string }).code;
+          throw new EditError(code === "EACCES" || code === "EPERM" || code === "EROFS" ? "read-only" : "failed");
+        }
+        this.library.added();
+        return to;
+      },
+    };
   }
 
   mkdir(parent: string, name: unknown): string {

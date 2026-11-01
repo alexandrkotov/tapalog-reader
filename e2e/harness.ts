@@ -23,7 +23,7 @@ export interface Instance {
 }
 
 /** Starts the real server (as `bun run dev` does) on a library made of `files`, on a free port. */
-export async function startServer(files: Record<string, Uint8Array | string>): Promise<Instance> {
+export async function startServer(files: Record<string, Uint8Array | string>, env: Record<string, string> = {}): Promise<Instance> {
   const base = mkdtempSync(join(tmpdir(), "tapalog-e2e-"));
   const lib = join(base, "library");
   const data = join(base, "data");
@@ -37,7 +37,7 @@ export async function startServer(files: Record<string, Uint8Array | string>): P
     }
   }
   const port = 20000 + Math.floor(Math.random() * 20000);
-  const child = Bun.spawn([process.execPath, "src/server/main.ts", "--library", lib, "--data", data, "--port", String(port), "--host", "127.0.0.1", "--no-open"], { cwd: ROOT, stdout: "pipe", stderr: "pipe" });
+  const child = Bun.spawn([process.execPath, "src/server/main.ts", "--library", lib, "--data", data, "--port", String(port), "--host", "127.0.0.1", "--no-open"], { cwd: ROOT, stdout: "pipe", stderr: "pipe", env: { ...process.env, ...env } });
   const url = await new Promise<string>((resolveUrl, reject) => {
     const timer = setTimeout(() => reject(new Error("the server did not start")), 60_000);
     (async () => {

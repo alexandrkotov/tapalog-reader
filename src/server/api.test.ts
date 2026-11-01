@@ -6,6 +6,8 @@ import { Auth } from "./auth";
 import { Backup } from "./backup";
 import { Bookmarks } from "./bookmarks";
 import { Covers } from "./covers";
+import { DriveImports } from "./driveImport";
+import { startFakeDrive } from "./fakeDrive";
 import { LibraryEditor } from "./editor";
 import { FullText } from "./fulltext";
 import { ConfigStore } from "./config";
@@ -20,6 +22,8 @@ import { TunnelController } from "./tunnelController";
 let lib: string;
 let data: string;
 let servers: Servers;
+const PDF = "%PDF-1.4 a book fetched from the stand-in Drive";
+const drive = startFakeDrive({ ABCDEFGHIJKLMNOP: { name: "Fetched book.pdf", content: PDF } });
 let db: ReturnType<typeof openDb>;
 let library: Library;
 let lan: string;
@@ -38,14 +42,16 @@ beforeAll(async () => {
   library = new Library(db, config, data);
   await library.setRoot(lib);
   const auth = new Auth(db);
+  const editor = new LibraryEditor(library, data);
   servers = startServers(
-    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), editor: new LibraryEditor(library, data), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
+    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), editor, driveImports: new DriveImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
   tunnelSide = `http://127.0.0.1:${servers.internal.port}`;
 });
 afterAll(() => {
+  drive.stop();
   servers.stop();
   library.close();
   db.close();
@@ -276,6 +282,39 @@ test("search inside books is off until the administrator turns it on, and only t
 
   await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie });
 }, 30_000);
+
+test("a book is fetched from a shared Drive link by the administrator only, into the folder they choose", async () => {
+  const link = encodeURIComponent("https://drive.google.com/open?id=ABCDEFGHIJKLMNOP&usp=drive_fs");
+  const wrapped = `https://l.facebook.com/l.php?u=${link}&h=tracking`;
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;
+  for (const cookie of ["", readerCookie]) {
+    expect((await call(lan, "/api/admin/import/inspect", { body: { link: wrapped }, cookie })).status).toBe(cookie ? 403 : 401);
+    expect((await call(lan, "/api/admin/import", { body: { link: wrapped, folder: "", name: "x" }, cookie })).status).toBe(cookie ? 403 : 401);
+    expect((await call(lan, "/api/admin/import/thumbnail/ABCDEFGHIJKLMNOP", { cookie })).status).toBe(cookie ? 403 : 401);
+  }
+
+  expect((await call(lan, "/api/admin/import/inspect", { body: { link: wrapped }, cookie: adminCookie })).body).toEqual({ id: "ABCDEFGHIJKLMNOP", name: "Fetched book", ext: "pdf", size: PDF.length });
+  expect((await call(lan, "/api/admin/import/inspect", { body: { link: "https://example.com/x" }, cookie: adminCookie })).body).toEqual({ error: "bad-link" });
+  const picture = await fetch(lan + "/api/admin/import/thumbnail/ABCDEFGHIJKLMNOP", { headers: { Cookie: adminCookie } });
+  expect([picture.status, picture.headers.get("content-type")]).toEqual([200, "image/png"]);
+  expect((await call(lan, "/api/admin/import/thumbnail/NOSUCHFILE1234", { cookie: adminCookie })).status).toBe(404);
+
+  expect((await call(lan, "/api/admin/import", { body: { link: wrapped, folder: "nowhere", name: "Fetched" }, cookie: adminCookie })).body).toEqual({ error: "missing" });
+  const started = await call(lan, "/api/admin/import", { body: { link: wrapped, folder: "sub", name: "Fetched" }, cookie: adminCookie });
+  expect(started.status).toBe(200);
+  const jobId = started.body.job.id as string;
+  let job = started.body.job;
+  for (let i = 0; i < 100 && job.state === "running"; i++) {
+    await Bun.sleep(50);
+    job = (await call(lan, `/api/admin/import/${jobId}`, { cookie: adminCookie })).body.job;
+  }
+  expect(job).toMatchObject({ state: "done", path: "sub/Fetched.pdf", received: PDF.length });
+  expect(readFileSync(join(lib, "sub/Fetched.pdf"), "utf-8")).toBe(PDF);
+  expect((await call(lan, `/api/library`)).body.books.some((b: { id: string }) => b.id === job.bookId)).toBe(true);
+  expect((await call(lan, "/api/admin/import", { body: { link: wrapped, folder: "sub", name: "Fetched" }, cookie: adminCookie })).body).toEqual({ error: "exists" });
+  expect((await call(lan, `/api/admin/import/${jobId}`, { method: "DELETE", cookie: adminCookie })).status).toBe(404); // nothing running to cancel
+  expect((await call(lan, "/api/admin/import/nope", { cookie: adminCookie })).status).toBe(404);
+});
 
 test("bookmarks belong to the signed-in reader and nobody else", async () => {
   const mine = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;

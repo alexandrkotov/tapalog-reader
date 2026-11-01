@@ -4,6 +4,7 @@ import { cleanupExtracted } from "./embedCloudflared";
 import { openDb } from "./db";
 import { resolveDataDir } from "./dataDir";
 import { Covers } from "./covers";
+import { DriveImports, driveEndpoints } from "./driveImport";
 import { LibraryEditor } from "./editor";
 import { FullText } from "./fulltext";
 import { Library } from "./library";
@@ -31,6 +32,7 @@ const shares = new Shares(db);
 const bookmarks = new Bookmarks(db);
 const backup = new Backup(db, config);
 const editor = new LibraryEditor(library, dataDir);
+const driveImports = new DriveImports(library, editor, driveEndpoints());
 const covers = new Covers(dataDir);
 const fullText = new FullText(dataDir, library, config);
 library.onScan = () => {
@@ -60,7 +62,7 @@ const setMode = (mode: "lan" | "internet") => {
 
 for (let port = preferred; port < preferred + 20 && !servers; port++) {
   try {
-    servers = startServers({ library, auth, recovery, shares, config, covers, bookmarks, backup, editor, fullText, tunnel, lanUrls, setMode }, { hostname, port });
+    servers = startServers({ library, auth, recovery, shares, config, covers, bookmarks, backup, editor, driveImports, fullText, tunnel, lanUrls, setMode }, { hostname, port });
   } catch (err) {
     if ((err as { code?: string }).code !== "EADDRINUSE") throw err;
   }
