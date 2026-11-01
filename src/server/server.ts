@@ -12,6 +12,7 @@ import type { FullText } from "./fulltext";
 import { MIME, type Format } from "./formats";
 import type { Library } from "./library";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
+import { RESET_FILE, type Recovery } from "./recovery";
 import type { Shares } from "./shares";
 import type { TunnelController } from "./tunnelController";
 import index from "../web/index.html";
@@ -19,6 +20,7 @@ import index from "../web/index.html";
 export interface App {
   library: Library;
   auth: Auth;
+  recovery: Recovery;
   shares: Shares;
   config: ConfigStore;
   covers: Covers;
@@ -200,6 +202,7 @@ function buildRoutes(app: App, origin: Origin) {
         setupNeeded: noUsers,
         setupPossible: noUsers && origin === "lan" && isLoopback(server.requestIP(req)?.address ?? ""),
         canRegister: origin === "lan" && app.config.get().allowRegistration && !noUsers,
+        canRecover: origin === "lan" && !noUsers,
       });
     },
     "/api/setup": {
@@ -245,6 +248,26 @@ function buildRoutes(app: App, origin: Origin) {
         if (app.auth.locked(key)) return json({ error: "too many attempts" }, 429);
         const me = await app.auth.verify(name, password, key);
         return me ? signIn(me) : json({ error: "wrong name or password" }, 401);
+      },
+    },
+    // A forgotten administrator password: a code is written to a file in the data folder (see recovery.ts), only on the local network.
+    "/api/recover/start": {
+      POST: async (req: Request, server: Server<unknown>) => {
+        if (origin !== "lan" || app.auth.userCount() === 0 || !(await body(req))) return forbidden();
+        app.recovery.start();
+        // the full path only goes to the computer itself; anybody else is told the file's name
+        return json({ ok: true, file: RESET_FILE, path: isLoopback(server.requestIP(req)?.address ?? "") ? app.recovery.file : null });
+      },
+    },
+    "/api/recover/finish": {
+      POST: async (req: Request, server: Server<unknown>) => {
+        const data = await body(req);
+        const password = validatePassword(data?.password);
+        if (origin !== "lan" || app.auth.userCount() === 0 || !data) return forbidden();
+        if (!password) return bad("password too short");
+        const result = await app.recovery.finish(str(data.name).trim(), str(data.code), password, clientIp(req, server));
+        if (result === "locked") return json({ error: "too many attempts" }, 429);
+        return result === "wrong" ? json({ error: "wrong code" }, 401) : signIn(result.user);
       },
     },
     "/api/logout": {

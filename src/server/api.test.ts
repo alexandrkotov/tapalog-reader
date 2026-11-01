@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "./auth";
@@ -13,6 +13,7 @@ import { openDb } from "./db";
 import { Library } from "./library";
 import { startServers, type Servers } from "./server";
 import { Shares } from "./shares";
+import { Recovery } from "./recovery";
 import { removeDir } from "./testutil";
 import { TunnelController } from "./tunnelController";
 
@@ -36,8 +37,9 @@ beforeAll(async () => {
   const config = new ConfigStore(data);
   library = new Library(db, config, data);
   await library.setRoot(lib);
+  const auth = new Auth(db);
   servers = startServers(
-    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), editor: new LibraryEditor(library, data), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
+    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), editor: new LibraryEditor(library, data), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -180,6 +182,34 @@ test("a changed password signs that account out everywhere", async () => {
   expect((await call(lan, `/api/admin/users/${reader.id}/password`, { body: { password: "newpin9" }, cookie: adminCookie })).status).toBe(200);
   expect((await call(lan, "/api/me", { cookie: userCookie })).body.user).toBeNull();
   expect((await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).status).toBe(200);
+});
+
+test("a forgotten administrator password is reset with a code from a file in the data folder, on the local network only", async () => {
+  const file = join(data, "reset-code.txt");
+  const finish = (body: object, base = lan) => call(base, "/api/recover/finish", { body });
+  expect((await call(lan, "/api/me")).body.canRecover).toBe(true);
+  expect((await call(tunnelSide, "/api/me")).body.canRecover).toBe(false);
+  expect((await call(tunnelSide, "/api/recover/start", { body: {} })).status).toBe(403);
+  expect(existsSync(file)).toBe(false);
+
+  expect((await call(lan, "/api/recover/start", { body: {} })).body).toEqual({ ok: true, file: "reset-code.txt", path: file }); // asked from the computer itself
+  const code = readFileSync(file, "utf-8").match(/\d{4}-\d{4}/)![0];
+  await call(lan, "/api/recover/start", { body: {} });
+  expect(readFileSync(file, "utf-8")).toContain(code); // asking again keeps the code
+
+  expect((await finish({ name: "Alex", code, password: "no" })).status).toBe(400);
+  expect((await finish({ name: "Reader", code, password: "fresh-secret" })).status).toBe(401); // only an administrator
+  expect((await finish({ name: "Alex", code, password: "fresh-secret" }, tunnelSide)).status).toBe(403);
+  const done = await finish({ name: "alex", code, password: "fresh-secret" });
+  expect(done.status).toBe(200);
+  expect(done.body.user).toMatchObject({ name: "Alex", role: "admin" });
+  expect(existsSync(file)).toBe(false);
+
+  expect((await call(lan, "/api/me", { cookie: adminCookie })).body.user).toBeNull(); // the old sessions are gone
+  adminCookie = done.cookie!;
+  expect((await call(lan, "/api/me", { cookie: adminCookie })).body.user).toMatchObject({ name: "Alex" });
+  expect((await call(tunnelSide, "/api/login", { body: { name: "Alex", password: "fresh-secret" }, headers: { "cf-connecting-ip": "203.0.113.10" } })).status).toBe(200);
+  expect((await finish({ name: "Alex", code, password: "again-1234" })).status).toBe(401); // a used code is dead
 });
 
 test("cover thumbnails are uploaded by the administrator, stored per book and served to readers", async () => {

@@ -50,7 +50,7 @@ Notes on access:
 - On the local network the page is plain HTTP, so a password typed there travels unencrypted inside your network. Over the internet tunnel it is HTTPS.
 - Whoever has a share link can read that book: treat it like a key. Links can be limited in time and revoked under **My links**.
 - A quick-tunnel address changes every time the tunnel starts, so a QR code printed from an internet link stops working after a restart. (Local-network links keep working as long as the computer's address does.)
-- There is no password recovery yet: an administrator can set any account's password, but the last administrator's password can't be reset from the page.
+- A forgotten administrator password: on the sign-in page (local network only) choose **Forgot the administrator password?** and ask for a code. The server writes it into `reset-code.txt` in the data folder, where only someone with access to the computer can read it; type it back with the administrator's name and a new password (fifteen minutes, one use; five wrong tries from one visitor lock that visitor out for a minute, thirty from everybody burn the code). The reset signs that account out everywhere and the file is removed. Other accounts' passwords are set by an administrator in Settings.
 
 ## Build the executable
 

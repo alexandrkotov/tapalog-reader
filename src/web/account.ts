@@ -10,6 +10,7 @@ export interface Me {
   setupNeeded: boolean;
   setupPossible: boolean;
   canRegister: boolean;
+  canRecover: boolean;
 }
 
 export type AuthKind = "signIn" | "register" | "setup";
@@ -52,6 +53,56 @@ export function authForm(kind: AuthKind, done: () => void): HTMLFormElement {
   return form;
 }
 
+/** Forgotten administrator password: ask the server for a code, read it from the file in the data folder, type it back with a new password. */
+function recoverPanel(done: () => void, back: () => void): HTMLElement {
+  const box = el("div", { class: "stack" });
+  const error = el("div", { class: "error" });
+  const backButton = el("button", { type: "button", class: "link", textContent: t("recover.back") });
+  backButton.addEventListener("click", back);
+
+  const ask = el("button", { type: "button", class: "btn primary", textContent: t("recover.get") });
+  ask.addEventListener("click", async () => {
+    error.textContent = "";
+    try {
+      const sent = await api<{ file: string; path: string | null }>("/api/recover/start", {});
+      showForm(sent.path ? t("recover.savedAt", { path: sent.path }) : t("recover.saved", { file: sent.file }));
+    } catch (err) {
+      error.textContent = errorText(err);
+    }
+  });
+
+  function showForm(where: string): void {
+    const name = el("input", { type: "text", autocomplete: "username", required: true });
+    const code = el("input", { type: "text", inputMode: "numeric", autocomplete: "one-time-code", required: true, placeholder: "0000-0000" });
+    const password = el("input", { type: "password", autocomplete: "new-password", required: true });
+    const form = el(
+      "form",
+      { class: "stack" },
+      el("p", { class: "muted", textContent: where }),
+      el("label", {}, el("span", { textContent: t("common.name") }), name),
+      el("label", {}, el("span", { textContent: t("recover.code") }), code),
+      el("label", {}, el("span", { textContent: t("recover.newPassword") }), password),
+      el("button", { type: "submit", class: "btn primary", textContent: t("recover.apply") }),
+      error,
+    );
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      try {
+        await api("/api/recover/finish", { name: name.value, code: code.value, password: password.value });
+        done();
+      } catch (err) {
+        error.textContent = err instanceof ApiError && err.status === 401 ? t("recover.wrong") : errorText(err);
+      }
+    });
+    box.replaceChildren(form, backButton);
+    name.focus();
+  }
+
+  box.append(el("p", { class: "muted", textContent: t("recover.text") }), ask, error, backButton);
+  return box;
+}
+
 /** Sign-in with an optional switch to "create account" when the server allows it. */
 export function authPanel(me: Me, done: () => void): HTMLElement {
   const box = el("div", { class: "stack" });
@@ -60,7 +111,9 @@ export function authPanel(me: Me, done: () => void): HTMLElement {
       ? el("button", { type: "button", class: "link", textContent: kind === "signIn" ? t("account.register") : t("account.signIn") })
       : null;
     switcher?.addEventListener("click", () => show(kind === "signIn" ? "register" : "signIn"));
-    box.replaceChildren(authForm(kind, done), ...(kind === "register" ? [el("p", { class: "muted", textContent: t("account.registerHint") })] : []), ...(switcher ? [switcher] : []));
+    const forgot = me.canRecover && kind === "signIn" ? el("button", { type: "button", class: "link", textContent: t("account.forgot") }) : null;
+    forgot?.addEventListener("click", () => box.replaceChildren(recoverPanel(done, () => show("signIn"))));
+    box.replaceChildren(authForm(kind, done), ...(kind === "register" ? [el("p", { class: "muted", textContent: t("account.registerHint") })] : []), ...(switcher ? [switcher] : []), ...(forgot ? [forgot] : []));
   };
   show("signIn");
   return box;
