@@ -215,3 +215,17 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .move-row { padding-top: 5px; padding-bottom: 5px; color: var(--text); }
 .move-row:disabled { color: var(--muted); opacity: 0.5; cursor: default; }
 .toast { position: fixed; z-index: 100; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(90vw, 480px); padding: 10px 16px; border-radius: 8px; background: #b3261e; color: #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); }
+
+/* ---------- print and save as PDF ---------- */
+.print-choices { display: flex; flex-direction: column; gap: 6px; }
+.print-choice { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.print-range { padding-left: 24px; }
+.print-range .pdf-page-input { width: 72px; }
+#print-root { display: none; }
+@page { margin: 12mm; }
+@media print {
+  /* only the printout is printed: the whole app (panel, bars, dialogs) disappears, and its fixed heights must not clip the pages */
+  body.printing > :not(#print-root) { display: none !important; }
+  body.printing #print-root { display: block; }
+  html:has(body.printing), body.printing { display: block; height: auto; overflow: visible; background: #fff; }
+}

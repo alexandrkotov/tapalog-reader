@@ -1,5 +1,7 @@
 import * as pdfjsLib from "pdfjs-dist/build/pdf.min.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
+import { t } from "../i18n";
+import { addPageImage, type PrintJob } from "../print";
 import type { PageView, ReaderHandle, Rect } from "./types";
 
 /** pdf.js' own padding around the page column; "zoom 1" is the page width that leaves exactly this. */
@@ -8,10 +10,14 @@ const MAX_SCALE = 8;
 const MIN_SCALE = 0.1;
 const MIN_REGION = 0.005;
 const VIEW_DEBOUNCE_MS = 250;
+/** Printed pages are drawn this many pixels wide (about 200 dpi on A4): sharp on paper, a few hundred KB each. */
+const PRINT_PAGE_PX = 1700;
+const PRINT_MAX_SIDE = 4096;
 
 export interface PdfReader extends ReaderHandle {
   getView(): PageView;
   setView(view: PageView): void;
+  printJob(): PrintJob;
 }
 
 export interface PdfOptions {
@@ -306,8 +312,53 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     })
     .catch((err: unknown) => options.onError(err instanceof Error ? err : new Error(String(err))));
 
+  /**
+   * A printout is made of pictures of the pages (or of one rectangle of one page), because that
+   * looks the same in every browser and needs no PDF plug-in; the original file stays one click
+   * away in the print dialog for anyone who wants the exact PDF.
+   */
+  function printJob(): PrintJob {
+    const pdf = pdfViewer.pdfDocument;
+    const total = pdfViewer.pagesCount;
+    const view = getView();
+    const area = region;
+    return {
+      choices: [
+        { id: "all", label: t("print.allPages", { n: total }) },
+        { id: "here", label: t("print.thisPage", { n: view.page }) },
+        { id: "range", label: t("print.pages"), range: { max: total, from: view.page } },
+        ...(area ? [{ id: "area", label: t("print.area", { n: area.page }) }] : []),
+      ],
+      initial: area ? "area" : "all",
+      async render(choice, range, ctx) {
+        if (!pdf) throw new Error("not loaded");
+        const [first, last] = choice === "all" ? [1, total] : choice === "range" && range ? range : choice === "area" && area ? [area.page, area.page] : [view.page, view.page];
+        for (let n = first; n <= last; n++) {
+          if (ctx.signal.aborted) return;
+          ctx.progress(n - first + 1, last - first + 1);
+          const page = await pdf.getPage(n);
+          const base = page.getViewport({ scale: 1 });
+          const crop = choice === "area" && area ? area.rect : null;
+          const scale = Math.min(MAX_SCALE, PRINT_PAGE_PX / (base.width * (crop?.w ?? 1)), PRINT_MAX_SIDE / (base.width * (crop?.w ?? 1)), PRINT_MAX_SIDE / (base.height * (crop?.h ?? 1)));
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.ceil(viewport.width * (crop?.w ?? 1)));
+          canvas.height = Math.max(1, Math.ceil(viewport.height * (crop?.h ?? 1)));
+          await page.render({ canvas, viewport, ...(crop ? { transform: [1, 0, 0, 1, -crop.x * viewport.width, -crop.y * viewport.height] } : {}) }).promise;
+          const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+          page.cleanup();
+          if (!blob) throw new Error("could not draw page " + n);
+          const url = URL.createObjectURL(blob);
+          ctx.onCleanup(() => URL.revokeObjectURL(url));
+          addPageImage(ctx.root, url);
+        }
+      },
+    };
+  }
+
   return {
     getView,
+    printJob,
     setView: (view) => {
       initial = view;
       touched = false;

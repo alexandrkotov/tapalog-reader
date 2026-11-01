@@ -2,6 +2,7 @@ import { createPdfExporter, mountViewerInShadow, type EcatmView } from "@ecm/vie
 import wasmUrl from "@ecm/viewer-engine/sql-wasm.wasm";
 import pdfFontUrl from "@ecm/viewer-engine/fonts/DejaVuSans.ttf";
 import { t } from "../i18n";
+import type { PrintJob } from "../print";
 import { el } from "../ui";
 import type { PageView } from "./types";
 import type { TextView } from "./book";
@@ -14,6 +15,8 @@ export interface Reader {
   getView?(): unknown;
   /** A suggested name for a bookmark at the current place, when one can be worked out. */
   getLabel?(): string;
+  /** What can be printed or saved as PDF, for formats that can do it (not catalogs: their viewer exports PDF itself). */
+  printJob?(): PrintJob;
 }
 
 export interface ReaderSpec {
@@ -66,7 +69,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("pdf.error"), err.message),
     });
-    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => t("bookmark.page", { n: reader.getView().page }) };
+    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => t("bookmark.page", { n: reader.getView().page }), printJob: () => reader.printJob() };
   }
 
   if (spec.ext === "txt") {
@@ -77,7 +80,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
     });
-    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel() };
+    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), printJob: () => reader.printJob() };
   }
 
   if (TEXT_FORMATS.has(spec.ext)) {
@@ -90,7 +93,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
     });
-    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel() };
+    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), printJob: () => reader.printJob() };
   }
 
   const box = el("div", { class: "message" }, el("h2", { textContent: spec.name }), el("p", { textContent: t("reader.soon", { fmt: spec.ext.toUpperCase() }) }), el("a", { class: "button", href: spec.fileUrl, textContent: t("reader.download") }));

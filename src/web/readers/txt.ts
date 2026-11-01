@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+import { addPlainText, type PrintJob } from "../print";
 import { decodeText } from "./decode";
 
 /**
@@ -24,6 +25,7 @@ export interface TxtReader {
   getView(): TxtView;
   /** A name for the place on screen: how far into the text. */
   getLabel(): string;
+  printJob(): PrintJob;
 }
 
 const VIEW_DEBOUNCE_MS = 250;
@@ -252,7 +254,7 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
     const res = await fetch(options.url, { credentials: "include" });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     text = decodeText(new Uint8Array(await res.arrayBuffer()));
-    if (destroyed) return { destroy() {}, getView: () => ({ v: 1, offset: 0 }), getLabel: () => "" };
+    if (destroyed) return { destroy() {}, getView: () => ({ v: 1, offset: 0 }), getLabel: () => "", printJob: () => ({ choices: [], render: async () => undefined }) };
     const initial = cleanView(options.view, text.length);
     mark = initial.range;
     render();
@@ -277,5 +279,11 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
     },
     getView: currentView,
     getLabel: () => progress.textContent ?? "",
+    printJob: () => ({
+      choices: [...(mark ? [{ id: "mark", label: t("print.mark") }] : []), { id: "all", label: t("print.text") }],
+      async render(choice, _range, ctx) {
+        addPlainText(ctx.root, choice === "mark" && mark ? text.slice(mark[0], mark[1]) : text);
+      },
+    }),
   };
 }

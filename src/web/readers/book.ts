@@ -1,6 +1,7 @@
 import "foliate-js/view.js";
 import { Overlayer } from "foliate-js/overlayer.js";
 import { t } from "../i18n";
+import { addHtmlSection, type PrintJob } from "../print";
 
 /**
  * A "view" of reflowable text (EPUB, FB2, MOBI): where the reader is, and optionally a
@@ -31,6 +32,14 @@ export interface BookReader {
   getView(): TextView | null;
   /** A name for the place on screen: the chapter and how far in. */
   getLabel(): string;
+  printJob(): PrintJob;
+}
+
+interface BookSection {
+  /** A URL of the section as HTML, with its pictures and style sheets already pointing at object URLs. */
+  load(): Promise<string | null> | string | null;
+  unload?(): void;
+  linear?: string;
 }
 
 interface TocItem {
@@ -52,7 +61,7 @@ interface FoliateRenderer extends HTMLElement {
 
 interface FoliateView extends HTMLElement {
   renderer: FoliateRenderer;
-  book: { toc?: TocItem[] };
+  book: { toc?: TocItem[]; sections?: BookSection[] };
   lastLocation: Location | null;
   isFixedLayout: boolean;
   open(book: File): Promise<void>;
@@ -313,7 +322,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const file = new File([await res.blob()], `book.${options.ext}`, { type: MIME[options.ext] ?? "" });
     await view.open(file);
-    if (destroyed) return { destroy() {}, getView: () => null, getLabel: () => "" };
+    if (destroyed) return { destroy() {}, getView: () => null, getLabel: () => "", printJob };
     applyFlow();
     setFont(fontPct);
     // Comics are pictures: text size, flow and passage marks mean nothing there.
@@ -336,7 +345,37 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     options.onError(err instanceof Error ? err : new Error(String(err)));
   }
 
+  /** Sections are the book's own files (chapters, comic pages); a printout is made of them one after another. */
+  function printJob(): PrintJob {
+    const sections = view.book.sections ?? [];
+    const here = Math.min(Math.max(0, view.renderer.getContents()[0]?.index ?? 0), Math.max(0, sections.length - 1));
+    const comic = view.isFixedLayout;
+    return {
+      choices: [
+        { id: "all", label: t("print.all") },
+        { id: "here", label: t(comic ? "print.thisPage" : "print.thisChapter", { n: here + 1 }) },
+        ...(comic ? [{ id: "range", label: t("print.pages"), range: { max: sections.length, from: here + 1 } }] : []),
+      ],
+      async render(choice, range, ctx) {
+        const wanted = choice === "here" ? [here] : choice === "range" && range ? Array.from({ length: range[1] - range[0] + 1 }, (_, i) => range[0] - 1 + i) : sections.flatMap((s, i) => (s.linear === "no" ? [] : [i]));
+        for (const [k, index] of wanted.entries()) {
+          if (ctx.signal.aborted) return;
+          ctx.progress(k + 1, wanted.length);
+          const section = sections[index];
+          const url = await section?.load();
+          if (!section || !url) continue;
+          // a comic page shown on screen shares its picture with the printout: unloading it would blank the reader
+          if (!(comic && Math.abs(index - here) <= 1)) ctx.onCleanup(() => section.unload?.());
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          addHtmlSection(ctx.root, await res.text(), (res.headers.get("content-type") ?? "text/html").split(";")[0]!);
+        }
+      },
+    };
+  }
+
   return {
+    printJob,
     destroy() {
       destroyed = true;
       if (timer) clearTimeout(timer);

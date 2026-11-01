@@ -3,6 +3,7 @@ import { openAdmin } from "./admin";
 import { openBookmarks } from "./bookmarks";
 import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
+import { openPrintDialog } from "./print";
 import { mountReader, VIEW_FORMATS, type Reader } from "./readers/mount";
 import { openMyLinks, openShareDialog } from "./share";
 import { api, ApiError, badge, el, openModal, store } from "./ui";
@@ -590,15 +591,23 @@ function showReader(spec: { name: string; ext: string; path?: string; fileUrl: s
   reader?.destroy();
   reader = null;
   const host = el("div", { class: "reader-host" });
+  // shown once the reader is up and says it can print (a catalog's own viewer exports PDF)
+  const printButton = el("button", { type: "button", class: "btn", textContent: `🖶 ${t("print.button")}`, hidden: true });
+  printButton.addEventListener("click", () => {
+    const job = reader?.printJob?.();
+    if (job) openPrintDialog({ name: spec.name, fileUrl: spec.fileUrl, job });
+  });
   mainEl.replaceChildren(
-    el("div", { class: "reader-bar" }, badge(spec.ext), el("span", { class: "title", textContent: spec.name }), el("span", { class: "path grow", textContent: spec.path ?? "" }), ...(spec.bar?.(() => reader) ?? [])),
+    el("div", { class: "reader-bar" }, badge(spec.ext), el("span", { class: "title", textContent: spec.name }), el("span", { class: "path grow", textContent: spec.path ?? "" }), printButton, ...(spec.bar?.(() => reader) ?? [])),
     host,
   );
   document.title = `${spec.name} — ${t("app.title")}`;
   mountReader(host, { ...spec, onError: (title, text) => token === openToken && message(title, text) })
     .then((r) => {
-      if (token === openToken) reader = r;
-      else r.destroy();
+      if (token === openToken) {
+        reader = r;
+        printButton.hidden = !r.printJob;
+      } else r.destroy();
     })
     .catch((err: unknown) => {
       if (token === openToken) message(t("pdf.error"), err instanceof Error ? err.message : String(err));
