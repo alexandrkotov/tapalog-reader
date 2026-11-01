@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { Server } from "bun";
 import type { Auth, User } from "./auth";
 import { validateName, validatePassword } from "./auth";
+import { BackupError, parseBackup, type Backup, type BackupFile } from "./backup";
 import type { Bookmarks } from "./bookmarks";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
@@ -22,6 +23,7 @@ export interface App {
   config: ConfigStore;
   covers: Covers;
   bookmarks: Bookmarks;
+  backup: Backup;
   editor: LibraryEditor;
   fullText: FullText;
   tunnel: TunnelController;
@@ -148,6 +150,25 @@ function buildRoutes(app: App, origin: Origin) {
     }
   }
 
+  /** Replaces accounts, bookmarks, links and settings with a backup's. A refused file answers with a short code and changes nothing. */
+  async function restore(req: Request): Promise<{ done: { users: number; bookmarks: number; shares: number } } | Response> {
+    const data = await body(req);
+    if (!data) return bad();
+    let file: BackupFile;
+    try {
+      file = parseBackup(data);
+    } catch (err) {
+      if (err instanceof BackupError) return bad(err.code);
+      throw err;
+    }
+    const done = app.backup.restore(file);
+    const { lanAccess, allowRegistration, mode, fullText } = file.settings;
+    app.config.update({ lanAccess, allowRegistration });
+    if (app.config.get().fullText !== fullText) app.fullText.setEnabled(fullText);
+    if (app.config.get().mode !== mode) app.setMode(mode);
+    return { done };
+  }
+
   async function signIn(me: User): Promise<Response> {
     const session = app.auth.startSession(me.id);
     return json({ user: me }, 200, { "Set-Cookie": app.auth.sessionCookie(session.token, session.maxAgeSeconds, secureCookie) });
@@ -190,6 +211,14 @@ function buildRoutes(app: App, origin: Origin) {
         // The first administrator can only be created from the computer that runs the server.
         if (origin !== "lan" || !isLoopback(server.requestIP(req)?.address ?? "") || app.auth.userCount() > 0) return forbidden();
         return signIn(await app.auth.createUser(name, password, "admin"));
+      },
+    },
+    // a new computer: bring the accounts and settings of an old installation instead of creating a first administrator
+    "/api/setup/restore": {
+      POST: async (req: Request, server: Server<unknown>) => {
+        if (origin !== "lan" || !isLoopback(server.requestIP(req)?.address ?? "") || app.auth.userCount() > 0) return forbidden();
+        const result = await restore(req);
+        return result instanceof Response ? result : json({ ok: true, ...result.done });
       },
     },
     "/api/register": {
@@ -348,6 +377,26 @@ function buildRoutes(app: App, origin: Origin) {
         app.config.update(patch);
         if (data.mode === "lan" || data.mode === "internet") app.setMode(data.mode);
         return json(settingsView());
+      }),
+    },
+    // ----- backup of accounts, bookmarks, links and settings -----
+    "/api/admin/backup": {
+      GET: admin(() => {
+        const day = new Date().toISOString().slice(0, 10);
+        return new Response(JSON.stringify(app.backup.create(), null, 1), {
+          headers: { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="tapalog-reader-backup-${day}.json"`, "Cache-Control": "no-store" },
+        });
+      }),
+    },
+    "/api/admin/restore": {
+      POST: admin(async (req, _server, me) => {
+        const result = await restore(req);
+        if (result instanceof Response) return result;
+        // the administrator who did this stays signed in if the backup has an account of that name
+        const again = app.auth.byName(me.name);
+        const session = again?.role === "admin" ? app.auth.startSession(again.id) : null;
+        const cookie = session ? app.auth.sessionCookie(session.token, session.maxAgeSeconds, secureCookie) : app.auth.clearCookie(secureCookie);
+        return json({ ok: true, signedIn: !!session, ...result.done }, 200, { "Set-Cookie": cookie });
       }),
     },
     "/api/admin/users": {

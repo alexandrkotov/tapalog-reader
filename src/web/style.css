@@ -229,3 +229,4 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
   body.printing #print-root { display: block; }
   html:has(body.printing), body.printing { display: block; height: auto; overflow: visible; background: #fff; }
 }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }

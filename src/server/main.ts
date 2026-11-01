@@ -9,6 +9,7 @@ import { FullText } from "./fulltext";
 import { Library } from "./library";
 import { openInBrowser } from "./openInBrowser";
 import { Auth } from "./auth";
+import { Backup } from "./backup";
 import { Bookmarks } from "./bookmarks";
 import { Shares } from "./shares";
 import { startServers } from "./server";
@@ -26,6 +27,7 @@ const library = new Library(db, config, dataDir);
 const auth = new Auth(db);
 const shares = new Shares(db);
 const bookmarks = new Bookmarks(db);
+const backup = new Backup(db, config);
 const editor = new LibraryEditor(library, dataDir);
 const covers = new Covers(dataDir);
 const fullText = new FullText(dataDir, library, config);
@@ -56,7 +58,7 @@ const setMode = (mode: "lan" | "internet") => {
 
 for (let port = preferred; port < preferred + 20 && !servers; port++) {
   try {
-    servers = startServers({ library, auth, shares, config, covers, bookmarks, editor, fullText, tunnel, lanUrls, setMode }, { hostname, port });
+    servers = startServers({ library, auth, shares, config, covers, bookmarks, backup, editor, fullText, tunnel, lanUrls, setMode }, { hostname, port });
   } catch (err) {
     if ((err as { code?: string }).code !== "EADDRINUSE") throw err;
   }

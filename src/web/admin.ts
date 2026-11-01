@@ -1,3 +1,4 @@
+import { restoreFromFile } from "./backup";
 import { t } from "./i18n";
 import { api, ApiError, el, openModal } from "./ui";
 
@@ -131,12 +132,28 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
       }
     });
 
+    // backup
+    const backupMessage = el("div", { class: "muted" });
+    const download = el("a", { class: "btn", href: "/api/admin/backup", download: "", textContent: t("backup.download") });
+    const restore = el("button", { type: "button", class: "btn", textContent: t("backup.restore") });
+    restore.addEventListener("click", () =>
+      restoreFromFile(
+        "/api/admin/restore",
+        (text, ok) => {
+          backupMessage.className = ok ? "muted" : "error";
+          backupMessage.textContent = text;
+        },
+        () => setTimeout(() => location.reload(), 1200), // accounts changed under every open page
+      ),
+    );
+
     modal.body.replaceChildren(
       section(t("admin.library"), el("div", { class: "row" }, path, useFolder, rescan), libError),
       section(t("admin.access"), radio("open", t("admin.access.open")), radio("login", t("admin.access.login")), el("label", { class: "choice" }, registration, t("admin.register"))),
       section(t("admin.internet"), el("label", { class: "choice" }, internet, s.mode === "internet" ? t("admin.internet.on") : t("admin.internet.off")), tunnelStatus, note(t("admin.internet.note"))),
       section(t("admin.fulltext"), indexBox),
       section(t("admin.users"), ...users, el("div", { class: "user-row" }, newName, newPass, newRole, add), addError),
+      section(t("backup.title"), note(t("backup.note")), el("div", { class: "row" }, download, restore), backupMessage),
     );
   }
 

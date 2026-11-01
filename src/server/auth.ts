@@ -41,6 +41,10 @@ export class Auth {
     return row as User;
   }
 
+  byName(name: string): User | null {
+    return (this.db.query("SELECT id, name, role FROM users WHERE name = ?").get(name) as User | null) ?? null;
+  }
+
   listUsers(): (User & { createdAt: number })[] {
     return (this.db.query("SELECT id, name, role, created_at AS createdAt FROM users ORDER BY name").all() as (User & { createdAt: number })[]);
   }

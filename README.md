@@ -27,12 +27,12 @@ Early. Working now:
 - Accounts: the first administrator is created on the computer that runs the server; readers can create their own accounts (optional, from the local network). Passwords are argon2id hashes, sessions are random cookies stored hashed, repeated failed logins are slowed down
 - Share links with a QR code: `/s/<token>` opens exactly one book, optionally at an exact view, with no sign-in; a link can expire and be revoked
 - Internet access through a Cloudflare quick tunnel (embedded `cloudflared`, no account or port forwarding). The tunnel enters through a separate loopback listener, so a request is known to come from the internet by the socket it arrived on, not by a header; over the tunnel the library always needs sign-in, and the first-run setup and self-registration are refused
+- Backup and restore (administrator, in Settings; also offered on the first-run screen of a new computer): one JSON file with the accounts, bookmarks, share links and settings. Passwords are in it only as argon2id hashes, so the same passwords work after a restore, but the file should be kept private, since the share links in it are live. Books, covers and the search index are not included (they are rebuilt from the library folder) and neither is the library folder's path, which belongs to each computer. A restore replaces all accounts, bookmarks and links, signs everybody out, and keeps the administrator who did it signed in when the backup has an account of that name; a file that is not a valid backup is refused and changes nothing
 - Settings for the administrator: library folder, who may browse on the local network, internet tunnel, accounts
 - Interface in English, Russian and Ukrainian
 - Range requests for book files; everything the app creates lives in `tapalog-reader-data/` next to the executable (falls back to `~/.tapalog-reader-data` if that is not writable)
 
-Planned: DJVU reader (the only JS decoder, DjVu.js, is GPL v2+, which does not fit MIT, so it is postponed; `.djvu` files are listed and downloadable meanwhile); page previews inside the readers;
-backup.
+Planned: DJVU reader (the only JS decoder, DjVu.js, is GPL v2+, which does not fit MIT, so it is postponed; `.djvu` files are listed and downloadable meanwhile); page previews inside the readers.
 
 ## Run
 

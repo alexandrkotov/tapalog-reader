@@ -1,3 +1,4 @@
+import { restoreFromFile } from "./backup";
 import { t } from "./i18n";
 import { api, ApiError, el, openModal } from "./ui";
 
@@ -82,7 +83,10 @@ export function authScreen(me: Me, done: () => void): HTMLElement {
 
 export function setupScreen(me: Me, done: () => void): HTMLElement {
   if (!me.setupPossible) return el("div", { class: "message" }, el("h2", { textContent: t("setup.title") }), el("p", { textContent: t("setup.remote") }));
-  return el("div", { class: "message narrow" }, el("h2", { textContent: t("setup.title") }), el("p", { textContent: t("setup.text") }), authForm("setup", done));
+  const result = el("div", { class: "error" });
+  const restore = el("button", { type: "button", class: "link", textContent: t("setup.restore") });
+  restore.addEventListener("click", () => restoreFromFile("/api/setup/restore", (text, ok) => ((result.className = ok ? "muted" : "error"), (result.textContent = text)), () => setTimeout(done, 800)));
+  return el("div", { class: "message narrow" }, el("h2", { textContent: t("setup.title") }), el("p", { textContent: t("setup.text") }), authForm("setup", done), restore, result);
 }
 
 export async function signOut(): Promise<void> {

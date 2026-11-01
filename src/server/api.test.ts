@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "./auth";
+import { Backup } from "./backup";
 import { Bookmarks } from "./bookmarks";
 import { Covers } from "./covers";
 import { LibraryEditor } from "./editor";
@@ -34,7 +35,7 @@ beforeAll(async () => {
   const library = new Library(db, config, data);
   await library.setRoot(lib);
   servers = startServers(
-    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), editor: new LibraryEditor(library, data), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
+    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), editor: new LibraryEditor(library, data), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -303,4 +304,43 @@ test("editing the library is for the administrator, changes real files, and refu
   expect(moved).toMatchObject({ path: "Shelf/one.txt", id: bookId }); // same content id: links and bookmarks still point here
   expect((await call(lan, "/api/admin/fs/rename", { body: { kind: "book", path: "Shelf/one.txt", name: "First" }, cookie: admin })).status).toBe(200);
   expect((await call(lan, `/api/file/${bookId}`)).body).toBe("first book, 0123456789");
+});
+
+test("the backup is for the administrator; restoring it brings back accounts and settings and keeps the administrator signed in", async () => {
+  const admin = adminCookie;
+  const reader = (await call(lan, "/api/register", { body: { name: "Backup Reader", password: "pin1234" } })).cookie!;
+  await call(lan, "/api/bookmarks", { body: { bookId, label: "before", view: { v: 1, page: 4 } }, cookie: reader });
+  expect((await call(lan, "/api/admin/backup")).status).toBe(401);
+  expect((await call(lan, "/api/admin/backup", { cookie: reader })).status).toBe(403);
+  expect((await call(lan, "/api/admin/restore", { body: {}, cookie: reader })).status).toBe(403);
+
+  const saved = await fetch(lan + "/api/admin/backup", { headers: { Cookie: admin } });
+  expect(saved.headers.get("content-disposition")).toMatch(/^attachment; filename="tapalog-reader-backup-\d{4}-\d{2}-\d{2}\.json"$/);
+  const file = (await saved.json()) as { users: { name: string }[]; bookmarks: unknown[]; settings: object };
+  expect(file.users.map((u) => u.name)).toContain("Backup Reader");
+
+  // changes made after the backup...
+  await call(lan, "/api/admin/settings", { body: { lanAccess: "login", allowRegistration: false }, cookie: admin });
+  const users = (await call(lan, "/api/admin/settings", { cookie: admin })).body.users as { id: number; name: string }[];
+  await call(lan, `/api/admin/users/${users.find((u) => u.name === "Backup Reader")!.id}`, { method: "DELETE", cookie: admin });
+  expect((await call(lan, "/api/bookmarks", { cookie: reader })).status).toBe(401);
+
+  // a damaged file changes nothing
+  expect((await call(lan, "/api/admin/restore", { body: { ...file, version: 99 }, cookie: admin })).body.error).toBe("version");
+  expect((await call(lan, "/api/admin/restore", { body: { ...file, users: [] }, cookie: admin })).body.error).toBe("no-admin");
+  expect((await call(lan, "/api/me", { cookie: admin })).body.user).toMatchObject({ name: "Alex" });
+
+  // ...are undone by restoring it
+  const restored = await call(lan, "/api/admin/restore", { body: file, cookie: admin });
+  expect(restored.status).toBe(200);
+  expect(restored.body).toMatchObject({ ok: true, signedIn: true });
+  expect(restored.cookie).toStartWith("sid=");
+  adminCookie = restored.cookie!;
+  expect((await call(lan, "/api/me", { cookie: admin })).body.user).toBeNull(); // old sessions are gone
+  expect((await call(lan, "/api/admin/settings", { cookie: adminCookie })).body).toMatchObject({ lanAccess: "open", allowRegistration: true });
+  const again = (await call(lan, "/api/login", { body: { name: "Backup Reader", password: "pin1234" } })).cookie!;
+  expect((await call(lan, "/api/bookmarks", { cookie: again })).body.bookmarks.map((b: { label: string }) => b.label)).toEqual(["before"]);
+
+  // first-run restore is only for a computer that has no accounts yet
+  expect((await call(lan, "/api/setup/restore", { body: file })).status).toBe(403);
 });
