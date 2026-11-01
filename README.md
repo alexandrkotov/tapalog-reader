@@ -62,6 +62,12 @@ bun run compile:linux-x64:no-tunnel   # quick local build without cloudflared
 Each `compile:*` first downloads the matching `cloudflared` release from GitHub into `vendor/` and embeds it. Output goes to `dist/`.
 `bun run dev` uses `cloudflared` from `PATH` if you have it; `TUNNEL_COMMAND` (with `{url}` for the local address) and `TUNNEL_URL_PATTERN` replace it with another tunnel program.
 
+## Releases and CI
+
+- Every push and pull request runs `.github/workflows/ci.yml` on Linux, Windows and macOS: type check, tests, then it builds the executable for that system and starts it (`scripts/smoke.ts` checks the page, the embedded pdf.js files, the library API and a book).
+- Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`: it builds the five executables (Linux x64/arm64, macOS arm64/x64, Windows x64), packs them with the licence and publishes a GitHub release with `SHA256SUMS.txt`. "Run workflow" on the Actions page builds them without publishing.
+- The executables are not code-signed: Windows SmartScreen may warn on first start ("More info", "Run anyway"), and on macOS a downloaded binary needs `xattr -d com.apple.quarantine tapalog-reader-macos-*` once.
+
 ## Tests
 
 ```bash
