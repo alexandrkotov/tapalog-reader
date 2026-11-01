@@ -71,6 +71,55 @@ e2e("the library folder is chosen by browsing the computer's folders, not by typ
   await ctx.close();
 });
 
+e2e("the quick tour is offered once, lights up each button in turn and can be started again", async () => {
+  const ctx = await signedIn(browser, inst, undefined, undefined, true);
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(inst.url + "/");
+  await page.waitForSelector(".tour-offer");
+  expect(await page.textContent(".credit")).toBe("Presented by Tapalog"); // the credit under the folders links to the project's site
+  expect(await page.getAttribute(".credit a", "href")).toBe("https://tapalog.com");
+  expect(await page.getAttribute(".credit a", "rel")).toContain("noopener");
+  await page.click(".tour-offer >> text=No, thanks");
+  expect(await page.locator(".tour-offer").count()).toBe(0);
+  await page.reload();
+  await page.waitForSelector(".shelf");
+  expect(await page.locator(".tour-offer").count()).toBe(0); // asked once only
+
+  await page.click("#tour");
+  const total = Number((await page.textContent(".tour-count"))!.split(" of ")[1]);
+  expect(total).toBeGreaterThanOrEqual(8); // the library panel, search, the administrator's buttons, theme and language
+  const lit = async () => {
+    await page.waitForTimeout(300); // the spotlight glides to the next button
+    const hole = (await page.locator(".tour-hole").boundingBox())!;
+    return page.evaluate((h) => {
+      const near = (a: number, b: number) => Math.abs(a - b) <= 6;
+      const match = [...document.querySelectorAll<HTMLElement>("#panel-toggle, #panel, #search, [data-tour], #theme, #lang")].find((n) => {
+        const r = n.getBoundingClientRect();
+        return near(r.left, h.x) && near(r.top, h.y) && near(r.width + 8, h.width) && near(r.height + 8, h.height);
+      });
+      return match ? match.id || match.dataset.tour! : null;
+    }, hole);
+  };
+  const seen: (string | null)[] = [];
+  for (let i = 0; i < total; i++) {
+    seen.push(await lit());
+    expect((await page.textContent(".tour-text"))!.length).toBeGreaterThan(10);
+    const card = (await page.locator(".tour-card").boundingBox())!;
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    await page.click(".tour-card .btn.primary");
+  }
+  expect(seen).toEqual(["panel-toggle", "panel", "search", "bookmarks", "links", "edit", "drive", "settings", "theme", "lang"]);
+  expect(await page.locator(".tour-card").count()).toBe(0); // the last step's button is "Done"
+
+  await page.click("#tour");
+  await page.keyboard.press("Escape");
+  expect(await page.locator(".tour-card").count()).toBe(0);
+  expect(errors).toEqual([]);
+  await ctx.close();
+});
+
 e2e("the administrator can stop the server from the settings, on the computer it runs on", async () => {
   const own = await startServer(library());
   await setup(own);

@@ -6,6 +6,7 @@ import { openBookmarks } from "./bookmarks";
 import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
+import { offerTour, startTour, type TourStep } from "./tour";
 import { openPrintDialog } from "./print";
 import { mountReader, VIEW_FORMATS, type Reader } from "./readers/mount";
 import { openMyLinks, openShareDialog } from "./share";
@@ -47,6 +48,7 @@ const accountEl = $("account");
 const langEl = $<HTMLSelectElement>("lang");
 const toggleEl = $("panel-toggle");
 const themeEl = $<HTMLSelectElement>("theme");
+const tourEl = $("tour");
 
 // ---------- library state and tree ----------
 
@@ -667,6 +669,9 @@ function applyStaticText(): void {
   toggleEl.setAttribute("aria-label", t("panel.toggle"));
   searchEl.placeholder = t("search.placeholder");
   scanEl.textContent = t("scan.running");
+  $("credit-text").textContent = t("credit");
+  tourEl.title = t("tour.button");
+  tourEl.setAttribute("aria-label", t("tour.button"));
   drawThemeButton();
   langEl.replaceChildren(...(Object.entries(LANGS) as [Lang, string][]).map(([code, name]) => el("option", { value: code, textContent: name, selected: code === lang() })));
 }
@@ -690,19 +695,37 @@ langEl.addEventListener("change", () => {
   void (sharePage ? bootShare(sharePage) : boot());
 });
 
+function tourSteps(): TourStep[] {
+  return [
+    { target: "#panel-toggle", text: "tour.panel" },
+    { target: "#panel", text: "tour.tree" },
+    { target: "#search", text: fullTextOn ? "tour.searchText" : "tour.search" },
+    { target: "[data-tour=signin]", text: "tour.signin" },
+    { target: "[data-tour=bookmarks]", text: "tour.bookmarks" },
+    { target: "[data-tour=links]", text: "tour.links" },
+    { target: "[data-tour=edit]", text: "tour.edit" },
+    { target: "[data-tour=drive]", text: "tour.drive" },
+    { target: "[data-tour=settings]", text: "tour.settings" },
+    { target: "#theme", text: "tour.theme" },
+    { target: "#lang", text: "tour.lang" },
+  ];
+}
+tourEl.addEventListener("click", () => startTour(tourSteps()));
+
 function renderAccount(): void {
   const buttons: HTMLElement[] = [];
-  const button = (label: string, onClick: () => void) => {
+  const button = (label: string, onClick: () => void, tour?: string) => {
     const b = el("button", { type: "button", class: "btn", textContent: label });
+    if (tour) b.dataset.tour = tour; // the quick tour points at these
     b.addEventListener("click", onClick);
     return b;
   };
   if (me?.user) {
     buttons.push(el("span", { class: "who", textContent: me.user.name }));
-    buttons.push(button(t("account.bookmarks"), () => openBookmarks({ me: me!, book: null, reader: () => null, onSignedIn: () => void boot() })));
-    buttons.push(button(t("account.links"), () => void openMyLinks()));
+    buttons.push(button(t("account.bookmarks"), () => openBookmarks({ me: me!, book: null, reader: () => null, onSignedIn: () => void boot() }), "bookmarks"));
+    buttons.push(button(t("account.links"), () => void openMyLinks(), "links"));
     if (me.user.role === "admin") {
-      const edit = button(editing ? `✓ ${t("edit.done")}` : `✎ ${t("edit.start")}`, () => setEditing(!editing));
+      const edit = button(editing ? `✓ ${t("edit.done")}` : `✎ ${t("edit.start")}`, () => setEditing(!editing), "edit");
       if (!writable) {
         edit.disabled = true;
         edit.title = t("edit.readOnlyLibrary");
@@ -716,6 +739,7 @@ function renderAccount(): void {
           saved: () => afterEdit(),
           open: (id) => void (location.hash = `#book=${id}`),
         }),
+        "drive",
       );
       drive.title = t("drive.title");
       if (!writable) {
@@ -724,10 +748,10 @@ function renderAccount(): void {
       }
       buttons.push(drive);
     }
-    if (me.user.role === "admin") buttons.push(button(t("account.settings"), () => void openAdmin(me!.user!, () => void refreshLibrary(), me!.canStop)));
+    if (me.user.role === "admin") buttons.push(button(t("account.settings"), () => void openAdmin(me!.user!, () => void refreshLibrary(), me!.canStop), "settings"));
     buttons.push(button(t("account.signOut"), async () => (await signOut(), void boot())));
   } else if (me && !me.setupNeeded) {
-    buttons.push(button(t("account.signIn"), () => openAuthDialog(me!, () => void boot())));
+    buttons.push(button(t("account.signIn"), () => openAuthDialog(me!, () => void boot()), "signin"));
   }
   accountEl.replaceChildren(...buttons);
 }
@@ -824,6 +848,7 @@ async function boot(): Promise<void> {
   }
   await loadLibrary();
   route();
+  offerTour(() => startTour(tourSteps()));
   pollTimer = setInterval(() => void pollStatus().catch((err: unknown) => err instanceof ApiError && err.status === 401 && void boot()), 4000);
 }
 

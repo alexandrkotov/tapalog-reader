@@ -53,8 +53,11 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .search-results .empty:hover { background: none; }
 
 .layout { flex: 1; display: flex; min-height: 0; }
-.panel { width: 320px; min-width: 200px; max-width: 70vw; overflow: auto; background: var(--panel-bg); border-right: 1px solid var(--border); resize: horizontal; }
+.panel { display: flex; flex-direction: column; width: 320px; min-width: 200px; max-width: 70vw; overflow: auto; background: var(--panel-bg); border-right: 1px solid var(--border); resize: horizontal; }
 .panel[hidden] { display: none; }
+.credit { position: sticky; bottom: 0; margin-top: auto; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--panel-bg); color: var(--muted); font-size: 12px; }
+.credit a { color: inherit; font-weight: 600; }
+.credit a:hover { color: var(--accent); }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 .tree { padding: 6px; }
@@ -269,3 +272,14 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .folder-where { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
 .folder-list { min-height: 160px; }
 .row input[type="text"] { flex: 1; min-width: 0; }
+
+/* quick tour */
+.tour-blocker { position: fixed; inset: 0; z-index: 90; }
+.tour-hole { position: fixed; z-index: 91; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); outline: 2px solid var(--accent); pointer-events: none; transition: left 0.15s, top 0.15s, width 0.15s, height 0.15s; }
+.tour-card, .tour-offer { position: fixed; z-index: 92; box-sizing: border-box; padding: 14px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35); }
+.tour-card p, .tour-offer p { margin: 0 0 12px; line-height: 1.45; }
+.tour-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.tour-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.tour-skip { border: 0; background: none; padding: 2px 4px; color: var(--muted); font: inherit; cursor: pointer; text-decoration: underline; }
+.tour-skip:hover { color: var(--text); }
+.tour-offer { right: 16px; bottom: 16px; width: min(320px, calc(100vw - 32px)); z-index: 40; }

@@ -81,8 +81,9 @@ export async function setup(inst: Instance, account = ADMIN): Promise<void> {
 }
 
 /** A browser context already signed in as `account` (through the API, not the form). */
-export async function signedIn(browser: Browser, inst: Instance, account = ADMIN, viewport = { width: 1200, height: 800 }): Promise<BrowserContext> {
+export async function signedIn(browser: Browser, inst: Instance, account = ADMIN, viewport = { width: 1200, height: 800 }, offerTour = false): Promise<BrowserContext> {
   const ctx = await browser.newContext({ viewport, acceptDownloads: true });
+  if (!offerTour) await ctx.addInitScript(() => localStorage.setItem("tour", "1")); // the first-visit offer of the quick tour stays out of the way
   const res = await ctx.request.post(`${inst.url}/api/login`, { data: account, headers: origin(inst.url) });
   if (!res.ok()) throw new Error(`login failed: ${res.status()}`);
   return ctx;
