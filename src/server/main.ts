@@ -4,6 +4,7 @@ import { cleanupExtracted } from "./embedCloudflared";
 import { openDb } from "./db";
 import { resolveDataDir } from "./dataDir";
 import { Covers } from "./covers";
+import { FullText } from "./fulltext";
 import { Library } from "./library";
 import { openInBrowser } from "./openInBrowser";
 import { Auth } from "./auth";
@@ -23,7 +24,11 @@ const library = new Library(db, config, dataDir);
 const auth = new Auth(db);
 const shares = new Shares(db);
 const covers = new Covers(dataDir);
-library.onScan = () => covers.prune(new Set(library.books().map((b) => b.id)));
+const fullText = new FullText(dataDir, library, config);
+library.onScan = () => {
+  covers.prune(new Set(library.books().map((b) => b.id)));
+  fullText.onScan();
+};
 
 const libraryArg = arg("library");
 if (libraryArg) await library.setRoot(libraryArg);
@@ -47,7 +52,7 @@ const setMode = (mode: "lan" | "internet") => {
 
 for (let port = preferred; port < preferred + 20 && !servers; port++) {
   try {
-    servers = startServers({ library, auth, shares, config, covers, tunnel, lanUrls, setMode }, { hostname, port });
+    servers = startServers({ library, auth, shares, config, covers, fullText, tunnel, lanUrls, setMode }, { hostname, port });
   } catch (err) {
     if ((err as { code?: string }).code !== "EADDRINUSE") throw err;
   }
@@ -59,6 +64,8 @@ console.log(`Tapalog Reader  ${local}`);
 for (const url of lanUrls()) console.log(`   on the network  ${url}/`);
 console.log(`Data folder     ${dataDir}`);
 console.log(library.root ? `Library         ${library.root}` : "Library         (not chosen yet — open the page and pick a folder)");
+
+fullText.kick(); // continues an unfinished index from the last run
 
 if (config.get().mode === "internet") {
   console.log("Internet        connecting a public tunnel…");

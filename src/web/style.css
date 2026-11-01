@@ -184,3 +184,10 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .card .count { color: var(--muted); font-size: 11px; }
 .shelf-more[hidden] { display: none; }
 .thumb.sm .ph { font-size: 0; }
+
+.search-results .group { padding: 6px 8px 2px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; cursor: default; }
+.search-results .group:hover { background: none; }
+.search-results li { flex-wrap: wrap; }
+.search-results .name { font-weight: 500; }
+.search-results .snip { flex-basis: 100%; padding-left: 36px; color: var(--muted); font-size: 12px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.search-results .snip mark { background: rgba(255, 179, 0, 0.4); color: var(--text); border-radius: 2px; }

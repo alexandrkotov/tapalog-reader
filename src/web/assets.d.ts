@@ -15,3 +15,4 @@ declare module "foliate-js/view.js";
 declare module "foliate-js/overlayer.js" {
   export const Overlayer: { highlight: unknown };
 }
+declare module "pdfjs-dist/legacy/build/pdf.worker.mjs";

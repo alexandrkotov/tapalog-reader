@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "./auth";
 import { Covers } from "./covers";
+import { FullText } from "./fulltext";
 import { ConfigStore } from "./config";
 import { openDb } from "./db";
 import { Library } from "./library";
@@ -31,7 +32,7 @@ beforeAll(async () => {
   const library = new Library(db, config, data);
   await library.setRoot(lib);
   servers = startServers(
-    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
+    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -212,4 +213,29 @@ test("a book the browser could not draw is marked so it is not tried again", asy
   expect(todo).toHaveLength(1);
   expect((await call(lan, `/api/admin/covers/${todo[0]!.id}`, { body: {}, cookie: adminCookie })).status).toBe(200);
   expect((await call(lan, "/api/admin/covers/todo", { cookie: adminCookie })).body.todo).toEqual([]);
+});
+
+test("search inside books is off until the administrator turns it on, and only the administrator can", async () => {
+  expect((await call(lan, "/api/admin/fulltext", { cookie: "" })).status).toBe(401);
+  expect((await call(lan, "/api/admin/fulltext", { body: { enabled: true } })).status).toBe(401);
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;
+  expect((await call(lan, "/api/admin/fulltext", { cookie: readerCookie })).status).toBe(403);
+  expect((await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: readerCookie })).status).toBe(403);
+  expect((await call(lan, "/api/admin/fulltext", { body: { enabled: "yes" }, cookie: adminCookie })).status).toBe(400);
+
+  expect((await call(lan, "/api/fulltext?q=first")).body).toEqual({ enabled: false, books: [] });
+  expect((await call(lan, "/api/status")).body.fullText).toBe(false);
+
+  expect((await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: adminCookie })).body.enabled).toBe(true);
+  expect((await call(lan, "/api/status")).body.fullText).toBe(true);
+  let found: { books: { name: string; hits: { snippet: string; view: unknown }[] }[] } = { books: [] };
+  for (let i = 0; i < 60 && !found.books.length; i++) {
+    await Bun.sleep(100);
+    found = (await call(lan, "/api/fulltext?q=second")).body;
+  }
+  expect(found.books[0]).toMatchObject({ name: "two", hits: [{ view: { v: 1, offset: 0, range: [0, 6] } }] });
+  expect(found.books[0]!.hits[0]!.snippet).toBe("\u0001second\u0002 book");
+  expect((await call(tunnelSide, "/api/fulltext?q=second")).status).toBe(401); // the internet side still needs a sign-in
+
+  await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie });
 });

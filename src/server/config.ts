@@ -10,9 +10,11 @@ export interface Config {
   lanAccess: "open" | "login";
   /** Whether visitors on the local network may create their own account (never over the tunnel: the admin creates those). */
   allowRegistration: boolean;
+  /** Index the text of every book for search inside books. Off by default: it takes time and disk space. */
+  fullText: boolean;
 }
 
-const DEFAULTS: Config = { libraryPath: null, mode: "lan", lanAccess: "open", allowRegistration: true };
+const DEFAULTS: Config = { libraryPath: null, mode: "lan", lanAccess: "open", allowRegistration: true, fullText: false };
 
 export class ConfigStore {
   private readonly file: string;
@@ -32,6 +34,7 @@ export class ConfigStore {
         mode: raw.mode === "internet" ? "internet" : "lan",
         lanAccess: raw.lanAccess === "login" ? "login" : "open",
         allowRegistration: raw.allowRegistration !== false,
+        fullText: raw.fullText === true,
       };
     } catch {
       return { ...DEFAULTS }; // corrupt file: start fresh rather than refuse to run

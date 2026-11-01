@@ -5,6 +5,7 @@ import { validateName, validatePassword } from "./auth";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
 import { ecatmCover } from "./ecatmCover";
+import type { FullText } from "./fulltext";
 import { MIME, type Format } from "./formats";
 import type { Library } from "./library";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
@@ -18,6 +19,7 @@ export interface App {
   shares: Shares;
   config: ConfigStore;
   covers: Covers;
+  fullText: FullText;
   tunnel: TunnelController;
   /** Addresses of this computer on the local network, for share links. */
   lanUrls(): string[];
@@ -214,10 +216,20 @@ function buildRoutes(app: App, origin: Origin) {
         lastScan: app.library.lastScan,
         tunnelUrl: app.tunnel.url,
         lanUrls: app.lanUrls(),
+        fullText: app.fullText.enabled,
       }),
     ),
     "/api/library": browse(() => json({ folders: app.library.folders(), books: app.library.books().map(withCover) })),
     "/api/search": browse((req) => json({ books: app.library.searchNames(new URL(req.url).searchParams.get("q") ?? "").map(withCover) })),
+    // Search inside books (only when the administrator turned the index on).
+    "/api/fulltext": browse((req) => {
+      const found = app.fullText.search(new URL(req.url).searchParams.get("q") ?? "");
+      const books = found.flatMap((f) => {
+        const book = app.library.byId(f.id);
+        return book ? [{ ...withCover(book), hits: f.hits }] : [];
+      });
+      return json({ enabled: app.fullText.enabled, books });
+    }),
     "/api/cover/:id": browse((req) => {
       const file = app.covers.file(param(req, "id"));
       // A cover never changes for a given id (the id is the book's content), so browsers may keep it.
@@ -338,6 +350,22 @@ function buildRoutes(app: App, origin: Origin) {
         if (!book || book.ext !== "ecatm" || !root) return notFound();
         const cover = await ecatmCover(join(root, ...book.path.split("/"))).catch(() => null);
         return cover ? new Response(cover.bytes as Uint8Array<ArrayBuffer>, { headers: { "Content-Type": cover.mime, "Cache-Control": "no-store" } }) : notFound();
+      }),
+    },
+    "/api/admin/fulltext": {
+      GET: admin(() => json(app.fullText.status())),
+      POST: admin(async (req) => {
+        const data = await body(req);
+        if (typeof data?.enabled !== "boolean") return bad();
+        app.fullText.setEnabled(data.enabled);
+        return json(app.fullText.status());
+      }),
+    },
+    "/api/admin/fulltext/clear": {
+      POST: admin(async (req) => {
+        if (!(await body(req))) return bad();
+        await app.fullText.clear();
+        return json(app.fullText.status());
       }),
     },
     "/api/rescan": {

@@ -1,4 +1,4 @@
-import { indexCatalog } from "@ecm/viewer-engine/server";
+import { extractSearchChunks, indexCatalog, openCatalog } from "@ecm/viewer-engine/server";
 import wasmPath from "sql.js/dist/sql-wasm.wasm" with { type: "file" };
 
 // The engine's server entry runs the sql.js in node_modules, so it needs the wasm of that same
@@ -13,4 +13,16 @@ export async function ecatmCover(path: string): Promise<{ mime: string; bytes: U
   wasm ??= Bun.file(wasmPath).bytes();
   const digest = await indexCatalog(await Bun.file(path).bytes(), { wasm: await wasm });
   return digest.cover ? { mime: digest.cover.mime, bytes: digest.cover.bytes } : null;
+}
+
+/** The searchable text of a catalog, each piece with the picture and hotspot it belongs to. A protected catalog gives none. */
+export async function catalogChunks(path: string): Promise<{ imageId: number; linkId?: number; text: string }[]> {
+  wasm ??= Bun.file(wasmPath).bytes();
+  const db = await openCatalog(await Bun.file(path).bytes(), { wasm: await wasm }).catch(() => null);
+  if (!db) return [];
+  try {
+    return extractSearchChunks(db);
+  } finally {
+    db.close();
+  }
 }

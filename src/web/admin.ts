@@ -10,19 +10,55 @@ interface Settings {
   users: { id: number; name: string; role: "admin" | "user" }[];
 }
 
+interface FullTextStatus {
+  enabled: boolean;
+  total: number;
+  indexed: number;
+  skipped: number;
+  failed: number;
+  working: string | null;
+  bytes: number;
+}
+
+const formatBytes = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`);
+
 /** The administrator's panel: library folder, who may browse, the internet tunnel, accounts. */
 export async function openAdmin(me: { id: number }, onLibraryChanged: () => void): Promise<void> {
   const modal = openModal(t("admin.title"));
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let indexTimer: ReturnType<typeof setTimeout> | undefined;
   const stop = modal.close;
   modal.close = () => {
     clearTimeout(timer);
+    clearTimeout(indexTimer);
     stop();
   };
 
   const section = (title: string, ...children: (Node | string)[]) => el("section", { class: "section" }, el("h3", { textContent: title }), ...children);
   const note = (text: string) => el("p", { class: "muted", textContent: text });
   const post = async (patch: object): Promise<Settings> => api<Settings>("/api/admin/settings", patch);
+
+  /** Search inside books: on/off, how far the background reading has got, and a way to throw the index away. One element, redrawn in place while it works. */
+  const indexBox = el("div");
+  function drawIndex(st: FullTextStatus): void {
+    clearTimeout(indexTimer);
+    const toggle = el("input", { type: "checkbox", checked: st.enabled });
+    toggle.addEventListener("change", async () => drawIndex(await api<FullTextStatus>("/api/admin/fulltext", { enabled: toggle.checked })));
+    const parts: (Node | string)[] = [el("label", { class: "choice" }, toggle, t("admin.fulltext.on"))];
+    if (st.enabled) {
+      const unread = st.skipped + st.failed;
+      parts.push(el("p", { class: "muted", textContent: t("admin.fulltext.progress", { done: st.indexed + unread, total: st.total, size: formatBytes(st.bytes) }) + (unread ? ` · ${t("admin.fulltext.skipped", { n: unread })}` : "") }));
+      if (st.working) parts.push(el("p", { class: "muted", textContent: t("admin.fulltext.working", { name: st.working }) }));
+    }
+    parts.push(note(t("admin.fulltext.note")));
+    if (st.indexed + st.skipped + st.failed > 0) {
+      const clear = el("button", { type: "button", class: "btn", textContent: t("admin.fulltext.clear") });
+      clear.addEventListener("click", async () => confirm(t("admin.fulltext.clear") + "?") && drawIndex(await api<FullTextStatus>("/api/admin/fulltext/clear", {})));
+      parts.push(clear);
+    }
+    indexBox.replaceChildren(...parts);
+    if (st.enabled && (st.working || st.indexed + st.skipped + st.failed < st.total)) indexTimer = setTimeout(() => void api<FullTextStatus>("/api/admin/fulltext").then(drawIndex), 2000);
+  }
 
   function render(s: Settings): void {
     clearTimeout(timer);
@@ -99,9 +135,11 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
       section(t("admin.library"), el("div", { class: "row" }, path, useFolder, rescan), libError),
       section(t("admin.access"), radio("open", t("admin.access.open")), radio("login", t("admin.access.login")), el("label", { class: "choice" }, registration, t("admin.register"))),
       section(t("admin.internet"), el("label", { class: "choice" }, internet, s.mode === "internet" ? t("admin.internet.on") : t("admin.internet.off")), tunnelStatus, note(t("admin.internet.note"))),
+      section(t("admin.fulltext"), indexBox),
       section(t("admin.users"), ...users, el("div", { class: "user-row" }, newName, newPass, newRole, add), addError),
     );
   }
 
   render(await api<Settings>("/api/admin/settings"));
+  drawIndex(await api<FullTextStatus>("/api/admin/fulltext"));
 }

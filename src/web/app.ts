@@ -19,6 +19,7 @@ interface Status {
   books: number;
   scanning: boolean;
   lastScan: { books: number; added: number; removed: number; ms: number } | null;
+  fullText?: boolean;
 }
 interface FolderNode {
   path: string;
@@ -217,28 +218,50 @@ toggleEl.addEventListener("click", () => setPanel(Boolean(panelEl.hidden)));
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let searchAbort: AbortController | undefined;
-let hits: Book[] = [];
+/** What Enter and the arrow keys walk through: file-name hits, then places inside books. */
+let entries: { book: Book; view?: unknown }[] = [];
 let activeHit = -1;
+let fullTextOn = false;
+interface ContentBook extends Book {
+  hits: { snippet: string; view: unknown }[];
+}
 
-function showHits(list: Book[], query: string): void {
-  hits = list;
-  activeHit = list.length ? 0 : -1;
-  resultsEl.replaceChildren();
-  if (!list.length) resultsEl.append(el("li", { class: "empty", textContent: t("search.none", { q: query }) }));
-  list.forEach((book, i) => {
-    const li = el("li", { class: i === 0 ? "active" : "", role: "option" }, thumb(book, "sm"), badge(book.ext), el("span", { textContent: book.name }), el("span", { class: "path", textContent: book.path }));
-    li.dataset.index = String(i);
-    resultsEl.append(li);
+/** A snippet from the index marks the found words with control characters; turn those into <mark>s without ever touching HTML. */
+function snippetNode(snippet: string): HTMLElement {
+  const out = el("span", { class: "snip" });
+  snippet.split("\u0001").forEach((part, i) => {
+    const [marked, rest] = i === 0 ? [null, part] : part.split("\u0002");
+    if (marked !== null && marked !== undefined) out.append(el("mark", { textContent: marked }));
+    out.append(rest ?? "");
   });
+  return out;
+}
+
+function showHits(names: Book[], content: ContentBook[] | null, query: string): void {
+  entries = [];
+  resultsEl.replaceChildren();
+  const row = (book: Book, view: unknown, ...extra: (Node | string)[]) => {
+    const li = el("li", { class: entries.length === 0 ? "active" : "", role: "option" }, thumb(book, "sm"), badge(book.ext), el("span", { class: "name", textContent: book.name }), ...extra);
+    li.dataset.index = String(entries.length);
+    entries.push({ book, view });
+    return li;
+  };
+  for (const book of names) resultsEl.append(row(book, undefined, el("span", { class: "path", textContent: book.path })));
+  if (content?.length) {
+    resultsEl.append(el("li", { class: "group", textContent: t("search.inContents") }));
+    for (const book of content) for (const hit of book.hits) resultsEl.append(row(book, hit.view, snippetNode(hit.snippet)));
+  }
+  activeHit = entries.length ? 0 : -1;
+  if (!entries.length && content !== null) resultsEl.append(el("li", { class: "empty", textContent: t("search.none", { q: query }) }));
   resultsEl.hidden = false;
 }
 
-function pickHit(book: Book): void {
+function pickHit(entry: { book: Book; view?: unknown }): void {
   resultsEl.hidden = true;
   searchEl.blur();
-  location.hash = `#book=${book.id}`;
+  location.hash = `#book=${entry.book.id}${entry.view ? `&view=${encodeURIComponent(JSON.stringify(entry.view))}` : ""}`;
   setPanel(true);
-  reveal(book);
+  reveal(entry.book);
 }
 
 searchEl.addEventListener("input", () => {
@@ -251,9 +274,15 @@ searchEl.addEventListener("input", () => {
   searchTimer = setTimeout(async () => {
     searchAbort?.abort();
     searchAbort = new AbortController();
+    const { signal } = searchAbort;
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: searchAbort.signal });
-      if (res.ok) showHits(((await res.json()) as { books: Book[] }).books, q);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal });
+      if (!res.ok) return;
+      const names = ((await res.json()) as { books: Book[] }).books;
+      showHits(names, fullTextOn ? null : [], q); // names appear at once; the slower content search joins them below
+      if (!fullTextOn) return;
+      const found = await fetch(`/api/fulltext?q=${encodeURIComponent(q)}`, { signal });
+      if (found.ok) showHits(names, ((await found.json()) as { books: ContentBook[] }).books, q);
     } catch {
       /* superseded by a newer query */
     }
@@ -264,23 +293,24 @@ searchEl.addEventListener("keydown", (event) => {
     resultsEl.hidden = true;
     return;
   }
-  if (resultsEl.hidden || !hits.length) return;
+  if (resultsEl.hidden || !entries.length) return;
   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
-    activeHit = (activeHit + (event.key === "ArrowDown" ? 1 : -1) + hits.length) % hits.length;
-    resultsEl.querySelectorAll("li").forEach((li, i) => li.classList.toggle("active", i === activeHit));
-    resultsEl.querySelectorAll("li")[activeHit]?.scrollIntoView({ block: "nearest" });
-  } else if (event.key === "Enter" && hits[activeHit]) {
-    pickHit(hits[activeHit]!);
+    activeHit = (activeHit + (event.key === "ArrowDown" ? 1 : -1) + entries.length) % entries.length;
+    const rows = resultsEl.querySelectorAll("li[data-index]");
+    rows.forEach((row, i) => row.classList.toggle("active", i === activeHit));
+    rows[activeHit]?.scrollIntoView({ block: "nearest" });
+  } else if (event.key === "Enter" && entries[activeHit]) {
+    pickHit(entries[activeHit]!);
   }
 });
 resultsEl.addEventListener("mousedown", (event) => {
-  const li = (event.target as HTMLElement).closest<HTMLElement>("li[data-index]");
-  if (li) pickHit(hits[Number(li.dataset.index)]!);
+  const row = (event.target as HTMLElement).closest<HTMLElement>("li[data-index]");
+  if (row) pickHit(entries[Number(row.dataset.index)]!);
 });
 searchEl.addEventListener("blur", () => setTimeout(() => (resultsEl.hidden = true), 120));
 searchEl.addEventListener("focus", () => {
-  if (hits.length && searchEl.value.trim()) resultsEl.hidden = false;
+  if (entries.length && searchEl.value.trim()) resultsEl.hidden = false;
 });
 
 // ---------- reader ----------
@@ -438,6 +468,7 @@ let pollTimer: ReturnType<typeof setInterval> | undefined;
 
 async function pollStatus(): Promise<Status> {
   const status = await api<Status>("/api/status");
+  fullTextOn = status.fullText === true;
   scanEl.hidden = !status.scanning;
   const key = JSON.stringify(status.lastScan);
   if (lastScanKey !== null && key !== lastScanKey) await loadLibrary();

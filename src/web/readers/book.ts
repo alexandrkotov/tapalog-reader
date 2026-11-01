@@ -10,9 +10,12 @@ import { t } from "../i18n";
 export interface TextView {
   v: 1;
   /** Start of what is on screen. */
-  cfi: string;
+  cfi?: string;
   /** The marked passage, as a range CFI. */
   range?: string;
+  /** Where to open when there is no CFI (search results use these): a spine item, counted from 0, or how far into the book (0..1). */
+  section?: number;
+  fraction?: number;
 }
 
 export interface BookOptions {
@@ -53,7 +56,8 @@ interface FoliateView extends HTMLElement {
   open(book: File): Promise<void>;
   close(): void;
   init(options: { lastLocation?: string | null; showTextStart?: boolean }): Promise<void>;
-  goTo(target: string): Promise<unknown>;
+  goTo(target: string | number): Promise<unknown>;
+  goToFraction(fraction: number): Promise<void>;
   goToTextStart(): Promise<unknown>;
   prev(): Promise<void>;
   next(): Promise<void>;
@@ -100,11 +104,15 @@ function button(label: string, title: string, onClick: () => void): HTMLButtonEl
   return b;
 }
 
-/** A view that came from a link is untrusted input: keep only what looks like CFIs. */
+/** A view that came from a link is untrusted input: keep only what looks like CFIs and a fraction. */
 function cleanView(view: TextView | null | undefined): TextView | null {
-  if (!view || typeof view !== "object" || typeof view.cfi !== "string" || !CFI_RE.test(view.cfi)) return null;
+  if (!view || typeof view !== "object") return null;
+  const cfi = typeof view.cfi === "string" && CFI_RE.test(view.cfi) ? view.cfi : undefined;
   const range = typeof view.range === "string" && CFI_RE.test(view.range) ? view.range : undefined;
-  return { v: 1, cfi: view.cfi, ...(range ? { range } : {}) };
+  const fraction = typeof view.fraction === "number" && view.fraction >= 0 && view.fraction <= 1 ? view.fraction : undefined;
+  const section = Number.isInteger(view.section) && view.section! >= 0 && view.section! < 100000 ? view.section : undefined;
+  if (!cfi && !range && fraction === undefined && section === undefined) return null;
+  return { v: 1, ...(cfi ? { cfi } : {}), ...(range ? { range } : {}), ...(section !== undefined ? { section } : {}), ...(fraction !== undefined ? { fraction } : {}) };
 }
 
 /** Only these may be opened from a link inside a book; `javascript:` and friends are dropped. */
@@ -314,6 +322,10 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     clearButton.hidden = !mark;
     try {
       await view.init({ lastLocation: initial?.range ?? initial?.cfi ?? null, showTextStart: true });
+      if (!initial?.range && !initial?.cfi) {
+        if (initial?.section !== undefined) await view.goTo(initial.section);
+        else if (initial?.fraction !== undefined) await view.goToFraction(initial.fraction);
+      }
     } catch {
       await view.goToTextStart();
     }
