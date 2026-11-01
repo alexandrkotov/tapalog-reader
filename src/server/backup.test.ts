@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "./auth";
@@ -8,15 +8,21 @@ import { Bookmarks } from "./bookmarks";
 import { ConfigStore } from "./config";
 import { openDb } from "./db";
 import { Shares } from "./shares";
+import { removeDir } from "./testutil";
 
 const base = mkdtempSync(join(tmpdir(), "reader-backup-"));
-afterAll(() => rmSync(base, { recursive: true, force: true }));
+const open: ReturnType<typeof openDb>[] = [];
+afterAll(() => {
+  for (const db of open) db.close();
+  removeDir(base);
+});
 let n = 0;
 
 function install() {
   const dir = join(base, String(n++));
   Bun.spawnSync(["mkdir", "-p", dir]);
   const db = openDb(dir);
+  open.push(db);
   const config = new ConfigStore(dir);
   return { db, config, auth: new Auth(db), bookmarks: new Bookmarks(db), shares: new Shares(db), backup: new Backup(db, config) };
 }

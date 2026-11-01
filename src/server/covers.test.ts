@@ -1,11 +1,12 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, utimesSync } from "node:fs";
+import { mkdtempSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Covers } from "./covers";
+import { removeDir } from "./testutil";
 
 const dir = mkdtempSync(join(tmpdir(), "reader-covers-"));
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => removeDir(dir));
 
 const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, ...new Array(200).fill(1)]);
 const book = (id: string, ext = "pdf") => ({ id, path: `${id}.${ext}`, name: id, ext, size: 1 });

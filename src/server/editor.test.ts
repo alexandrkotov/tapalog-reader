@@ -6,9 +6,14 @@ import { ConfigStore } from "./config";
 import { openDb } from "./db";
 import { EditError, LibraryEditor, validName } from "./editor";
 import { Library } from "./library";
+import { removeDir } from "./testutil";
 
 const base = mkdtempSync(join(tmpdir(), "reader-edit-"));
-afterAll(() => rmSync(base, { recursive: true, force: true }));
+const opened: { close(): void }[] = [];
+afterAll(() => {
+  for (const x of opened) x.close();
+  removeDir(base);
+});
 
 let lib: string;
 let data: string;
@@ -28,7 +33,9 @@ beforeEach(async () => {
   writeFileSync(join(lib, "A/inner/three.txt"), "third");
   writeFileSync(join(lib, "B/one.txt"), "other one");
   const config = new ConfigStore(join(dir));
-  library = new Library(openDb(dir), config, data);
+  const db = openDb(dir);
+  library = new Library(db, config, data);
+  opened.push(db, library);
   await library.setRoot(lib);
   editor = new LibraryEditor(library, data);
 });

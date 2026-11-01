@@ -1,16 +1,18 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zipSync, strToU8 } from "fflate";
 import { ConfigStore } from "./config";
 import { openDb } from "./db";
+import { removeDir } from "./testutil";
 import { FullText, matchQuery, viewFor } from "./fulltext";
 import { Library } from "./library";
 
 let lib: string;
 let data: string;
 let library: Library;
+let libraryDb: ReturnType<typeof openDb>;
 let fullText: FullText;
 const ids: Record<string, string> = {};
 
@@ -65,15 +67,18 @@ beforeAll(async () => {
   writeFileSync(join(lib, "broken.epub"), "this is not a zip");
   writeFileSync(join(lib, "comic.cbz"), "not indexed at all");
   const config = new ConfigStore(data);
-  library = new Library(openDb(data), config, data);
+  libraryDb = openDb(data);
+  library = new Library(libraryDb, config, data);
   await library.setRoot(lib);
   for (const b of library.books()) ids[b.name] = b.id;
   fullText = new FullText(data, library, config, 0);
 });
 afterAll(async () => {
   await fullText.close();
-  rmSync(lib, { recursive: true, force: true });
-  rmSync(data, { recursive: true, force: true });
+  library.close();
+  libraryDb.close();
+  removeDir(lib);
+  removeDir(data);
 });
 
 async function settled(): Promise<void> {

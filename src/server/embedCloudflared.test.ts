@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanupExtracted, extractEmbeddedBinary } from "./embedCloudflared";
+import { removeDir } from "./testutil";
 
 test("copies of the embedded binary left by dead processes are removed, live ones kept, and this run's copy is deleted on cleanup", async () => {
   const dir = mkdtempSync(join(tmpdir(), "reader-tmp-"));
-  const previous = process.env.TMPDIR;
-  process.env.TMPDIR = dir; // os.tmpdir() reads it at call time
+  const names = ["TMPDIR", "TEMP", "TMP"] as const; // os.tmpdir() reads TMPDIR, or TEMP / TMP on Windows, at call time
+  const previous = names.map((n) => process.env[n]);
+  for (const n of names) process.env[n] = dir;
   try {
     const source = join(dir, "source-binary");
     writeFileSync(source, "pretend this is cloudflared");
@@ -26,8 +28,7 @@ test("copies of the embedded binary left by dead processes are removed, live one
     cleanupExtracted();
     expect(existsSync(mine)).toBe(false);
   } finally {
-    if (previous === undefined) delete process.env.TMPDIR;
-    else process.env.TMPDIR = previous;
-    rmSync(dir, { recursive: true, force: true });
+    names.forEach((n, i) => (previous[i] === undefined ? delete process.env[n] : (process.env[n] = previous[i])));
+    removeDir(dir);
   }
 });

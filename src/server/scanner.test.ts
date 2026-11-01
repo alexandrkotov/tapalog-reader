@@ -4,17 +4,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "./db";
 import { scanLibrary } from "./scanner";
+import { removeDir } from "./testutil";
 
 let lib: string;
 let data: string;
+const open: ReturnType<typeof openDb>[] = [];
+const database = () => {
+  const db = openDb(data);
+  open.push(db);
+  return db;
+};
 
 beforeEach(() => {
   lib = mkdtempSync(join(tmpdir(), "reader-lib-"));
   data = mkdtempSync(join(tmpdir(), "reader-data-"));
 });
 afterEach(() => {
-  rmSync(lib, { recursive: true, force: true });
-  rmSync(data, { recursive: true, force: true });
+  for (const db of open.splice(0)) db.close();
+  removeDir(lib);
+  removeDir(data);
 });
 
 const ids = (db: ReturnType<typeof openDb>) =>
@@ -27,7 +35,7 @@ test("lists supported formats in nested folders and skips hidden and unknown fil
   writeFileSync(join(lib, "a/story.fb2"), "fb2");
   writeFileSync(join(lib, "a/readme.md"), "ignored");
   writeFileSync(join(lib, ".hidden/secret.pdf"), "ignored");
-  const db = openDb(data);
+  const db = database();
   const result = await scanLibrary(db, lib);
   expect(result).toMatchObject({ books: 2, added: 2, removed: 0 });
   expect(Object.keys(ids(db)).sort()).toEqual(["a/b/book.PDF", "a/story.fb2"]);
@@ -36,7 +44,7 @@ test("lists supported formats in nested folders and skips hidden and unknown fil
 
 test("a book keeps its id when renamed or moved", async () => {
   writeFileSync(join(lib, "old.epub"), "same content ".repeat(100));
-  const db = openDb(data);
+  const db = database();
   await scanLibrary(db, lib);
   const before = ids(db)["old.epub"];
   mkdirSync(join(lib, "moved"));
@@ -49,7 +57,7 @@ test("a book keeps its id when renamed or moved", async () => {
 test("an unchanged file is not read again and a deleted one disappears", async () => {
   writeFileSync(join(lib, "x.txt"), "x");
   writeFileSync(join(lib, "y.txt"), "y");
-  const db = openDb(data);
+  const db = database();
   await scanLibrary(db, lib);
   rmSync(join(lib, "y.txt"));
   const result = await scanLibrary(db, lib);
@@ -61,6 +69,6 @@ test("the data folder inside the library is never scanned", async () => {
   mkdirSync(inner);
   writeFileSync(join(inner, "preview.pdf"), "cache");
   writeFileSync(join(lib, "real.pdf"), "book");
-  const db = openDb(data);
+  const db = database();
   expect(await scanLibrary(db, lib, [inner])).toMatchObject({ books: 1 });
 });

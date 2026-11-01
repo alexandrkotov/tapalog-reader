@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "./auth";
@@ -13,12 +13,14 @@ import { openDb } from "./db";
 import { Library } from "./library";
 import { startServers, type Servers } from "./server";
 import { Shares } from "./shares";
+import { removeDir } from "./testutil";
 import { TunnelController } from "./tunnelController";
 
 let lib: string;
 let data: string;
 let servers: Servers;
 let db: ReturnType<typeof openDb>;
+let library: Library;
 let lan: string;
 let tunnelSide: string; // the loopback socket the internet tunnel forwards to
 const modes: string[] = [];
@@ -32,7 +34,7 @@ beforeAll(async () => {
   writeFileSync(join(lib, "sub/three.pdf"), "%PDF-1.4 not really a pdf, covers are drawn by the browser");
   db = openDb(data);
   const config = new ConfigStore(data);
-  const library = new Library(db, config, data);
+  library = new Library(db, config, data);
   await library.setRoot(lib);
   servers = startServers(
     { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), editor: new LibraryEditor(library, data), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
@@ -43,8 +45,10 @@ beforeAll(async () => {
 });
 afterAll(() => {
   servers.stop();
-  rmSync(lib, { recursive: true, force: true });
-  rmSync(data, { recursive: true, force: true });
+  library.close();
+  db.close();
+  removeDir(lib);
+  removeDir(data);
 });
 
 async function call(base: string, path: string, opts: { method?: string; body?: unknown; cookie?: string; headers?: Record<string, string> } = {}) {

@@ -1,5 +1,4 @@
 import { Database } from "bun:sqlite";
-import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { ConfigStore } from "./config";
 import type { BookRow, Library } from "./library";
@@ -76,6 +75,11 @@ export class FullText {
   private open(): Database {
     const db = new Database(join(this.dataDir, "fulltext.db"), { create: true });
     db.run("PRAGMA journal_mode = WAL");
+    this.createTables(db);
+    return db;
+  }
+
+  private createTables(db: Database): void {
     db.run(`CREATE TABLE IF NOT EXISTS docs (
       id     TEXT PRIMARY KEY,
       state  TEXT NOT NULL,       -- 'indexing' | 'done' | 'skipped' | 'failed'
@@ -91,7 +95,6 @@ export class FullText {
       db.run("DELETE FROM chunks WHERE rowid >= ?", [row.first]);
       db.run("DELETE FROM docs WHERE id = ?", [row.id]);
     }
-    return db;
   }
 
   get enabled(): boolean {
@@ -248,9 +251,12 @@ export class FullText {
   /** Throws the whole index away (and starts again if search is still on). */
   async clear(): Promise<void> {
     await this.stop();
-    this.db.close();
-    for (const suffix of ["", "-wal", "-shm"]) rmSync(join(this.dataDir, `fulltext.db${suffix}`), { force: true });
-    this.db = this.open();
+    // emptied in place: deleting the database file fails on Windows, where an open file cannot be removed
+    this.db.run("DROP TABLE IF EXISTS chunks");
+    this.db.run("DROP TABLE IF EXISTS docs");
+    this.db.run("VACUUM");
+    this.db.run("PRAGMA wal_checkpoint(TRUNCATE)");
+    this.createTables(this.db);
     if (this.enabled) this.kick();
   }
 

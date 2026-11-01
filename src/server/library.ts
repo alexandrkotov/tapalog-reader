@@ -42,6 +42,12 @@ export class Library {
     await this.start();
   }
 
+  /** Stops watching the folder (a watched folder cannot be deleted on Windows). */
+  close(): void {
+    this.stopWatching?.();
+    this.stopWatching = null;
+  }
+
   /** Scans now and begins watching for changes. */
   async start(): Promise<void> {
     this.stopWatching?.();
