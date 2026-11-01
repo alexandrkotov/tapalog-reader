@@ -3,6 +3,8 @@ import type { Server } from "bun";
 import type { Auth, User } from "./auth";
 import { validateName, validatePassword } from "./auth";
 import type { ConfigStore } from "./config";
+import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
+import { ecatmCover } from "./ecatmCover";
 import { MIME, type Format } from "./formats";
 import type { Library } from "./library";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
@@ -15,6 +17,7 @@ export interface App {
   auth: Auth;
   shares: Shares;
   config: ConfigStore;
+  covers: Covers;
   tunnel: TunnelController;
   /** Addresses of this computer on the local network, for share links. */
   lanUrls(): string[];
@@ -88,6 +91,7 @@ const isLoopback = (ip: string) => ip === "127.0.0.1" || ip === "::1" || ip === 
 type Handler = (req: Bun.BunRequest, server: Server<unknown>) => Response | Promise<Response>;
 
 function buildRoutes(app: App, origin: Origin) {
+  const withCover = <T extends { id: string }>(b: T) => (app.covers.has(b.id) ? { ...b, cover: true } : b);
   const secureCookie = origin === "tunnel"; // the tunnel always speaks https to the visitor
   const user = (req: Request): User | null => app.auth.userFor(req);
   const canBrowse = (req: Request) => user(req) !== null || (origin === "lan" && app.config.get().lanAccess === "open");
@@ -105,17 +109,20 @@ function buildRoutes(app: App, origin: Origin) {
     return me.role === "admin" ? handler(req, server, me) : forbidden();
   };
 
+  const sameOrigin = (req: Request): boolean => {
+    const originHeader = req.headers.get("origin");
+    if (!originHeader) return true;
+    try {
+      return new URL(originHeader).host === req.headers.get("host");
+    } catch {
+      return false;
+    }
+  };
+
   /** State-changing requests must be JSON from our own pages: a cross-site form post can't send that. */
   async function body(req: Request): Promise<Record<string, unknown> | null> {
     if (!(req.headers.get("content-type") ?? "").includes("application/json")) return null;
-    const originHeader = req.headers.get("origin");
-    if (originHeader) {
-      try {
-        if (new URL(originHeader).host !== req.headers.get("host")) return null;
-      } catch {
-        return null;
-      }
-    }
+    if (!sameOrigin(req)) return null;
     const data = await req.json().catch(() => null);
     return data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
   }
@@ -209,8 +216,13 @@ function buildRoutes(app: App, origin: Origin) {
         lanUrls: app.lanUrls(),
       }),
     ),
-    "/api/library": browse(() => json({ folders: app.library.folders(), books: app.library.books() })),
-    "/api/search": browse((req) => json({ books: app.library.searchNames(new URL(req.url).searchParams.get("q") ?? "") })),
+    "/api/library": browse(() => json({ folders: app.library.folders(), books: app.library.books().map(withCover) })),
+    "/api/search": browse((req) => json({ books: app.library.searchNames(new URL(req.url).searchParams.get("q") ?? "").map(withCover) })),
+    "/api/cover/:id": browse((req) => {
+      const file = app.covers.file(param(req, "id"));
+      // A cover never changes for a given id (the id is the book's content), so browsers may keep it.
+      return file ? new Response(Bun.file(file), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" } }) : notFound();
+    }),
     "/api/file/:id": browse((req) => {
       // Only ids from our own index map to a path: there is no way to name an arbitrary file.
       const book = app.library.byId(param(req, "id"));
@@ -295,6 +307,37 @@ function buildRoutes(app: App, origin: Origin) {
         const password = validatePassword((await body(req))?.password);
         if (!password) return bad("password too short");
         return (await app.auth.setPassword(Number(param(req, "id")), password)) ? json({ ok: true }) : notFound();
+      }),
+    },
+    // ----- cover thumbnails: drawn by the administrator's browser, stored here -----
+    "/api/admin/covers/todo": {
+      GET: admin(() => {
+        const { todo, remaining } = app.covers.missing(app.library.books(), 100);
+        return json({ todo: todo.map(({ id, ext, size }) => ({ id, ext, size })), remaining });
+      }),
+    },
+    "/api/admin/covers/:id": {
+      PUT: admin(async (req) => {
+        const book = app.library.byId(param(req, "id"));
+        if (!book || !COVER_FORMATS.has(book.ext) || !sameOrigin(req) || req.headers.get("content-type") !== "image/jpeg") return bad("not a cover upload");
+        const bytes = new Uint8Array(await req.arrayBuffer());
+        return bytes.length <= MAX_COVER_BYTES && app.covers.save(book.id, bytes) ? json({ ok: true }) : bad("not a usable JPEG");
+      }),
+      POST: admin(async (req) => {
+        const book = app.library.byId(param(req, "id"));
+        if (!book || !(await body(req))) return bad();
+        app.covers.markNone(book.id); // "nothing to show": the worker will not ask again
+        return json({ ok: true });
+      }),
+    },
+    "/api/admin/covers/:id/source": {
+      // Catalogs are read here (the engine's server side); every other format is read in the browser.
+      GET: admin(async (req) => {
+        const book = app.library.byId(param(req, "id"));
+        const root = app.library.root;
+        if (!book || book.ext !== "ecatm" || !root) return notFound();
+        const cover = await ecatmCover(join(root, ...book.path.split("/"))).catch(() => null);
+        return cover ? new Response(cover.bytes as Uint8Array<ArrayBuffer>, { headers: { "Content-Type": cover.mime, "Cache-Control": "no-store" } }) : notFound();
       }),
     },
     "/api/rescan": {

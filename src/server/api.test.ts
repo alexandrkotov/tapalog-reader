@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "./auth";
+import { Covers } from "./covers";
 import { ConfigStore } from "./config";
 import { openDb } from "./db";
 import { Library } from "./library";
@@ -24,12 +25,13 @@ beforeAll(async () => {
   mkdirSync(join(lib, "sub"));
   writeFileSync(join(lib, "one.txt"), "first book, 0123456789");
   writeFileSync(join(lib, "sub/two.txt"), "second book");
+  writeFileSync(join(lib, "sub/three.pdf"), "%PDF-1.4 not really a pdf, covers are drawn by the browser");
   db = openDb(data);
   const config = new ConfigStore(data);
   const library = new Library(db, config, data);
   await library.setRoot(lib);
   servers = startServers(
-    { library, auth: new Auth(db), shares: new Shares(db), config, tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
+    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -170,4 +172,44 @@ test("a changed password signs that account out everywhere", async () => {
   expect((await call(lan, `/api/admin/users/${reader.id}/password`, { body: { password: "newpin9" }, cookie: adminCookie })).status).toBe(200);
   expect((await call(lan, "/api/me", { cookie: userCookie })).body.user).toBeNull();
   expect((await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).status).toBe(200);
+});
+
+test("cover thumbnails are uploaded by the administrator, stored per book and served to readers", async () => {
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!; // the password test above changed it
+  const pdf = (await call(lan, "/api/library")).body.books.find((b: { name: string }) => b.name === "three") as { id: string; cover?: boolean };
+  const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, ...new Array(300).fill(7)]);
+  const put = (id: string, init: { cookie?: string; type?: string; body?: BodyInit; headers?: Record<string, string> }) =>
+    fetch(`${lan}/api/admin/covers/${id}`, { method: "PUT", headers: { "Content-Type": init.type ?? "image/jpeg", ...(init.cookie ? { Cookie: init.cookie } : {}), ...init.headers }, body: init.body ?? jpeg });
+
+  // only a book with something to show is on the to-do list, and only the administrator sees it
+  expect((await call(lan, "/api/admin/covers/todo", { cookie: readerCookie })).status).toBe(403);
+  expect((await call(lan, "/api/admin/covers/todo", { cookie: adminCookie })).body).toEqual({ todo: [{ id: pdf.id, ext: "pdf", size: expect.any(Number) }], remaining: 1 });
+
+  expect((await put(pdf.id, {})).status).toBe(401);
+  expect((await put(pdf.id, { cookie: readerCookie })).status).toBe(403);
+  expect((await put(pdf.id, { cookie: adminCookie, type: "text/plain" })).status).toBe(400);
+  expect((await put(pdf.id, { cookie: adminCookie, headers: { Origin: "https://evil.example" } })).status).toBe(400);
+  expect((await put(pdf.id, { cookie: adminCookie, body: new TextEncoder().encode("<html>not a jpeg, long enough to pass the size check....................................................................") })).status).toBe(400);
+  expect((await put(pdf.id, { cookie: adminCookie, body: new Uint8Array(500 * 1024).fill(0xff) })).status).toBe(400);
+  expect((await put(bookId, { cookie: adminCookie })).status).toBe(400); // a .txt has no cover
+
+  expect((await call(lan, `/api/cover/${pdf.id}`)).status).toBe(404);
+  expect((await put(pdf.id, { cookie: adminCookie })).status).toBe(200);
+  const served = await fetch(`${lan}/api/cover/${pdf.id}`);
+  expect(served.headers.get("content-type")).toBe("image/jpeg");
+  expect(new Uint8Array(await served.arrayBuffer())).toEqual(jpeg);
+  expect((await call(lan, "/api/library")).body.books.find((b: { id: string }) => b.id === pdf.id).cover).toBe(true);
+  expect((await call(lan, "/api/search?q=three")).body.books[0].cover).toBe(true);
+  expect((await call(tunnelSide, `/api/cover/${pdf.id}`)).status).toBe(401);
+  expect((await call(lan, "/api/admin/covers/todo", { cookie: adminCookie })).body.remaining).toBe(0);
+});
+
+test("a book the browser could not draw is marked so it is not tried again", async () => {
+  writeFileSync(join(lib, "broken.pdf"), "%PDF-1.4 broken");
+  await call(lan, "/api/rescan", { method: "POST", body: {}, cookie: adminCookie });
+  await Bun.sleep(400);
+  const todo = (await call(lan, "/api/admin/covers/todo", { cookie: adminCookie })).body.todo as { id: string }[];
+  expect(todo).toHaveLength(1);
+  expect((await call(lan, `/api/admin/covers/${todo[0]!.id}`, { body: {}, cookie: adminCookie })).status).toBe(200);
+  expect((await call(lan, "/api/admin/covers/todo", { cookie: adminCookie })).body.todo).toEqual([]);
 });

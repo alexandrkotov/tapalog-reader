@@ -16,6 +16,8 @@ export interface BookRow {
 /** Owns the scan state of the one configured library folder and keeps it fresh. */
 export class Library {
   scanning = false;
+  /** Called after every finished scan. */
+  onScan: (() => void) | null = null;
   lastScan: ScanResult | null = null;
   private stopWatching: (() => void) | null = null;
   private rescanQueued = false;
@@ -60,6 +62,7 @@ export class Library {
     this.scanning = true;
     try {
       this.lastScan = await scanLibrary(this.db, root, [this.dataDir]);
+      this.onScan?.();
       return this.lastScan;
     } finally {
       this.scanning = false;

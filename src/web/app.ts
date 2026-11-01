@@ -1,5 +1,6 @@
 import { authScreen, openAuthDialog, setupScreen, signOut, type Me } from "./account";
 import { openAdmin } from "./admin";
+import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { mountReader, VIEW_FORMATS, type Reader } from "./readers/mount";
 import { openMyLinks, openShareDialog } from "./share";
@@ -11,6 +12,7 @@ interface Book {
   name: string;
   ext: string;
   size: number;
+  cover?: boolean;
 }
 interface Status {
   configured: boolean;
@@ -33,6 +35,7 @@ const panelEl = $("panel");
 const searchEl = $<HTMLInputElement>("search");
 const resultsEl = $("search-results");
 const scanEl = $("scan-state");
+const coverEl = $("cover-state");
 const accountEl = $("account");
 const langEl = $<HTMLSelectElement>("lang");
 const toggleEl = $("panel-toggle");
@@ -43,6 +46,9 @@ let me: Me | null = null;
 let books: Book[] = [];
 let booksById = new Map<string, Book>();
 let root: FolderNode = { path: "", name: "", folders: [], books: [], total: 0 };
+let folderNodes = new Map<string, FolderNode>();
+/** Ids whose cover was made after the library list was loaded. */
+const newCovers = new Set<string>();
 const expanded = new Set<string>(JSON.parse(store.get("expanded") ?? "[]") as string[]);
 let currentId: string | null = null;
 
@@ -64,6 +70,7 @@ function buildTree(folders: string[], list: Book[]): FolderNode {
   }
   const count = (n: FolderNode): number => (n.total = n.books.length + n.folders.reduce((s, f) => s + count(f), 0));
   count(nodes.get("")!);
+  folderNodes = nodes;
   return nodes.get("")!;
 }
 
@@ -91,14 +98,22 @@ function renderTree(): void {
 }
 
 treeEl.addEventListener("click", (event) => {
-  const row = (event.target as HTMLElement).closest<HTMLElement>(".node");
+  const target = event.target as HTMLElement;
+  const row = target.closest<HTMLElement>(".node");
   if (!row) return;
   if (row.dataset.folder !== undefined) {
     const path = row.dataset.folder;
-    if (expanded.has(path)) expanded.delete(path);
-    else expanded.add(path);
-    store.set("expanded", JSON.stringify([...expanded]));
-    renderTree();
+    if (target.classList.contains("twisty")) {
+      // the arrow only opens or closes the folder...
+      if (expanded.has(path)) expanded.delete(path);
+      else expanded.add(path);
+      store.set("expanded", JSON.stringify([...expanded]));
+      renderTree();
+    } else {
+      // ...its name also shows what is inside, as a shelf of covers
+      location.hash = `#folder=${encodeURIComponent(path)}`;
+      if (matchMedia("(max-width: 720px)").matches) panelEl.hidden = true;
+    }
   } else if (row.dataset.book) {
     location.hash = `#book=${row.dataset.book}`;
     if (matchMedia("(max-width: 720px)").matches) panelEl.hidden = true; // phone: the panel covers the reader
@@ -119,7 +134,74 @@ async function loadLibrary(): Promise<void> {
   booksById = new Map(books.map((b) => [b.id, b]));
   root = buildTree(data.folders, books);
   renderTree();
+  // Covers are drawn by the administrator's browser: while one has the page open, missing ones get made.
+  if (me?.user?.role === "admin") void makeCovers({ onSaved: coverSaved, onState: coverState });
 }
+
+function coverSaved(id: string): void {
+  newCovers.add(id);
+  for (const box of document.querySelectorAll<HTMLElement>(`.thumb[data-cover-id="${id}"]`)) fillThumb(box, id, true);
+}
+
+function coverState(left: number): void {
+  coverEl.hidden = left === 0;
+  coverEl.textContent = t("cover.left", { n: left });
+}
+
+// ---------- covers and shelves ----------
+
+const hasCover = (book: Book) => book.cover === true || newCovers.has(book.id);
+
+function fillThumb(box: HTMLElement, id: string, covered: boolean, ext = ""): void {
+  box.replaceChildren(covered ? el("img", { src: `/api/cover/${id}`, alt: "", loading: "lazy", decoding: "async" }) : el("span", { class: `ph badge-${ext}`, textContent: ext }));
+}
+
+/** A book's cover, or a coloured tile with its format until a cover exists. */
+function thumb(book: Book, extra = ""): HTMLElement {
+  const box = el("div", { class: `thumb ${extra}`.trim() });
+  box.dataset.coverId = book.id;
+  fillThumb(box, book.id, hasCover(book), book.ext);
+  return box;
+}
+
+const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { numeric: true });
+const SHELF_PAGE = 240;
+
+/** What is inside one folder, as cards: sub-folders first, then books with their covers. */
+function showShelf(path: string): void {
+  stopReader();
+  const node = folderNodes.get(path) ?? root;
+  const parts = node.path ? node.path.split("/") : [];
+  for (let i = 1; i <= parts.length; i++) expanded.add(parts.slice(0, i).join("/"));
+  currentId = null;
+  renderTree();
+  document.title = `${node.name || t("shelf.root")} — ${t("app.title")}`;
+
+  const crumbs: Node[] = [el("a", { href: "#", textContent: t("shelf.root") })];
+  parts.forEach((part, i) => crumbs.push(el("span", { class: "sep", textContent: "/" }), el("a", { href: `#folder=${encodeURIComponent(parts.slice(0, i + 1).join("/"))}`, textContent: part })));
+  const cards: HTMLElement[] = [
+    ...[...node.folders].sort(byName).map((f) =>
+      el("a", { class: "card folder", href: `#folder=${encodeURIComponent(f.path)}`, title: f.path }, el("div", { class: "thumb folder-tile", textContent: "📁" }), el("div", { class: "cap" }, el("span", { class: "name", textContent: f.name }), el("span", { class: "count", textContent: String(f.total) }))),
+    ),
+    ...[...node.books].sort(byName).map((b) => el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.name })))),
+  ];
+  const grid = el("div", { class: "shelf" });
+  const more = el("button", { type: "button", class: "btn shelf-more" });
+  let shown = 0;
+  const renderMore = () => {
+    grid.append(...cards.slice(shown, shown + SHELF_PAGE));
+    shown = Math.min(cards.length, shown + SHELF_PAGE);
+    more.hidden = shown >= cards.length;
+    more.textContent = t("shelf.more", { n: cards.length - shown });
+  };
+  more.addEventListener("click", renderMore);
+  renderMore();
+  mainEl.replaceChildren(
+    el("div", { class: "shelf-head" }, ...crumbs),
+    el("div", { class: "shelf-body" }, cards.length ? grid : el("p", { class: "shelf-empty", textContent: t("shelf.empty") }), more),
+  );
+}
+
 
 // ---------- panel toggle ----------
 
@@ -144,7 +226,7 @@ function showHits(list: Book[], query: string): void {
   resultsEl.replaceChildren();
   if (!list.length) resultsEl.append(el("li", { class: "empty", textContent: t("search.none", { q: query }) }));
   list.forEach((book, i) => {
-    const li = el("li", { class: i === 0 ? "active" : "", role: "option" }, badge(book.ext), el("span", { textContent: book.name }), el("span", { class: "path", textContent: book.path }));
+    const li = el("li", { class: i === 0 ? "active" : "", role: "option" }, thumb(book, "sm"), badge(book.ext), el("span", { textContent: book.name }), el("span", { class: "path", textContent: book.path }));
     li.dataset.index = String(i);
     resultsEl.append(li);
   });
@@ -218,7 +300,7 @@ function message(title: string, text: string, ...extra: Node[]): void {
 }
 
 /** The shape of a view depends on the book's format: EcatmView for catalogs, PageView for paged documents. */
-function parseHash(): { book: string | null; view: unknown } {
+function parseHash(): { book: string | null; folder: string | null; view: unknown } {
   const params = new URLSearchParams(location.hash.slice(1));
   let view: unknown = null;
   try {
@@ -227,7 +309,7 @@ function parseHash(): { book: string | null; view: unknown } {
   } catch {
     /* a broken link opens the book at its start */
   }
-  return { book: params.get("book"), view };
+  return { book: params.get("book"), folder: params.get("folder"), view };
 }
 
 const writeView = (book: Book, view: unknown) => history.replaceState(null, "", `#book=${book.id}&view=${encodeURIComponent(JSON.stringify(view))}`);
@@ -272,13 +354,15 @@ function openBook(book: Book, view: unknown): void {
 }
 
 function route(): void {
-  const { book, view } = parseHash();
+  const { book, folder, view } = parseHash();
   if (!book) {
-    currentId = null;
-    document.title = t("app.title");
-    renderTree();
-    message(t("pick.title"), books.length ? t("pick.some") : t("pick.empty"));
-    return;
+    if (!books.length) {
+      currentId = null;
+      document.title = t("app.title");
+      renderTree();
+      return message(t("pick.title"), t("pick.empty"));
+    }
+    return showShelf(folder ?? "");
   }
   const found = booksById.get(book);
   if (!found) return message(t("book.missing.title"), t("book.missing.text"));
@@ -300,6 +384,12 @@ function applyStaticText(): void {
   scanEl.textContent = t("scan.running");
   langEl.replaceChildren(...(Object.entries(LANGS) as [Lang, string][]).map(([code, name]) => el("option", { value: code, textContent: name, selected: code === lang() })));
 }
+$("brand").addEventListener("click", (event) => {
+  event.preventDefault();
+  if (sharePage || !books.length) return;
+  history.pushState(null, "", location.pathname);
+  route();
+});
 langEl.addEventListener("change", () => {
   setLang(langEl.value as Lang);
   void (sharePage ? bootShare(sharePage) : boot());
@@ -369,6 +459,8 @@ async function refreshLibrary(): Promise<void> {
 
 async function boot(): Promise<void> {
   clearInterval(pollTimer);
+  stopCovers();
+  coverState(0);
   stopReader();
   applyStaticText();
   me = await api<Me>("/api/me");

@@ -3,6 +3,7 @@ import { ConfigStore } from "./config";
 import { cleanupExtracted } from "./embedCloudflared";
 import { openDb } from "./db";
 import { resolveDataDir } from "./dataDir";
+import { Covers } from "./covers";
 import { Library } from "./library";
 import { openInBrowser } from "./openInBrowser";
 import { Auth } from "./auth";
@@ -21,6 +22,8 @@ const db = openDb(dataDir);
 const library = new Library(db, config, dataDir);
 const auth = new Auth(db);
 const shares = new Shares(db);
+const covers = new Covers(dataDir);
+library.onScan = () => covers.prune(new Set(library.books().map((b) => b.id)));
 
 const libraryArg = arg("library");
 if (libraryArg) await library.setRoot(libraryArg);
@@ -44,7 +47,7 @@ const setMode = (mode: "lan" | "internet") => {
 
 for (let port = preferred; port < preferred + 20 && !servers; port++) {
   try {
-    servers = startServers({ library, auth, shares, config, tunnel, lanUrls, setMode }, { hostname, port });
+    servers = startServers({ library, auth, shares, config, covers, tunnel, lanUrls, setMode }, { hostname, port });
   } catch (err) {
     if ((err as { code?: string }).code !== "EADDRINUSE") throw err;
   }
