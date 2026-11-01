@@ -2,6 +2,7 @@ import * as pdfjsLib from "pdfjs-dist/build/pdf.min.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
 import { t } from "../i18n";
 import { addPageImage, type PrintJob } from "../print";
+import { mountThumbs, type Thumbs } from "./thumbs";
 import type { PageView, ReaderHandle, Rect } from "./types";
 
 /** pdf.js' own padding around the page column; "zoom 1" is the page width that leaves exactly this. */
@@ -13,6 +14,23 @@ const VIEW_DEBOUNCE_MS = 250;
 /** Printed pages are drawn this many pixels wide (about 200 dpi on A4): sharp on paper, a few hundred KB each. */
 const PRINT_PAGE_PX = 1700;
 const PRINT_MAX_SIDE = 4096;
+const THUMB_PX = 132;
+const THUMBS_KEY = "tr.pdf.thumbs";
+
+const remembered = (): boolean => {
+  try {
+    return localStorage.getItem(THUMBS_KEY) === "1" && !matchMedia("(max-width: 720px)").matches;
+  } catch {
+    return false;
+  }
+};
+const remember = (on: boolean) => {
+  try {
+    localStorage.setItem(THUMBS_KEY, on ? "1" : "0");
+  } catch {
+    /* not persisted */
+  }
+};
 
 export interface PdfReader extends ReaderHandle {
   getView(): PageView;
@@ -57,10 +75,13 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   const pageCount = document.createElement("span");
   const zoomLabel = document.createElement("span");
   zoomLabel.className = "pdf-zoom";
+  const thumbsButton = button("▥", t("pages.toggle"), () => void setThumbs(!thumbs));
+  thumbsButton.setAttribute("aria-label", t("pages.toggle"));
   const areaButton = button("▭ Area", "Select a rectangle and highlight it (shareable)", () => setSelecting(!selecting));
   const toolbar = document.createElement("div");
   toolbar.className = "pdf-toolbar";
   toolbar.append(
+    thumbsButton,
     button("‹", "Previous page", () => pdfViewer.previousPage()),
     pageInput,
     pageCount,
@@ -87,6 +108,48 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   const linkService = new PDFLinkService({ eventBus });
   const pdfViewer = new PDFViewer({ container, viewer: viewerEl, eventBus, linkService, textLayerMode: 1 });
   linkService.setViewer(pdfViewer);
+
+  // ---------- page previews ----------
+
+  let thumbs: Thumbs | null = null;
+  let thumbsToken = 0;
+  async function setThumbs(on: boolean): Promise<void> {
+    const token = ++thumbsToken;
+    remember(on);
+    thumbsButton.classList.toggle("active", on);
+    const fit = pdfViewer.currentScaleValue === "page-width";
+    if (!on) {
+      thumbs?.destroy();
+      thumbs = null;
+      frame.classList.remove("has-thumbs");
+    } else if (!thumbs) {
+      const pdf = pdfViewer.pdfDocument;
+      if (!pdf) return;
+      const first = (await pdf.getPage(1)).getViewport({ scale: 1 });
+      if (token !== thumbsToken) return;
+      thumbs = mountThumbs({
+        count: pdf.numPages,
+        ratio: first.height / first.width,
+        pick: (n) => (pdfViewer.currentPageNumber = n),
+        async draw(n, box, signal) {
+          const page = await pdf.getPage(n);
+          const base = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: (THUMB_PX * Math.min(2, devicePixelRatio || 1)) / base.width });
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          if (signal.aborted) return;
+          await page.render({ canvas, viewport }).promise;
+          page.cleanup();
+          if (!signal.aborted) box.replaceChildren(canvas);
+        },
+      });
+      frame.prepend(thumbs.el);
+      frame.classList.add("has-thumbs");
+      thumbs.current(pdfViewer.currentPageNumber);
+    }
+    if (fit) pdfViewer.currentScaleValue = "page-width"; // the window just got narrower or wider
+  }
 
   // ---------- view <-> screen ----------
 
@@ -263,6 +326,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   });
   eventBus.on("pagechanging", (e: { pageNumber: number }) => {
     pageInput.value = String(e.pageNumber);
+    thumbs?.current(e.pageNumber);
     scheduleView();
   });
   pageInput.addEventListener("change", () => {
@@ -296,6 +360,8 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   eventBus.on("pagesinit", () => {
     pageCount.textContent = `/ ${pdfViewer.pagesCount}`;
     pageInput.max = String(pdfViewer.pagesCount);
+    pageInput.value = String(pdfViewer.currentPageNumber);
+    if (remembered()) void setThumbs(true);
     applyInitial();
     scheduleView();
   });
@@ -366,6 +432,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     },
     destroy() {
       clearTimeout(timer);
+      thumbs?.destroy();
       removeEventListener("resize", onResize);
       void task.destroy();
       pdfViewer.cleanup();

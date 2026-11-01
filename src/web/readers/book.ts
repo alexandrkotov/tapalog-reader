@@ -2,6 +2,7 @@ import "foliate-js/view.js";
 import { Overlayer } from "foliate-js/overlayer.js";
 import { t } from "../i18n";
 import { addHtmlSection, type PrintJob } from "../print";
+import { mountThumbs, type Thumbs } from "./thumbs";
 
 /**
  * A "view" of reflowable text (EPUB, FB2, MOBI): where the reader is, and optionally a
@@ -57,6 +58,8 @@ interface Location {
 interface FoliateRenderer extends HTMLElement {
   setStyles?(css: string): void;
   getContents(): { doc: Document; index: number }[];
+  /** The section on screen; only the fixed-layout renderer (comics) has it, whose getContents() carries no index. */
+  index?: number;
 }
 
 interface FoliateView extends HTMLElement {
@@ -88,6 +91,7 @@ const MARK_COLOR = "#ffb300";
 const FONT_STEP = 10;
 const FONT_MIN = 70;
 const FONT_MAX = 250;
+const THUMB_PX = 132;
 const CFI_RE = /^epubcfi\(.{1,900}\)$/;
 
 const read = (key: string): string | null => {
@@ -150,6 +154,8 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   const fontLabel = document.createElement("span");
   fontLabel.className = "pdf-zoom";
   const tocButton = button("☰", t("book.toc"), () => toc.classList.toggle("open"));
+  const thumbsButton = button("▥", t("pages.toggle"), () => setThumbs(!thumbs));
+  thumbsButton.hidden = true; // comics only
   const flowButton = button("", t("book.flow"), () => {
     flow = flow === "paginated" ? "scrolled" : "paginated";
     write("tr.book.flow", flow);
@@ -163,6 +169,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   toolbar.className = "pdf-toolbar book-toolbar";
   toolbar.append(
     tocButton,
+    thumbsButton,
     button("‹", t("book.prev"), () => void view.prev()),
     button("›", t("book.next"), () => void view.next()),
     progress,
@@ -183,6 +190,51 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   frame.append(toc, view);
   root.append(toolbar, frame);
   host.append(root);
+
+  // ---------- page previews (comics) ----------
+
+  const currentIndex = () => view.renderer.index ?? view.renderer.getContents()[0]?.index ?? 0;
+
+  let thumbs: Thumbs | null = null;
+
+  /** The picture of a comic page, scaled down, without keeping the full-size one in memory. */
+  async function drawComicThumb(n: number, box: HTMLElement, signal: AbortSignal): Promise<void> {
+    const section = view.book.sections?.[n - 1];
+    const url = await section?.load();
+    if (!section || !url) throw new Error("no page");
+    try {
+      const html = await (await fetch(url)).text();
+      const src = new DOMParser().parseFromString(html, "text/html").querySelector("img")?.getAttribute("src");
+      if (!src || signal.aborted) throw new Error("no picture");
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const k = (THUMB_PX * Math.min(2, devicePixelRatio || 1)) / img.naturalWidth;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * k));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * k));
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      box.replaceChildren(canvas);
+    } finally {
+      // the page on screen shares its picture with this one: unloading it would blank the reader
+      if (Math.abs(n - 1 - currentIndex()) > 1) section.unload?.();
+    }
+  }
+
+  function setThumbs(on: boolean): void {
+    thumbsButton.classList.toggle("active", on);
+    if (!on) {
+      thumbs?.destroy();
+      thumbs = null;
+      frame.classList.remove("has-thumbs");
+      return;
+    }
+    if (thumbs) return;
+    thumbs = mountThumbs({ count: view.book.sections?.length ?? 0, ratio: 1.45, pick: (n) => void view.goTo(n - 1), draw: drawComicThumb });
+    frame.prepend(thumbs.el);
+    frame.classList.add("has-thumbs");
+    thumbs.current(currentIndex() + 1);
+  }
 
   // ---------- helpers ----------
   const css = () => `
@@ -285,6 +337,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     const loc = (e as CustomEvent<Location>).detail;
     progress.textContent = `${Math.round((loc.fraction ?? 0) * 100)}%`;
     chapter.textContent = loc.tocItem?.label?.trim() ?? "";
+    thumbs?.current(currentIndex() + 1);
     emit();
   });
   view.addEventListener("load", (e) => {
@@ -327,8 +380,9 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     setFont(fontPct);
     // Comics are pictures: text size, flow and passage marks mean nothing there.
     if (view.isFixedLayout) for (const b of [fontLabel, flowButton, markButton, ...toolbar.querySelectorAll<HTMLElement>("button[title='" + t("book.smaller") + "'], button[title='" + t("book.larger") + "']")]) b.hidden = true;
-    if (view.book.toc?.length) toc.append(buildToc(view.book.toc));
+    if (view.book.toc?.length && options.ext !== "cbz") toc.append(buildToc(view.book.toc)); // a comic's "contents" is its list of file names: the previews replace it
     else tocButton.hidden = true;
+    if (options.ext === "cbz" && view.book.sections?.length) thumbsButton.hidden = false;
     markIndex = mark ? (view.resolveNavigation(mark)?.index ?? null) : null;
     clearButton.hidden = !mark;
     try {
@@ -348,7 +402,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   /** Sections are the book's own files (chapters, comic pages); a printout is made of them one after another. */
   function printJob(): PrintJob {
     const sections = view.book.sections ?? [];
-    const here = Math.min(Math.max(0, view.renderer.getContents()[0]?.index ?? 0), Math.max(0, sections.length - 1));
+    const here = Math.min(Math.max(0, currentIndex()), Math.max(0, sections.length - 1));
     const comic = view.isFixedLayout;
     return {
       choices: [
@@ -379,6 +433,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     destroy() {
       destroyed = true;
       if (timer) clearTimeout(timer);
+      thumbs?.destroy();
       try {
         view.close();
       } catch {
