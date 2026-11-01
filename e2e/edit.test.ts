@@ -1,8 +1,8 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, BrowserContext, Page } from "playwright-core";
-import { ADMIN, api, launch, setup, signedIn, startServer, watchErrors, type Instance } from "./harness";
+import { after, api, before, e2e, launch, setup, signedIn, startServer, watchErrors, type Instance } from "./harness";
 
 let browser: Browser;
 let inst: Instance;
@@ -10,7 +10,7 @@ let ctx: BrowserContext;
 let page: Page;
 let errors: string[];
 
-beforeAll(async () => {
+before(async () => {
   browser = await launch();
   inst = await startServer({ "Books/first.txt": "the first book, long enough to have its own id", "Books/second.txt": "the second book, also with its own id", "Demo/Sub/deep.txt": "a book in a nested folder", "Empty/": "" });
   await setup(inst);
@@ -18,7 +18,7 @@ beforeAll(async () => {
   page = await ctx.newPage();
   errors = watchErrors(page);
 });
-afterAll(async () => {
+after(async () => {
   await browser?.close();
   await inst?.stop();
 });
@@ -37,7 +37,7 @@ const expand = async (folder: string) => {
   if (!(await page.$(`.tree .node[data-folder='${folder}'] + ul, .tree li:has(> .node[data-folder='${folder}']) > ul`))) await node(`[data-folder='${folder}'] .twisty`).click();
 };
 
-test("the administrator can switch to edit mode, a reader cannot", async () => {
+e2e("the administrator can switch to edit mode, a reader cannot", async () => {
   const reader = await browser.newContext();
   await reader.request.post(`${inst.url}/api/register`, { data: { name: "Reader", password: "pin1234" }, headers: { Origin: inst.url } });
   const rp = await reader.newPage();
@@ -54,7 +54,7 @@ test("the administrator can switch to edit mode, a reader cannot", async () => {
   expect(await page.$$eval("[draggable='true']", (n) => n.length)).toBeGreaterThan(0);
 });
 
-test("dragging a book onto a folder moves the file", async () => {
+e2e("dragging a book onto a folder moves the file", async () => {
   await expand("Books");
   await node("[data-drag-path='Books/first.txt']").dragTo(node("[data-drop='Empty']"));
   await settle();
@@ -62,7 +62,7 @@ test("dragging a book onto a folder moves the file", async () => {
   expect(ls("Empty")).toEqual(["first.txt"]);
 });
 
-test("dragging a folder moves it with everything inside, and a folder cannot go into itself", async () => {
+e2e("dragging a folder moves it with everything inside, and a folder cannot go into itself", async () => {
   await expand("Demo");
   await node("[data-drag-path='Demo/Sub']").dragTo(node("[data-drop='Empty']"));
   await settle();
@@ -76,13 +76,13 @@ test("dragging a folder moves it with everything inside, and a folder cannot go 
   expect(ls()).toEqual(["Books", "Demo", "Empty"]);
 });
 
-test("dropping on the Library row brings an item back to the top level", async () => {
+e2e("dropping on the Library row brings an item back to the top level", async () => {
   await node("[data-drag-path='Empty/Sub']").dragTo(node(".root-drop"));
   await settle();
   expect(ls()).toEqual(["Books", "Demo", "Empty", "Sub"]);
 });
 
-test("renaming keeps the extension, and a name that is taken is refused with a message", async () => {
+e2e("renaming keeps the extension, and a name that is taken is refused with a message", async () => {
   page.once("dialog", (d) => void d.accept("Renamed"));
   await node("[data-drag-path='Books/second.txt'] .label").dblclick();
   await settle();
@@ -103,7 +103,7 @@ test("renaming keeps the extension, and a name that is taken is refused with a m
   expect(ls("Books")).toEqual(["Other.txt", "Renamed.txt"]);
 });
 
-test("the move dialog works without dragging", async () => {
+e2e("the move dialog works without dragging", async () => {
   await expand("Sub");
   await node("[data-drag-path='Sub/deep.txt']").hover();
   await page.click("[data-drag-path='Sub/deep.txt'] button[data-act='move']");
@@ -116,7 +116,7 @@ test("the move dialog works without dragging", async () => {
   expect(ls("Sub")).toEqual([]);
 });
 
-test("a new folder is created in the open folder; a bad name is refused", async () => {
+e2e("a new folder is created in the open folder; a bad name is refused", async () => {
   await page.goto(`${inst.url}/#folder=Demo`);
   await page.waitForSelector(".edit-bar button");
   page.once("dialog", (d) => void d.accept("Fresh"));
@@ -131,7 +131,7 @@ test("a new folder is created in the open folder; a bad name is refused", async 
   expect(ls("Demo")).toEqual(["Fresh", "deep.txt"]);
 });
 
-test("leaving edit mode removes the controls, and nothing broke on the way", async () => {
+e2e("leaving edit mode removes the controls, and nothing broke on the way", async () => {
   await page.click("button:has-text('Done')");
   expect(await page.$$eval("[draggable='true']", (n) => n.length)).toBe(0);
   expect(errors).toEqual([]);

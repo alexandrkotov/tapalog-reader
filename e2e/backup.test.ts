@@ -1,28 +1,28 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser } from "playwright-core";
 import { library } from "./fixtures";
-import { ADMIN, api, bookId, launch, setup, signedIn, startServer, watchErrors, type Instance } from "./harness";
+import { ADMIN, after, api, before, bookId, e2e, launch, setup, signedIn, startServer, watchErrors, type Instance } from "./harness";
 
 let browser: Browser;
 let old: Instance;
 let fresh: Instance;
 let file: string;
 
-beforeAll(async () => {
+before(async () => {
   browser = await launch();
   old = await startServer(library());
   fresh = await startServer(library());
   await setup(old);
 });
-afterAll(async () => {
+after(async () => {
   await browser?.close();
   await old?.stop();
   await fresh?.stop();
 });
 
-test("a backup downloaded from one installation restores on a new one from its first-run screen", async () => {
+e2e("a backup downloaded from one installation restores on a new one from its first-run screen", async () => {
   const admin = await signedIn(browser, old);
   const reader = await browser.newContext();
   await reader.request.post(`${old.url}/api/register`, { data: { name: "Reader", password: "pin123" }, headers: { Origin: old.url } });
@@ -73,7 +73,7 @@ test("a backup downloaded from one installation restores on a new one from its f
   await ctx.close();
 });
 
-test("restoring from Settings asks first, keeps the administrator signed in, and refuses a file that is not a backup", async () => {
+e2e("restoring from Settings asks first, keeps the administrator signed in, and refuses a file that is not a backup", async () => {
   const admin = await signedIn(browser, fresh);
   const page = await admin.newPage();
   await page.goto(fresh.url + "/");

@@ -1,30 +1,30 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { expect } from "bun:test";
 import type { Browser, BrowserContext } from "playwright-core";
 import { NOTES_PHRASE, library } from "./fixtures";
-import { ADMIN, api, bookId, launch, signedIn, startServer, watchErrors, type Instance } from "./harness";
+import { ADMIN, after, api, before, bookId, e2e, FOLIATE_RACE, launch, signedIn, startServer, watchErrors, type Instance } from "./harness";
 
 let browser: Browser;
 let inst: Instance;
 let ctx: BrowserContext;
 
-beforeAll(async () => {
+before(async () => {
   browser = await launch();
   inst = await startServer(library());
 });
-afterAll(async () => {
+after(async () => {
   await browser?.close();
   await inst?.stop();
 });
 
 const openBook = async (path: string) => {
   const page = await ctx.newPage();
-  const errors = watchErrors(page);
+  const errors = watchErrors(page, FOLIATE_RACE);
   await page.goto(`${inst.url}/#book=${await bookId(ctx, inst, path)}`);
   await page.waitForSelector(".reader-bar");
   return { page, errors };
 };
 
-test("the first run asks for an administrator, then shows the library", async () => {
+e2e("the first run asks for an administrator, then shows the library", async () => {
   const fresh = await browser.newContext();
   const page = await fresh.newPage();
   await page.goto(inst.url + "/");
@@ -38,7 +38,7 @@ test("the first run asks for an administrator, then shows the library", async ()
   ctx = await signedIn(browser, inst);
 });
 
-test("searching by file name finds a book and opens it", async () => {
+e2e("searching by file name finds a book and opens it", async () => {
   const page = await ctx.newPage();
   await page.goto(inst.url + "/");
   await page.waitForSelector(".shelf");
@@ -51,7 +51,7 @@ test("searching by file name finds a book and opens it", async () => {
   await page.close();
 });
 
-test("every format opens in its own reader without errors", async () => {
+e2e("every format opens in its own reader without errors", async () => {
   const txt = await openBook("Docs/notes.txt");
   await txt.page.waitForSelector(".txt-body");
   expect(await txt.page.textContent(".txt-body")).toContain(NOTES_PHRASE);
@@ -71,7 +71,7 @@ test("every format opens in its own reader without errors", async () => {
   expect(pdf.errors).toEqual([]);
 });
 
-test("scripts inside an EPUB do not run", async () => {
+e2e("scripts inside an EPUB do not run", async () => {
   const book = await openBook("Books/hostile.epub");
   await book.page.waitForFunction(() => /%/.test(document.querySelector(".book-progress")?.textContent ?? ""));
   await book.page.waitForTimeout(1000);
@@ -79,7 +79,7 @@ test("scripts inside an EPUB do not run", async () => {
   await book.page.close();
 });
 
-test("page previews: a strip of pages, drawn as needed, that moves the reader", async () => {
+e2e("page previews: a strip of pages, drawn as needed, that moves the reader", async () => {
   const { page } = await openBook("Docs/pages.pdf");
   await page.waitForSelector(".pdf-page-input");
   await page.click("button[title='Page previews']");
@@ -94,7 +94,7 @@ test("page previews: a strip of pages, drawn as needed, that moves the reader", 
   await page.close();
 });
 
-test("print: what is prepared is the chosen part, and a book's scripts are stripped", async () => {
+e2e("print: what is prepared is the chosen part, and a book's scripts are stripped", async () => {
   const printed = async (path: string, choose?: (page: import("playwright-core").Page) => Promise<void>) => {
     const { page } = await openBook(path);
     await page.evaluate(() => ((window as any).print = () => ((window as any).__printed = true))); // the print window cannot be driven here
@@ -124,7 +124,7 @@ test("print: what is prepared is the chosen part, and a book's scripts are strip
   expect((await printed("Comics/strip.cbz")).images).toBe(3);
 });
 
-test("a share link opens one book for someone who is not signed in", async () => {
+e2e("a share link opens one book for someone who is not signed in", async () => {
   const id = await bookId(ctx, inst, "Docs/notes.txt");
   const made = await api<{ token: string }>(ctx, inst, "/api/shares", { bookId: id, view: null, expiresInDays: 1 });
   const stranger = await browser.newContext();

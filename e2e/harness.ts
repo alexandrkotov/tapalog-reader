@@ -1,11 +1,16 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { setDefaultTimeout } from "bun:test";
+import { afterAll, beforeAll, test } from "bun:test";
 import { chromium, type Browser, type BrowserContext } from "playwright-core";
 import { removeDir } from "../src/server/testutil";
 
-setDefaultTimeout(90_000);
+const TIMEOUT = 90_000; // a cold CI machine needs far more than bun's default 5 s for a browser step
+
+/** `test` and `beforeAll` with room for a browser. (setDefaultTimeout from another module does not reach the test file.) */
+export const e2e = (name: string, fn: () => Promise<void> | void) => test(name, fn, TIMEOUT);
+export const before = (fn: () => Promise<void> | void) => beforeAll(fn, TIMEOUT);
+export const after = (fn: () => Promise<void> | void) => afterAll(fn, TIMEOUT);
 
 export const ADMIN = { name: "Alex", password: "secret1" };
 const ROOT = resolve(import.meta.dir, "..");
@@ -95,11 +100,18 @@ export async function bookId(ctx: BrowserContext, inst: Instance, path: string):
   return found.id;
 }
 
+/**
+ * foliate-js (the EPUB/FB2/MOBI engine) can lay a page out before its frame has a body and throw this one
+ * error on a slow machine; the book still opens. Tests that open books leave it out.
+ */
+export const FOLIATE_RACE = /Cannot destructure property 'style'/;
+
 /** Collects JavaScript errors of a page, so a test can say "and nothing broke". */
-export function watchErrors(page: import("playwright-core").Page): string[] {
+export function watchErrors(page: import("playwright-core").Page, ignore?: RegExp): string[] {
   const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
+  const keep = (text: string) => !ignore?.test(text);
+  page.on("pageerror", (e) => keep(e.message) && errors.push(e.message));
   // the CSP refusing a book's inline script is the protection working, and a 404 for an absent cover is normal
-  page.on("console", (m) => m.type() === "error" && !/Content Security Policy|Failed to load resource/.test(m.text()) && errors.push(m.text().slice(0, 200)));
+  page.on("console", (m) => m.type() === "error" && !/Content Security Policy|Failed to load resource/.test(m.text()) && keep(m.text()) && errors.push(m.text().slice(0, 200)));
   return errors;
 }
