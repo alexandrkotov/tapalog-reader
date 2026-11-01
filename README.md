@@ -75,7 +75,7 @@ Each `compile:*` first downloads the matching `cloudflared` release from GitHub 
 ## Releases and CI
 
 - Every push and pull request runs `.github/workflows/ci.yml` on Linux, Windows and macOS: type check, tests, then it builds the executable for that system and starts it (`scripts/smoke.ts` checks the page, the embedded pdf.js files, the library API and a book).
-- Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`: it builds the five executables (Linux x64/arm64, macOS arm64/x64, Windows x64), packs them with the licence and publishes a GitHub release with `SHA256SUMS.txt`. "Run workflow" on the Actions page builds them without publishing.
+- Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`: it builds the five executables (Linux x64/arm64, macOS arm64/x64, Windows x64), packs them with the licence and creates a *draft* GitHub release with `SHA256SUMS.txt` and the notes in `.github/release-notes.md`; press Publish on the Releases page when it looks right. "Run workflow" on the Actions page builds them without publishing.
 - The executables are not code-signed: Windows SmartScreen may warn on first start ("More info", "Run anyway"), and on macOS a downloaded binary needs `xattr -d com.apple.quarantine tapalog-reader-macos-*` once.
 
 ## Tests
