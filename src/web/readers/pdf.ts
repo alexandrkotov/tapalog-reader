@@ -71,25 +71,25 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   pageInput.type = "number";
   pageInput.min = "1";
   pageInput.className = "pdf-page-input";
-  pageInput.setAttribute("aria-label", "Page");
+  pageInput.setAttribute("aria-label", t("pdf.page"));
   const pageCount = document.createElement("span");
   const zoomLabel = document.createElement("span");
   zoomLabel.className = "pdf-zoom";
   const thumbsButton = button("▥", t("pages.toggle"), () => void setThumbs(!thumbs));
   thumbsButton.setAttribute("aria-label", t("pages.toggle"));
-  const areaButton = button("▭ Area", "Select a rectangle and highlight it (shareable)", () => setSelecting(!selecting));
+  const areaButton = button(`▭ ${t("pdf.area")}`, t("pdf.areaTitle"), () => setSelecting(!selecting));
   const toolbar = document.createElement("div");
   toolbar.className = "pdf-toolbar";
   toolbar.append(
     thumbsButton,
-    button("‹", "Previous page", () => pdfViewer.previousPage()),
+    button("‹", t("pdf.prev"), () => pdfViewer.previousPage()),
     pageInput,
     pageCount,
-    button("›", "Next page", () => pdfViewer.nextPage()),
-    button("−", "Zoom out", () => pdfViewer.decreaseScale()),
+    button("›", t("pdf.next"), () => pdfViewer.nextPage()),
+    button("−", t("pdf.zoomOut"), () => pdfViewer.decreaseScale()),
     zoomLabel,
-    button("+", "Zoom in", () => pdfViewer.increaseScale()),
-    button("Fit width", "Fit the page to the window width", () => (pdfViewer.currentScaleValue = "page-width")),
+    button("+", t("pdf.zoomIn"), () => pdfViewer.increaseScale()),
+    button(t("pdf.fitWidth"), t("pdf.fitWidthTitle"), () => (pdfViewer.currentScaleValue = "page-width")),
     areaButton,
   );
   const frame = document.createElement("div");
@@ -186,8 +186,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       view.cx = round(clamp((midX - b.left) / b.width, 0, 1));
       view.cy = round(clamp((midY - b.top) / b.height, 0, 1));
     }
-    if (region) {
-      view.page = region.page;
+    // The rectangle belongs to the view only while its page is the one on screen: after the reader has gone on to
+    // another page, a link or bookmark made there must lead there, not back to the page the rectangle was drawn on.
+    if (region && region.page === page) {
       view.region = { x: round(region.rect.x), y: round(region.rect.y), w: round(region.rect.w), h: round(region.rect.h) };
     }
     return view;
@@ -318,7 +319,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   }
 
   let touched = false; // once the reader scrolls by hand, a late layout change must not yank them back to the link's position
-  for (const type of ["wheel", "pointerdown", "keydown", "touchstart"] as const) container.addEventListener(type, () => (touched = true), { passive: true });
+  for (const type of ["wheel", "pointerdown", "keydown", "touchstart"] as const) for (const where of [container, toolbar]) where.addEventListener(type, () => (touched = true), { passive: true }); // the page box and the buttons count as moving too
   container.addEventListener("scroll", () => scheduleView(), { passive: true });
   eventBus.on("scalechanging", (e: { scale: number }) => {
     zoomLabel.textContent = `${Math.round(e.scale * 100)}%`;
@@ -347,8 +348,8 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     iccUrl: "/pdfjs/iccs/",
   });
   task.onPassword = (update: (password: string) => void, reason: number) => {
-    const entered = prompt(reason === 2 ? "Wrong password. Try again:" : "This PDF is protected. Password:");
-    if (entered === null) options.onError(new Error("A password is required to open this PDF."));
+    const entered = prompt(reason === 2 ? t("pdf.passwordAgain") : t("pdf.password"));
+    if (entered === null) options.onError(new Error(t("pdf.passwordNeeded")));
     else update(entered);
   };
 

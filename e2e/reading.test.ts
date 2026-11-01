@@ -135,3 +135,51 @@ e2e("a share link opens one book for someone who is not signed in", async () => 
   expect(await page.$(".tree .node")).toBeNull(); // no library, only this book
   await stranger.close();
 });
+
+e2e("a PDF bookmark leads to the page that was on screen, and keeps an area only while that page is the one shown", async () => {
+  const { page, errors } = await openBook("Docs/pages.pdf");
+  await page.waitForSelector(".pdf-scroll .page canvas");
+  const shown = () => page.evaluate(() => (document.querySelector(".pdf-page-input") as HTMLInputElement).value);
+  const goTo = async (n: number) => {
+    await page.fill(".pdf-page-input", String(n));
+    await page.press(".pdf-page-input", "Enter");
+    await page.waitForFunction((want) => (document.querySelector(".pdf-page-input") as HTMLInputElement).value === String(want), n);
+    await page.waitForTimeout(600); // the reader reports its view a moment after it stops
+  };
+  const bookmark = async () => {
+    await page.click(".reader-bar button:has-text('★')");
+    await page.click(".modal button[type=submit]");
+    await page.waitForSelector(".modal .bookmark-go");
+    await page.keyboard.press("Escape");
+  };
+  const open = async (index: number) => {
+    await page.click(".reader-bar button:has-text('★')");
+    await page.locator(".modal .bookmark-go").nth(index).click();
+  };
+
+  // an area drawn on page 3 ...
+  await goTo(3);
+  await page.click(".pdf-toolbar button:has-text('Area')");
+  const box = (await page.locator(".pdf-scroll .page[data-page-number='3']").boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.4, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForSelector(".pdf-region:not(.pdf-region-draft)");
+  await bookmark(); // the list is newest first: this ends up second, with its area
+
+  // ... then another page, without any area of its own: the old area must not drag the bookmark back to page 3
+  await goTo(9);
+  await bookmark(); // ... and this one first
+  await goTo(1);
+
+  await open(0);
+  await page.waitForFunction(() => (document.querySelector(".pdf-page-input") as HTMLInputElement).value === "9");
+  expect(await page.evaluate(() => decodeURIComponent(location.hash))).not.toContain("region");
+  await goTo(1);
+  await open(1);
+  await page.waitForFunction(() => (document.querySelector(".pdf-page-input") as HTMLInputElement).value === "3");
+  await page.waitForSelector(".pdf-region:not(.pdf-region-draft)"); // the first bookmark still shows its area
+  expect(await shown()).toBe("3");
+  expect(errors).toEqual([]);
+});
