@@ -9,13 +9,14 @@
     "dev": "bun run src/server/main.ts",
     "typecheck": "tsc --noEmit",
     "gen:pdfjs": "bun scripts/gen-pdfjs-assets.ts",
-    "test": "bun test",
+    "test": "bun test src",
     "compile:linux-x64": "bun scripts/fetch-cloudflared.ts linux-x64 && bun build --compile --target=bun-linux-x64 src/server/main.compiled.linux-x64.ts --outfile dist/tapalog-reader-linux-x64",
     "compile:linux-arm64": "bun scripts/fetch-cloudflared.ts linux-arm64 && bun build --compile --target=bun-linux-arm64 src/server/main.compiled.linux-arm64.ts --outfile dist/tapalog-reader-linux-arm64",
     "compile:macos-arm64": "bun scripts/fetch-cloudflared.ts darwin-arm64 && bun build --compile --target=bun-darwin-arm64 src/server/main.compiled.darwin-arm64.ts --outfile dist/tapalog-reader-macos-arm64",
     "compile:macos-x64": "bun scripts/fetch-cloudflared.ts darwin-x64 && bun build --compile --target=bun-darwin-x64 src/server/main.compiled.darwin-x64.ts --outfile dist/tapalog-reader-macos-x64",
     "compile:windows-x64": "bun scripts/fetch-cloudflared.ts windows-x64 && bun build --compile --target=bun-windows-x64 --windows-hide-console src/server/main.compiled.windows-x64.ts --outfile dist/tapalog-reader-windows-x64.exe",
-    "compile:linux-x64:no-tunnel": "bun build --compile --target=bun-linux-x64 src/server/main.ts --outfile dist/tapalog-reader-linux-x64-no-tunnel"
+    "compile:linux-x64:no-tunnel": "bun build --compile --target=bun-linux-x64 src/server/main.ts --outfile dist/tapalog-reader-linux-x64-no-tunnel",
+    "e2e": "bun test e2e"
   },
   "dependencies": {
     "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.2.0/ecm-viewer-engine-0.2.0.tgz",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",
+    "playwright-core": "1.64.1",
     "typescript": "^7.0.2"
   }
 }

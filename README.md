@@ -71,8 +71,11 @@ Each `compile:*` first downloads the matching `cloudflared` release from GitHub 
 ## Tests
 
 ```bash
-bun test
+bun run test        # unit and API tests (fast)
 bun run typecheck
+bun run e2e         # the real server and a real Chromium: readers, edit mode, print, share, backup
 ```
+
+The browser tests need Chromium: `bunx playwright-core install chromium` once, or point `E2E_CHROMIUM` at an installed one. They build their own books in code, start the server on a free port with temporary folders, and leave nothing behind. CI runs them on Linux.
 
 MIT licensed.

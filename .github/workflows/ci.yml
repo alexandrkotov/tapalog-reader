@@ -23,10 +23,23 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun test
+      - run: bun run test
       # The executable for this very system, without the embedded tunnel program: starts it and talks to it.
       - name: Build and smoke-test the executable
         shell: bash
         run: |
           bun build --compile src/server/main.ts --outfile dist/smoke-test
           bun scripts/smoke.ts "dist/smoke-test$([ "$RUNNER_OS" = Windows ] && echo .exe)"
+
+  # The real server and a real browser: the readers, edit mode, printing, sharing and backup, as a person would use them.
+  browser:
+    name: browser tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright-core install --with-deps chromium
+      - run: bun run e2e

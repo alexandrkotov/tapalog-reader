@@ -20,7 +20,8 @@
   },
   "include": [
     "src",
-    "scripts"
+    "scripts",
+    "e2e"
   ],
   "exclude": [
     "src/server/main.compiled.*.ts"
