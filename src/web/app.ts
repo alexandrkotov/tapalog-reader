@@ -5,7 +5,7 @@ import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { mountReader, VIEW_FORMATS, type Reader } from "./readers/mount";
 import { openMyLinks, openShareDialog } from "./share";
-import { api, ApiError, badge, el, store } from "./ui";
+import { api, ApiError, badge, el, openModal, store } from "./ui";
 
 interface Book {
   id: string;
@@ -21,6 +21,7 @@ interface Status {
   scanning: boolean;
   lastScan: { books: number; added: number; removed: number; ms: number } | null;
   fullText?: boolean;
+  writable?: boolean;
 }
 interface FolderNode {
   path: string;
@@ -53,6 +54,8 @@ let folderNodes = new Map<string, FolderNode>();
 const newCovers = new Set<string>();
 const expanded = new Set<string>(JSON.parse(store.get("expanded") ?? "[]") as string[]);
 let currentId: string | null = null;
+let editing = false;
+let writable = false;
 
 function buildTree(folders: string[], list: Book[]): FolderNode {
   const nodes = new Map<string, FolderNode>([["", { path: "", name: "", folders: [], books: [], total: 0 }]]);
@@ -76,33 +79,72 @@ function buildTree(folders: string[], list: Book[]): FolderNode {
   return nodes.get("")!;
 }
 
+const parentOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
+
+/** Edit mode adds a row for the library's top level (a place to drop things) and rename / move buttons on every row. */
+function actions(kind: "book" | "folder", path: string): HTMLElement {
+  const button = (act: string, label: string, text: string) => {
+    const b = el("button", { type: "button", class: "row-btn", title: label, textContent: text });
+    b.setAttribute("aria-label", label);
+    b.dataset.act = act;
+    b.dataset.kind = kind;
+    b.dataset.path = path;
+    return b;
+  };
+  return el("span", { class: "row-actions" }, button("rename", t("edit.rename"), "✎"), button("move", t("edit.move"), "⇄"));
+}
+
 function renderTree(): void {
   const keepScroll = panelEl.scrollTop;
   const rows = (node: FolderNode): HTMLUListElement => {
     const ul = el("ul");
     for (const folder of [...node.folders].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))) {
       const open = expanded.has(folder.path);
-      const row = el("div", { class: "node", title: folder.path }, el("span", { class: "twisty", textContent: open ? "▼" : "▶" }), el("span", { class: "label", textContent: folder.name }), el("span", { class: "count", textContent: String(folder.total) }));
+      const row = el("div", { class: "node", title: folder.path }, el("span", { class: "twisty", textContent: open ? "▼" : "▶" }), el("span", { class: "label", textContent: folder.name }), el("span", { class: "count", textContent: String(folder.total) }), ...(editing ? [actions("folder", folder.path)] : []));
       row.dataset.folder = folder.path;
+      if (editing) {
+        row.draggable = true;
+        row.dataset.dragKind = "folder";
+        row.dataset.dragPath = folder.path;
+        row.dataset.drop = folder.path;
+      }
       const li = el("li", {}, row);
       if (open) li.append(rows(folder)); // children of a closed folder are never built: ten thousand books stay cheap
       ul.append(li);
     }
     for (const book of [...node.books].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))) {
-      const row = el("div", { class: `node${book.id === currentId ? " selected" : ""}`, title: book.path }, el("span", { class: "twisty" }), badge(book.ext), el("span", { class: "label", textContent: book.name }));
+      const row = el("div", { class: `node${book.id === currentId ? " selected" : ""}`, title: book.path }, el("span", { class: "twisty" }), badge(book.ext), el("span", { class: "label", textContent: book.name }), ...(editing ? [actions("book", book.path)] : []));
       row.dataset.book = book.id;
+      if (editing) {
+        row.draggable = true;
+        row.dataset.dragKind = "book";
+        row.dataset.dragPath = book.path;
+      }
       ul.append(el("li", {}, row));
     }
     return ul;
   };
-  treeEl.replaceChildren(rows(root));
+  const top = rows(root);
+  if (editing) {
+    const home = el("div", { class: "node root-drop", title: t("edit.dropRoot") }, el("span", { class: "twisty" }), el("span", { class: "label", textContent: `⌂ ${t("shelf.root")}` }));
+    home.dataset.drop = "";
+    home.dataset.root = "1";
+    top.prepend(el("li", {}, home));
+  }
+  treeEl.replaceChildren(top);
   panelEl.scrollTop = keepScroll;
 }
 
 treeEl.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
+  const act = target.closest<HTMLElement>("button[data-act]");
+  if (act) return void runAction(act.dataset.act!, act.dataset.kind as "book" | "folder", act.dataset.path!);
   const row = target.closest<HTMLElement>(".node");
   if (!row) return;
+  if (row.dataset.root) {
+    location.hash = "";
+    return;
+  }
   if (row.dataset.folder !== undefined) {
     const path = row.dataset.folder;
     if (target.classList.contains("twisty")) {
@@ -181,11 +223,19 @@ function showShelf(path: string): void {
 
   const crumbs: Node[] = [el("a", { href: "#", textContent: t("shelf.root") })];
   parts.forEach((part, i) => crumbs.push(el("span", { class: "sep", textContent: "/" }), el("a", { href: `#folder=${encodeURIComponent(parts.slice(0, i + 1).join("/"))}`, textContent: part })));
+  const editable = <T extends HTMLElement>(card: T, kind: "book" | "folder", path: string): T => {
+    if (!editing) return card;
+    card.draggable = true;
+    card.dataset.dragKind = kind;
+    card.dataset.dragPath = path;
+    if (kind === "folder") card.dataset.drop = path;
+    return card;
+  };
   const cards: HTMLElement[] = [
     ...[...node.folders].sort(byName).map((f) =>
-      el("a", { class: "card folder", href: `#folder=${encodeURIComponent(f.path)}`, title: f.path }, el("div", { class: "thumb folder-tile", textContent: "📁" }), el("div", { class: "cap" }, el("span", { class: "name", textContent: f.name }), el("span", { class: "count", textContent: String(f.total) }))),
+      editable(el("a", { class: "card folder", href: `#folder=${encodeURIComponent(f.path)}`, title: f.path }, el("div", { class: "thumb folder-tile", textContent: "📁" }), el("div", { class: "cap" }, el("span", { class: "name", textContent: f.name }), el("span", { class: "count", textContent: String(f.total) }))), "folder", f.path),
     ),
-    ...[...node.books].sort(byName).map((b) => el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.name })))),
+    ...[...node.books].sort(byName).map((b) => editable(el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.name }))), "book", b.path)),
   ];
   const grid = el("div", { class: "shelf" });
   const more = el("button", { type: "button", class: "btn shelf-more" });
@@ -204,6 +254,195 @@ function showShelf(path: string): void {
   );
 }
 
+
+// ---------- edit mode (administrator): real changes to the library folder ----------
+
+const editBarEl = $("edit-bar");
+interface Drag {
+  kind: "book" | "folder";
+  path: string;
+}
+let drag: Drag | null = null;
+let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+
+const ERROR_TEXT = {
+  "invalid-name": "edit.err.invalidName",
+  exists: "edit.err.exists",
+  missing: "edit.err.missing",
+  "into-itself": "edit.err.intoItself",
+  "same-place": "edit.err.samePlace",
+  forbidden: "edit.err.forbidden",
+  "read-only": "edit.err.readOnly",
+  "no-library": "edit.err.missing",
+} as const;
+
+function toast(text: string): void {
+  const note = el("div", { class: "toast", role: "alert", textContent: text });
+  document.body.append(note);
+  setTimeout(() => note.remove(), 5000);
+}
+
+function editError(err: unknown): void {
+  const code = err instanceof ApiError ? err.message : "";
+  toast(t(code in ERROR_TEXT ? ERROR_TEXT[code as keyof typeof ERROR_TEXT] : "edit.err.failed"));
+}
+
+/** Where a drop would put `item`: not where it already is, and a folder never into itself or something inside it. */
+function canPlace(item: Drag, toFolder: string): boolean {
+  if (parentOf(item.path) === toFolder) return false;
+  return item.kind === "book" || (toFolder !== item.path && !toFolder.startsWith(`${item.path}/`));
+}
+
+const swapPrefix = (p: string, from: string, to: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : p);
+
+/** After a change on disk: follow renamed folders in the open-folder memory and the address, then redraw. */
+async function afterEdit(from?: string, to?: string): Promise<void> {
+  if (from !== undefined && to !== undefined) {
+    const next = [...expanded].map((p) => swapPrefix(p, from, to));
+    expanded.clear();
+    next.forEach((p) => expanded.add(p));
+    const open = parseHash().folder;
+    if (open && swapPrefix(open, from, to) !== open) history.replaceState(null, "", `#folder=${encodeURIComponent(swapPrefix(open, from, to))}`);
+  }
+  await loadLibrary();
+  if (!parseHash().book) route();
+}
+
+async function doMove(item: Drag, toFolder: string): Promise<void> {
+  try {
+    await api("/api/admin/fs/move", { kind: item.kind, path: item.path, to: toFolder });
+    const base = item.path.slice(item.path.lastIndexOf("/") + 1);
+    const parts = toFolder ? toFolder.split("/") : [];
+    for (let i = 1; i <= parts.length; i++) expanded.add(parts.slice(0, i).join("/")); // show where it went
+    await afterEdit(item.path, toFolder ? `${toFolder}/${base}` : base);
+  } catch (err) {
+    editError(err);
+  }
+}
+
+async function doRename(kind: "book" | "folder", path: string): Promise<void> {
+  const file = path.slice(path.lastIndexOf("/") + 1);
+  const dot = file.lastIndexOf(".");
+  const [current, ext] = kind === "book" && dot > 0 ? [file.slice(0, dot), file.slice(dot)] : [file, ""];
+  const next = prompt(t("edit.rename"), current)?.trim();
+  if (!next || next === current) return;
+  try {
+    await api("/api/admin/fs/rename", { kind, path, name: next });
+    const dir = parentOf(path);
+    await afterEdit(path, dir ? `${dir}/${next}${ext}` : `${next}${ext}`);
+  } catch (err) {
+    editError(err);
+  }
+}
+
+/** A new folder goes where the administrator is: the folder being shown, or the one holding the open book. */
+async function doNewFolder(): Promise<void> {
+  const { book, folder } = parseHash();
+  const parent = book ? parentOf(booksById.get(book)?.path ?? "") : (folder ?? "");
+  const name = prompt(t("edit.newFolder"))?.trim();
+  if (!name) return;
+  try {
+    await api("/api/admin/fs/mkdir", { parent, name });
+    if (parent) expanded.add(parent);
+    await afterEdit();
+  } catch (err) {
+    editError(err);
+  }
+}
+
+/** The way to move without dragging (phones, keyboards): pick the destination from the list of folders. */
+function openMoveDialog(kind: "book" | "folder", path: string): void {
+  const modal = openModal(t("edit.moveTitle", { name: path.slice(path.lastIndexOf("/") + 1) }));
+  const item: Drag = { kind, path };
+  const folders = [...folderNodes.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const list = el("div", { class: "move-list" });
+  for (const folder of folders) {
+    const ok = canPlace(item, folder);
+    const depth = folder ? folder.split("/").length : 0;
+    const label = folder ? folder.slice(folder.lastIndexOf("/") + 1) : t("shelf.root");
+    const row = el("button", { type: "button", class: "link move-row", disabled: !ok, textContent: `${folder ? "📁" : "⌂"} ${label}` });
+    row.style.paddingInlineStart = `${depth * 16}px`;
+    row.addEventListener("click", () => {
+      modal.close();
+      void doMove(item, folder);
+    });
+    list.append(row);
+  }
+  modal.body.append(list);
+}
+
+function runAction(act: string, kind: "book" | "folder", path: string): void {
+  if (act === "rename") void doRename(kind, path);
+  else if (act === "move") openMoveDialog(kind, path);
+}
+
+function renderEditBar(): void {
+  editBarEl.hidden = !editing;
+  if (!editing) return;
+  const add = el("button", { type: "button", class: "btn", textContent: `＋ ${t("edit.newFolderButton")}` });
+  add.addEventListener("click", () => void doNewFolder());
+  editBarEl.replaceChildren(add, el("span", { class: "muted small", textContent: t("edit.hint") }));
+}
+
+function setEditing(on: boolean): void {
+  editing = on && writable;
+  document.body.classList.toggle("editing", editing);
+  renderEditBar();
+  renderAccount();
+  renderTree();
+  if (!parseHash().book && books.length) route(); // a shelf shown now gets (or loses) draggable cards
+}
+
+function clearDrop(): void {
+  clearTimeout(hoverTimer);
+  document.querySelectorAll(".drop-ok").forEach((n) => n.classList.remove("drop-ok"));
+}
+
+document.addEventListener("dragstart", (event) => {
+  const source = editing ? (event.target as HTMLElement).closest<HTMLElement>("[data-drag-path]") : null;
+  if (!source) return;
+  drag = { kind: source.dataset.dragKind === "folder" ? "folder" : "book", path: source.dataset.dragPath! };
+  event.dataTransfer?.setData("text/plain", drag.path); // Firefox starts no drag without data
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+});
+document.addEventListener("dragover", (event) => {
+  const target = drag ? (event.target as HTMLElement).closest<HTMLElement>("[data-drop]") : null;
+  if (!drag || !target || !canPlace(drag, target.dataset.drop!)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  if (!target.classList.contains("drop-ok")) {
+    clearDrop();
+    target.classList.add("drop-ok");
+    const path = target.dataset.drop!;
+    // hovering over a closed folder for a moment opens it, so a deep target can be reached in one drag
+    if (path && target.dataset.folder !== undefined && !expanded.has(path)) {
+      hoverTimer = setTimeout(() => {
+        expanded.add(path);
+        renderTree();
+      }, 700);
+    }
+  }
+});
+document.addEventListener("dragleave", (event) => {
+  if (!(event.relatedTarget as Node | null) || !(event.currentTarget as Document).contains(event.relatedTarget as Node)) clearDrop();
+});
+document.addEventListener("drop", (event) => {
+  const target = drag ? (event.target as HTMLElement).closest<HTMLElement>("[data-drop]") : null;
+  clearDrop();
+  if (!drag || !target || !canPlace(drag, target.dataset.drop!)) return;
+  event.preventDefault();
+  const item = drag;
+  drag = null;
+  void doMove(item, target.dataset.drop!);
+});
+document.addEventListener("dragend", () => {
+  drag = null;
+  clearDrop();
+});
+treeEl.addEventListener("dblclick", (event) => {
+  const row = editing ? (event.target as HTMLElement).closest<HTMLElement>("[data-drag-path]") : null;
+  if (row) void doRename(row.dataset.dragKind === "folder" ? "folder" : "book", row.dataset.dragPath!);
+});
 
 // ---------- panel toggle ----------
 
@@ -439,6 +678,14 @@ function renderAccount(): void {
     buttons.push(el("span", { class: "who", textContent: me.user.name }));
     buttons.push(button(t("account.bookmarks"), () => openBookmarks({ me: me!, book: null, reader: () => null, onSignedIn: () => void boot() })));
     buttons.push(button(t("account.links"), () => void openMyLinks()));
+    if (me.user.role === "admin") {
+      const edit = button(editing ? `✓ ${t("edit.done")}` : `✎ ${t("edit.start")}`, () => setEditing(!editing));
+      if (!writable) {
+        edit.disabled = true;
+        edit.title = t("edit.readOnlyLibrary");
+      }
+      buttons.push(edit);
+    }
     if (me.user.role === "admin") buttons.push(button(t("account.settings"), () => void openAdmin(me!.user!, () => void refreshLibrary())));
     buttons.push(button(t("account.signOut"), async () => (await signOut(), void boot())));
   } else if (me && !me.setupNeeded) {
@@ -473,6 +720,10 @@ let pollTimer: ReturnType<typeof setInterval> | undefined;
 async function pollStatus(): Promise<Status> {
   const status = await api<Status>("/api/status");
   fullTextOn = status.fullText === true;
+  if (writable !== (status.writable === true)) {
+    writable = status.writable === true;
+    renderAccount();
+  }
   scanEl.hidden = !status.scanning;
   const key = JSON.stringify(status.lastScan);
   if (lastScanKey !== null && key !== lastScanKey) await loadLibrary();
@@ -494,6 +745,9 @@ async function refreshLibrary(): Promise<void> {
 
 async function boot(): Promise<void> {
   clearInterval(pollTimer);
+  editing = false;
+  document.body.classList.remove("editing");
+  renderEditBar();
   stopCovers();
   coverState(0);
   stopReader();

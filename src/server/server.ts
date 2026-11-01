@@ -5,6 +5,7 @@ import { validateName, validatePassword } from "./auth";
 import type { Bookmarks } from "./bookmarks";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
+import { EditError, type LibraryEditor } from "./editor";
 import { ecatmCover } from "./ecatmCover";
 import type { FullText } from "./fulltext";
 import { MIME, type Format } from "./formats";
@@ -21,6 +22,7 @@ export interface App {
   config: ConfigStore;
   covers: Covers;
   bookmarks: Bookmarks;
+  editor: LibraryEditor;
   fullText: FullText;
   tunnel: TunnelController;
   /** Addresses of this computer on the local network, for share links. */
@@ -131,6 +133,20 @@ function buildRoutes(app: App, origin: Origin) {
     return data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
   }
   const bad = (message = "bad request") => json({ error: message }, 400);
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+
+  /** Runs one library edit; a refused edit answers with a short code the page turns into words. */
+  async function edit(req: Request, change: (data: Record<string, unknown>) => void): Promise<Response> {
+    const data = await body(req);
+    if (!data) return bad();
+    try {
+      change(data);
+      return json({ ok: true });
+    } catch (err) {
+      if (err instanceof EditError) return bad(err.code);
+      throw err;
+    }
+  }
 
   async function signIn(me: User): Promise<Response> {
     const session = app.auth.startSession(me.id);
@@ -219,6 +235,7 @@ function buildRoutes(app: App, origin: Origin) {
         tunnelUrl: app.tunnel.url,
         lanUrls: app.lanUrls(),
         fullText: app.fullText.enabled,
+        writable: app.editor.writable,
       }),
     ),
     "/api/library": browse(() => json({ folders: app.library.folders(), books: app.library.books().map(withCover) })),
@@ -408,6 +425,16 @@ function buildRoutes(app: App, origin: Origin) {
         await app.fullText.clear();
         return json(app.fullText.status());
       }),
+    },
+    // ----- editing the library: real changes to the files on disk -----
+    "/api/admin/fs/move": {
+      POST: admin((req) => edit(req, (d) => app.editor.move(d.kind === "folder" ? "folder" : "book", str(d.path), str(d.to)))),
+    },
+    "/api/admin/fs/rename": {
+      POST: admin((req) => edit(req, (d) => app.editor.rename(d.kind === "folder" ? "folder" : "book", str(d.path), d.name))),
+    },
+    "/api/admin/fs/mkdir": {
+      POST: admin((req) => edit(req, (d) => app.editor.mkdir(str(d.parent), d.name))),
     },
     "/api/rescan": {
       POST: admin(async () => {

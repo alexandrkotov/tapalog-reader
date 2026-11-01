@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Auth } from "./auth";
 import { Bookmarks } from "./bookmarks";
 import { Covers } from "./covers";
+import { LibraryEditor } from "./editor";
 import { FullText } from "./fulltext";
 import { ConfigStore } from "./config";
 import { openDb } from "./db";
@@ -33,7 +34,7 @@ beforeAll(async () => {
   const library = new Library(db, config, data);
   await library.setRoot(lib);
   servers = startServers(
-    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
+    { library, auth: new Auth(db), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), editor: new LibraryEditor(library, data), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -279,4 +280,27 @@ test("deleting an account deletes its bookmarks", async () => {
   expect((db.query("SELECT COUNT(*) AS n FROM bookmarks WHERE user_id = ?").get(reader.id) as { n: number }).n).toBe(1);
   expect((await call(lan, `/api/admin/users/${reader.id}`, { method: "DELETE", cookie: adminCookie })).status).toBe(200);
   expect((db.query("SELECT COUNT(*) AS n FROM bookmarks WHERE user_id = ?").get(reader.id) as { n: number }).n).toBe(0);
+});
+
+test("editing the library is for the administrator, changes real files, and refuses unsafe requests", async () => {
+  const admin = adminCookie;
+  const asUser = (await call(lan, "/api/register", { body: { name: "Plain", password: "pin1234" } })).cookie!;
+  const move = (cookie: string | undefined, body: object) => call(lan, "/api/admin/fs/move", { body, cookie });
+  expect((await move(undefined, { kind: "book", path: "one.txt", to: "sub" })).status).toBe(401);
+  expect((await move(asUser, { kind: "book", path: "one.txt", to: "sub" })).status).toBe(403);
+  expect((await call(lan, "/api/admin/fs/mkdir", { body: { parent: "", name: "x" }, cookie: asUser })).status).toBe(403);
+  expect((await call(lan, "/api/status")).body.writable).toBe(true);
+
+  expect((await call(lan, "/api/admin/fs/mkdir", { body: { parent: "", name: "Shelf" }, cookie: admin })).status).toBe(200);
+  expect((await call(lan, "/api/admin/fs/mkdir", { body: { parent: "", name: "Shelf" }, cookie: admin })).body.error).toBe("exists");
+  expect((await call(lan, "/api/admin/fs/mkdir", { body: { parent: "", name: "../escape" }, cookie: admin })).body.error).toBe("invalid-name");
+  expect((await move(admin, { kind: "book", path: "../../etc/passwd", to: "Shelf" })).body.error).toBe("missing");
+  expect((await move(admin, { kind: "folder", path: "sub", to: "sub" })).body.error).toBe("into-itself");
+
+  expect((await move(admin, { kind: "book", path: "one.txt", to: "Shelf" })).status).toBe(200);
+  expect(Bun.file(join(lib, "Shelf/one.txt")).size).toBeGreaterThan(0);
+  const moved = (await call(lan, "/api/library")).body.books.find((b: { name: string }) => b.name === "one");
+  expect(moved).toMatchObject({ path: "Shelf/one.txt", id: bookId }); // same content id: links and bookmarks still point here
+  expect((await call(lan, "/api/admin/fs/rename", { body: { kind: "book", path: "Shelf/one.txt", name: "First" }, cookie: admin })).status).toBe(200);
+  expect((await call(lan, `/api/file/${bookId}`)).body).toBe("first book, 0123456789");
 });

@@ -197,3 +197,21 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .bookmark-go { text-align: left; font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
 .muted.small { font-size: 12px; }
 .icon-btn.small { width: 28px; height: 28px; font-size: 14px; flex: none; }
+
+.edit-bar { position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 10px; background: var(--panel-bg); border-bottom: 2px solid var(--accent); }
+.edit-bar[hidden] { display: none; }
+.editing .panel { box-shadow: inset 3px 0 0 var(--accent); }
+.row-actions { display: none; margin-left: auto; gap: 2px; flex: none; }
+.editing .node:hover .row-actions, .editing .node:focus-within .row-actions { display: inline-flex; }
+.editing .node .count { margin-left: 0; }
+.editing .node:not(.root-drop) .label { flex: 1; min-width: 0; }
+.row-btn { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: 13px; border-radius: 4px; }
+.row-btn:hover { background: var(--bg); color: var(--text); }
+.editing .node[draggable="true"] { cursor: grab; }
+.drop-ok { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--hover); }
+.root-drop { color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+.editing .card[draggable="true"] { cursor: grab; }
+.move-list { display: flex; flex-direction: column; max-height: 60vh; overflow: auto; }
+.move-row { padding-top: 5px; padding-bottom: 5px; color: var(--text); }
+.move-row:disabled { color: var(--muted); opacity: 0.5; cursor: default; }
+.toast { position: fixed; z-index: 100; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(90vw, 480px); padding: 10px 16px; border-radius: 8px; background: #b3261e; color: #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); }

@@ -85,6 +85,37 @@ export class Library {
     return (this.db.query("SELECT id, path, name, ext, size FROM books WHERE id = ? LIMIT 1").get(id) as BookRow | null) ?? null;
   }
 
+  hasFolder(path: string): boolean {
+    return path === "" || this.db.query("SELECT 1 FROM folders WHERE path = ?").get(path) !== null;
+  }
+
+  bookAt(path: string): BookRow | null {
+    return (this.db.query("SELECT id, path, name, ext, size FROM books WHERE path = ?").get(path) as BookRow | null) ?? null;
+  }
+
+  /**
+   * Records a rename or move the app has just made on disk, so the tree is right at once instead
+   * of after the next scan. A folder takes everything under it along. Ids don't change: they come
+   * from content.
+   */
+  applyMove(kind: "book" | "folder", from: string, to: string): void {
+    const escape = (p: string) => p.replace(/[\\%_]/g, (c) => `\\${c}`);
+    this.db.transaction(() => {
+      if (kind === "book") {
+        const name = to.slice(to.lastIndexOf("/") + 1);
+        this.db.run("UPDATE books SET path = ?, name = ? WHERE path = ?", [to, name.slice(0, name.lastIndexOf(".")), from]);
+        return;
+      }
+      const cut = from.length + 1;
+      this.db.run("UPDATE books SET path = ? || substr(path, ?) WHERE path LIKE ? ESCAPE '\\'", [to, cut, `${escape(from)}/%`]);
+      this.db.run("UPDATE folders SET path = ? || substr(path, ?) WHERE path = ? OR path LIKE ? ESCAPE '\\'", [to, cut, from, `${escape(from)}/%`]);
+    })();
+  }
+
+  addFolder(path: string): void {
+    this.db.run("INSERT OR IGNORE INTO folders (path) VALUES (?)", [path]);
+  }
+
   /** Any occurrence of the query in a file name or its folder path, case-insensitively. */
   searchNames(query: string, limit = 50): BookRow[] {
     const q = query.trim();
