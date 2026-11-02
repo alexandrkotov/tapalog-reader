@@ -1,11 +1,9 @@
 ## English
 
 What's new:
-- Download a book by a link from any site, not only Google Drive. The sites you take books from can be saved in the download dialog.
-- Find duplicate books in Settings; extra copies go to a hidden trash folder inside the library, nothing is deleted.
-- A book that is already in the library is not saved twice without asking.
-- Reader plugins for more formats (for example DjVu): see "Plugins" in the README.
-- A new icon, a quick tour of the interface (the `?` button) and a drop-down theme switch.
+- A zip downloaded by link is unpacked automatically: the book inside is taken out and its type (FB2, DjVu, PDF…) is found from the file.
+- Reader plugins can draw cover previews: DjVu books get covers once the DjVu plugin is updated.
+- A quick tour of the reader itself: open a book and press `?`.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -19,11 +17,9 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- Скачивание книги по ссылке с любого сайта, а не только с Google Drive. Сайты, откуда вы берёте книги, можно сохранить в окне скачивания.
-- Поиск дубликатов книг в Настройках; лишние копии уходят в скрытую корзину внутри библиотеки, ничего не удаляется.
-- Книга, которая уже есть в библиотеке, не сохраняется второй раз без вашего согласия.
-- Плагины-читалки для других форматов (например, DjVu): см. раздел «Plugins» в README.
-- Новая иконка, быстрый тур по интерфейсу (кнопка `?`) и выпадающий список выбора темы.
+- Скачанный по ссылке zip распаковывается автоматически: книга из архива извлекается, а её тип (FB2, DjVu, PDF…) определяется по файлу внутри.
+- Плагины читалок могут рисовать обложки: у книг DjVu появятся обложки после обновления плагина DjVu.
+- Быстрый тур по самой читалке: откройте книгу и нажмите `?`.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -37,11 +33,9 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- Завантаження книги за посиланням з будь-якого сайту, а не лише з Google Drive. Сайти, звідки ви берете книги, можна зберегти у вікні завантаження.
-- Пошук дублікатів книг у Налаштуваннях; зайві копії йдуть у прихований кошик усередині бібліотеки, нічого не видаляється.
-- Книга, яка вже є в бібліотеці, не зберігається вдруге без вашої згоди.
-- Плагіни-читалки для інших форматів (наприклад, DjVu): див. розділ «Plugins» у README.
-- Нова іконка, швидкий тур інтерфейсом (кнопка `?`) і випадний список вибору теми.
+- Завантажений за посиланням zip розпаковується автоматично: книгу з архіву витягується, а її тип (FB2, DjVu, PDF…) визначається за файлом усередині.
+- Плагіни читалок можуть малювати обкладинки: у книг DjVu з'являться обкладинки після оновлення плагіна DjVu.
+- Швидкий тур по самій читалці: відкрийте книгу й натисніть `?`.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 
