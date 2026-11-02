@@ -2,7 +2,7 @@ import { expect } from "bun:test";
 import { join } from "node:path";
 import type { Browser } from "playwright-core";
 import { library } from "./fixtures";
-import { after, before, e2e, launch, setup, signedIn, startServer, watchErrors, type Instance } from "./harness";
+import { after, api, before, e2e, launch, setup, signedIn, startServer, watchErrors, type Instance } from "./harness";
 
 let browser: Browser;
 let inst: Instance;
@@ -116,6 +116,43 @@ e2e("the quick tour is offered once, lights up each button in turn and can be st
   await page.click("#tour");
   await page.keyboard.press("Escape");
   expect(await page.locator(".tour-card").count()).toBe(0);
+  expect(errors).toEqual([]);
+  await ctx.close();
+});
+
+e2e("with a book open the tour is about reading it: the title, print, bookmarks, share and the reader's own buttons", async () => {
+  const ctx = await signedIn(browser, inst);
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(inst.url + "/");
+  await page.waitForSelector(".shelf"); // the first scan is done
+  const notes = (await api<{ books: { id: string; path: string }[] }>(ctx, inst, "/api/library")).books.find((b) => b.path.endsWith("notes.txt"))!; // an earlier test may have made Docs the library
+  await page.goto(`${inst.url}/#book=${notes.id}`);
+  await page.waitForSelector(".txt-body");
+  await page.waitForSelector("[data-tour=print]:not([hidden])"); // shown when the reader says it can print
+  await page.click("#tour");
+  const total = Number((await page.textContent(".tour-count"))!.split(" of ")[1]);
+  expect(total).toBe(6);
+  const seen: (string | null)[] = [];
+  for (let i = 0; i < total; i++) {
+    await page.waitForTimeout(300);
+    const hole = (await page.locator(".tour-hole").boundingBox())!;
+    seen.push(
+      await page.evaluate((h) => {
+        const near = (a: number, b: number) => Math.abs(a - b) <= 6;
+        const match = [...document.querySelectorAll<HTMLElement>(".reader-bar .title, [data-tour], .reader-host .pdf-toolbar, #tour")].find((n) => {
+          const r = n.getBoundingClientRect();
+          return near(r.left, h.x) && near(r.top, h.y) && near(r.width + 8, h.width) && near(r.height + 8, h.height);
+        });
+        return match ? match.dataset.tour || match.id || match.className.split(" ")[0]! : null;
+      }, hole),
+    );
+    const card = (await page.locator(".tour-card").boundingBox())!;
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    await page.click(".tour-card .btn.primary");
+  }
+  expect(seen).toEqual(["title", "print", "marks", "share", "pdf-toolbar", "tour"]);
   expect(errors).toEqual([]);
   await ctx.close();
 });

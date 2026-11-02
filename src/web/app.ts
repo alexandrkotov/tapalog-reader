@@ -600,6 +600,7 @@ function showReader(spec: { name: string; ext: string; path?: string; fileUrl: s
   const host = el("div", { class: "reader-host" });
   // shown once the reader is up and says it can print (a catalog's own viewer exports PDF)
   const printButton = el("button", { type: "button", class: "btn", textContent: `🖶 ${t("print.button")}`, hidden: true });
+  printButton.dataset.tour = "print";
   printButton.addEventListener("click", () => {
     const job = reader?.printJob?.();
     if (job) openPrintDialog({ name: spec.name, fileUrl: spec.fileUrl, job });
@@ -626,6 +627,8 @@ function openBook(book: Book, view: unknown): void {
   renderTree();
   const share = el("button", { type: "button", class: "btn", textContent: t("share.button") });
   const marks = el("button", { type: "button", class: "btn", textContent: `★ ${t("bookmark.title")}` });
+  share.dataset.tour = "share";
+  marks.dataset.tour = "marks";
   showReader({
     name: book.name,
     ext: book.ext,
@@ -696,7 +699,18 @@ langEl.addEventListener("change", () => {
   void (sharePage ? bootShare(sharePage) : boot());
 });
 
-function tourSteps(): TourStep[] {
+/** With a book open the tour is about reading it; on the library page (and for the first-visit offer) it is about the whole interface. */
+function tourSteps(forReader = true): TourStep[] {
+  if (forReader && mainEl.querySelector(".reader-bar") && !document.body.classList.contains("share-mode")) {
+    return [
+      { target: ".reader-bar .title", text: "tour.reader.title" },
+      { target: "[data-tour=print]", text: "tour.reader.print" },
+      { target: "[data-tour=marks]", text: "tour.reader.bookmarks" },
+      { target: "[data-tour=share]", text: "tour.reader.share" },
+      { target: ".reader-host .pdf-toolbar", text: "tour.reader.toolbar" },
+      { target: "#tour", text: "tour.reader.more" },
+    ];
+  }
   return [
     { target: "#panel-toggle", text: "tour.panel" },
     { target: "#panel", text: "tour.tree" },
@@ -850,7 +864,7 @@ async function boot(): Promise<void> {
   }
   await loadLibrary();
   route();
-  offerTour(() => startTour(tourSteps()));
+  offerTour(() => startTour(tourSteps(false)));
   pollTimer = setInterval(() => void pollStatus().catch((err: unknown) => err instanceof ApiError && err.status === 401 && void boot()), 4000);
 }
 
