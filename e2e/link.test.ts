@@ -1,6 +1,7 @@
 import { expect } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { strToU8, zipSync } from "fflate";
 import type { Browser } from "playwright-core";
 import { startFakeDrive } from "../src/server/fakeDrive";
 import { library } from "./fixtures";
@@ -8,6 +9,7 @@ import { after, before, e2e, launch, setup, signedIn, startServer, watchErrors, 
 
 const PICTURE = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
 const BOOK = "%PDF-1.4 a book from the stand-in Drive";
+const FB2 = "<?xml version='1.0'?><FictionBook>" + "text ".repeat(100) + "</FictionBook>";
 const ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456";
 
 let browser: Browser;
@@ -16,7 +18,7 @@ let drive: ReturnType<typeof startFakeDrive>;
 
 before(async () => {
   browser = await launch();
-  drive = startFakeDrive({ [ID]: { name: "Лучшие конструкции, 1957.pdf", content: BOOK }, PLAIN: { name: null, content: BOOK } }, PICTURE);
+  drive = startFakeDrive({ [ID]: { name: "Лучшие конструкции, 1957.pdf", content: BOOK }, PLAIN: { name: null, content: BOOK }, ZIPBOOK: { name: "Повесть.fb2.zip", content: new Uint8Array(zipSync({ "Повесть.fb2": strToU8(FB2) })), type: "application/zip" }, ZIPMANY: { name: "two.zip", content: new Uint8Array(zipSync({ "a.pdf": strToU8(BOOK), "b.fb2": strToU8(FB2) })) } }, PICTURE);
   inst = await startServer(library(), { TAPALOG_IMPORT_TEST_URL: drive.origin });
   await setup(inst);
 });
@@ -134,6 +136,38 @@ e2e("the sites books are taken from are saved in the download dialog and are the
   await page.click(".source-list button[title='Remove']");
   await page.waitForSelector("text=Save the sites you take books from");
   expect(await page.locator(".source-list a").count()).toBe(0);
+  expect(errors).toEqual([]);
+  await ctx.close();
+});
+
+e2e("a zip with a book in it is unpacked after the download, and the type of the book is found from what is inside", async () => {
+  const ctx = await signedIn(browser, inst);
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(inst.url + "/");
+  await page.waitForSelector(".shelf");
+
+  await page.click("button:has-text('Download by link')");
+  await page.getByLabel("Link to the book file").fill(`${drive.origin}/files/ZIPMANY/two.zip`);
+  await page.click("button:has-text('Check the link')");
+  await page.getByLabel("Name of the book").waitFor();
+  await page.waitForSelector("text=A zip archive");
+  await page.click(".modal button:has-text('Download')");
+  await page.waitForSelector("text=The zip has several books in it");
+  expect(existsSync(join(inst.lib, "two.fb2"))).toBe(false);
+
+  await page.click("button:has-text('Back')");
+  await page.getByLabel("Name of the book").waitFor();
+  await page.click("button:has-text('Back')"); // to the link
+  await page.getByLabel("Link to the book file").fill(`${drive.origin}/files/ZIPBOOK/anything`);
+  await page.click("button:has-text('Check the link')");
+  const name = page.getByLabel("Name of the book");
+  await name.waitFor();
+  expect(await name.inputValue()).toBe("Повесть"); // book.fb2.zip: named after the book
+  await page.click(".modal button:has-text('Download')");
+  await page.waitForSelector("text=The book was saved as Повесть.fb2");
+  expect(readFileSync(join(inst.lib, "Повесть.fb2"), "utf-8")).toBe(FB2);
+  expect(existsSync(join(inst.lib, "Повесть.zip"))).toBe(false);
   expect(errors).toEqual([]);
   await ctx.close();
 });

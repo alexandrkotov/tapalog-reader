@@ -306,7 +306,7 @@ test("a book is fetched from a shared Drive link by the administrator only, into
     expect((await call(lan, "/api/admin/import/thumbnail/ABCDEFGHIJKLMNOP", { cookie })).status).toBe(cookie ? 403 : 401);
   }
 
-  expect((await call(lan, "/api/admin/import/inspect", { body: { link: wrapped }, cookie: adminCookie })).body).toEqual({ id: "ABCDEFGHIJKLMNOP", name: "Fetched book", ext: "pdf", size: PDF.length });
+  expect((await call(lan, "/api/admin/import/inspect", { body: { link: wrapped }, cookie: adminCookie })).body).toEqual({ id: "ABCDEFGHIJKLMNOP", name: "Fetched book", ext: "pdf", size: PDF.length, archive: false });
   expect((await call(lan, "/api/admin/import/inspect", { body: { link: "ftp://example.com/x.pdf" }, cookie: adminCookie })).body).toEqual({ error: "bad-link" });
   expect((await call(lan, "/api/admin/import/inspect", { body: { link: "http://127.0.0.1:1/x.pdf" }, cookie: adminCookie })).body).toEqual({ error: "local-address" }); // the program cannot be pointed at its own computer
   expect((await call(lan, "/api/admin/import/inspect", { body: { link: "http://192.168.0.1/admin.pdf" }, cookie: adminCookie })).body).toEqual({ error: "local-address" });

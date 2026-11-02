@@ -7,6 +7,8 @@ interface Inspected {
   name: string;
   ext: string;
   size: number;
+  /** A zip: the book is taken out of it after the download (`ext` is then a guess, "zip" when there is none). */
+  archive: boolean;
 }
 
 interface Job {
@@ -18,6 +20,7 @@ interface Job {
   bookId: string | null;
   error: string | null;
   duplicateOf: string | null;
+  unpacking: boolean;
 }
 
 const EDIT_ERRORS: Record<string, Key> = {
@@ -28,7 +31,7 @@ const EDIT_ERRORS: Record<string, Key> = {
   "no-library": "edit.err.missing",
 };
 
-const IMPORT_CODES = new Set(["bad-link", "folder", "not-a-file", "web-page", "not-found", "closed", "local-address", "unsupported", "wrong-content", "too-big", "unreachable", "busy", "cancelled"]);
+const IMPORT_CODES = new Set(["bad-link", "folder", "not-a-file", "web-page", "not-found", "closed", "local-address", "unsupported", "wrong-content", "archive-empty", "archive-many", "archive-encrypted", "archive-broken", "too-big", "unreachable", "busy", "cancelled"]);
 
 function failure(code: string): string {
   return t(EDIT_ERRORS[code] ?? (IMPORT_CODES.has(code) ? (`link.err.${code}` as Key) : "link.err.failed"));
@@ -141,8 +144,9 @@ export function openLinkImport(opts: { folders: readonly string[]; saved: () => 
     const form = el(
       "form",
       { class: "stack" },
-      el("div", { class: "import-info" }, badge(info.ext), el("span", { class: "muted", textContent: info.size ? formatBytes(info.size) : "" })),
-      el("label", {}, el("span", { textContent: t("link.name") }), el("div", { class: "import-name" }, nameInput, el("span", { class: "muted", textContent: `.${info.ext}` }))),
+      el("div", { class: "import-info" }, badge(info.archive && info.ext === "zip" ? "zip" : info.ext), el("span", { class: "muted", textContent: info.size ? formatBytes(info.size) : "" })),
+      ...(info.archive ? [el("p", { class: "muted small", textContent: t("link.archiveNote") })] : []),
+      el("label", {}, el("span", { textContent: t("link.name") }), el("div", { class: "import-name" }, nameInput, el("span", { class: "muted", textContent: info.archive && info.ext === "zip" ? "" : `.${info.ext}` }))),
       el("label", {}, el("span", { textContent: t("link.folder") }), select),
       el("div", { class: "import-actions" }, go, back),
       error,
@@ -174,6 +178,7 @@ export function openLinkImport(opts: { folders: readonly string[]; saved: () => 
     show(el("div", { class: "stack" }, bar, text, cancel));
     const draw = (job: Job) => {
       if (job.total) bar.value = job.received;
+      if (job.unpacking) return void (text.textContent = t("link.unpacking"));
       text.textContent = job.total ? t("link.progress", { done: formatBytes(job.received), total: formatBytes(job.total) }) : formatBytes(job.received);
     };
     draw(first);

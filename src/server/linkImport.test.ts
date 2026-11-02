@@ -9,6 +9,7 @@ import { LibraryEditor } from "./editor";
 import { startFakeDrive } from "./fakeDrive";
 import { Library } from "./library";
 import { removeDir } from "./testutil";
+import { strToU8, zipSync } from "fflate";
 
 const ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456";
 const code = (fn: () => unknown): string => {
@@ -91,7 +92,23 @@ afterAll(() => {
 });
 
 const PDF = new TextEncoder().encode("%PDF-1.5 " + "page ".repeat(2000));
+const DJVU = new TextEncoder().encode("AT&TFORM" + "x".repeat(3000));
+const FB2 = "<?xml version='1.0'?><FictionBook>" + "text ".repeat(3000) + "</FictionBook>";
+const zipped = (files: Record<string, Uint8Array | string>): Uint8Array<ArrayBuffer> => {
+  const packed = zipSync(Object.fromEntries(Object.entries(files).map(([name, data]) => [name, typeof data === "string" ? strToU8(data) : data])));
+  return new Uint8Array(packed.buffer.slice(packed.byteOffset, packed.byteOffset + packed.byteLength) as ArrayBuffer);
+};
 const drive = startFakeDrive({
+  ZIPFB2: { name: "Повесть.fb2.zip", content: zipped({ "Повесть.fb2": FB2, "readme.txt": "see the book", "__MACOSX/._Повесть.fb2": "junk" }) },
+  ZIPDJVU: { name: "Scan.zip", content: zipped({ "inner/scan.DJVU": DJVU }) },
+  ZIPTYPE: { name: null, content: zipped({ "a.pdf": PDF }), type: "application/zip" },
+  ZIPMANY: { name: "two.zip", content: zipped({ "a.pdf": PDF, "b.epub": "PK..." }) },
+  ZIPNONE: { name: "docs.zip", content: zipped({ "a.docx": "word", "b.exe": "program" }) },
+  ZIPCOMIC: { name: "comic.zip", content: zipped({ "1.jpg": "j1", "2.png": "p2" }) },
+  ZIPEPUB: { name: "story.zip", content: zipped({ mimetype: "application/epub+zip", "META-INF/container.xml": "<container/>", "OEBPS/c.xhtml": "<html/>" }) },
+  ZIPWRONG: { name: "fake.zip", content: zipped({ "scan.djvu": "this is not a djvu file" }) },
+  ZIPBROKEN: { name: "cut.zip", content: zipped({ "a.pdf": PDF }).slice(0, 60) },
+  NOTAZIP: { name: "text.zip", content: "this is only text, not a zip file at all" },
   [ID]: { name: "Лучшие конструкции, 1957.pdf", content: PDF },
   BOOKTXT123456: { name: "notes.txt", content: "just text" },
   WRONGCONTENT1: { name: "fake.pdf", content: "<!doctype html><html>Sign in</html>" },
@@ -149,7 +166,7 @@ const refused = async (run: () => Promise<unknown>) => {
 };
 
 test("inspecting a file gives its name, format and size without downloading it", async () => {
-  expect(await imports.inspect(link(ID))).toEqual({ id: ID, name: "Лучшие конструкции, 1957", ext: "pdf", size: PDF.length });
+  expect(await imports.inspect(link(ID))).toEqual({ id: ID, name: "Лучшие конструкции, 1957", ext: "pdf", size: PDF.length, archive: false });
   expect(await imports.thumbnail(ID)).toMatchObject({ type: "image/png" });
   expect(await imports.thumbnail("MOVIE12345678")).not.toBeNull();
   expect(await imports.thumbnail("NOSUCHFILE123")).toBeNull();
@@ -158,8 +175,8 @@ test("inspecting a file gives its name, format and size without downloading it",
 });
 
 test("a link to a file on any site is inspected and saved like a Drive one, named after the address when the server gives no name", async () => {
-  expect(await imports.inspect(at("URLBOOK", "Radio%20Book%201950.pdf?download=1"))).toEqual({ id: null, name: "Radio Book 1950", ext: "pdf", size: PDF.length });
-  expect(await imports.inspect(at("NOEXTENSION", "download"))).toEqual({ id: null, name: "download", ext: "pdf", size: PDF.length }); // the content type says what it is
+  expect(await imports.inspect(at("URLBOOK", "Radio%20Book%201950.pdf?download=1"))).toEqual({ id: null, name: "Radio Book 1950", ext: "pdf", size: PDF.length, archive: false });
+  expect(await imports.inspect(at("NOEXTENSION", "download"))).toEqual({ id: null, name: "download", ext: "pdf", size: PDF.length, archive: false }); // the content type says what it is
   expect(await imports.inspect(at("IGNORERANGE"))).toMatchObject({ name: "norange", size: PDF.length }); // a server that sends everything for a one-byte request
   expect(await imports.inspect(at("UNKNOWNSIZE"))).toMatchObject({ name: "chunked", size: 0 }); // no length given
   expect(await refused(() => imports.inspect(at("NOWHERE1", "thing")))).toBe("unsupported");
@@ -267,4 +284,50 @@ test("a name that turns up while the book downloads is not overwritten", async (
   writeFileSync(join(lib, "slow.pdf"), "somebody else's file");
   expect(await finished(job)).toMatchObject({ state: "failed", error: "exists" });
   expect(readFileSync(join(lib, "slow.pdf"), "utf-8")).toBe("somebody else's file");
+});
+
+test("a zip is recognised from its name or content type; a book.fb2.zip is named after the book", async () => {
+  expect(await imports.inspect(at("ZIPFB2"))).toMatchObject({ name: "Повесть", ext: "fb2", archive: true });
+  expect(await imports.inspect(at("ZIPDJVU"))).toMatchObject({ name: "Scan", ext: "zip", archive: true });
+  expect(await imports.inspect(at("ZIPTYPE", "download"))).toMatchObject({ name: "download", ext: "zip", archive: true }); // only the content type says it is a zip
+});
+
+test("the book inside a zip is unpacked under the chosen name, its type found from the file in it, and the zip is not kept", async () => {
+  const fb2 = await finished(await imports.start(at("ZIPFB2"), "Radio", "Повесть"));
+  expect(fb2).toMatchObject({ state: "done", path: "Radio/Повесть.fb2", error: null, unpacking: false });
+  expect(readFileSync(join(lib, "Radio/Повесть.fb2"), "utf-8")).toBe(FB2); // the readme beside it is not the book
+  const djvu = await finished(await imports.start(at("ZIPDJVU"), "", "Scan"));
+  expect(djvu).toMatchObject({ state: "done", path: "Scan.djvu" }); // the extension is the one inside, in lower case
+  expect(readFileSync(join(lib, "Scan.djvu"))).toEqual(Buffer.from(DJVU));
+  const typed = await finished(await imports.start(at("ZIPTYPE", "download"), "", "From type"));
+  expect(typed).toMatchObject({ state: "done", path: "From type.pdf" });
+  expect(readdirSync(lib).filter((f) => f.startsWith(".") || f.endsWith(".zip"))).toEqual([]);
+  expect(library.bookAt("Scan.djvu")?.ext).toBe("djvu");
+});
+
+test("a zip that really is an EPUB or a comic is kept as one", async () => {
+  expect(await finished(await imports.start(at("ZIPEPUB"), "", "Story"))).toMatchObject({ state: "done", path: "Story.epub" });
+  expect(await finished(await imports.start(at("ZIPCOMIC"), "", "Comic"))).toMatchObject({ state: "done", path: "Comic.cbz" });
+});
+
+test("a zip with no book, several books, a damaged one or a wrong one is refused with a reason, leaving nothing behind", async () => {
+  const before = readdirSync(lib).sort();
+  const fails = async (id: string, error: string) => expect(await finished(await imports.start(at(id), "", "Try"))).toMatchObject({ state: "failed", error, unpacking: false });
+  await fails("ZIPMANY", "archive-many");
+  await fails("ZIPNONE", "archive-empty");
+  await fails("ZIPWRONG", "wrong-content"); // the .djvu inside is not a DjVu file
+  await fails("ZIPBROKEN", "archive-broken");
+  await fails("NOTAZIP", "wrong-content");
+  expect(readdirSync(lib).sort()).toEqual(before);
+});
+
+test("a book that is inside a zip and already in the library is found out, and the size limit counts the unpacked book", async () => {
+  await finished(await imports.start(at("ZIPTYPE", "download"), "", "First"));
+  const again = await finished(await imports.start(at("ZIPTYPE", "download"), "", "Second"));
+  expect(again).toMatchObject({ state: "failed", error: "duplicate", duplicateOf: "First.pdf" });
+  const small = new LinkImports(library, new LibraryEditor(library, join(lib, "tapalog-reader-data")), drive.endpoints, PDF.length - 1000);
+  const big = await small.start(at("ZIPTYPE", "download"), "", "Big"); // the zip is smaller than the limit, the book in it is not
+  for (let i = 0; i < 100 && small.job(big.id)!.state === "running"; i++) await Bun.sleep(50);
+  expect(small.job(big.id)).toMatchObject({ state: "failed", error: "too-big" });
+  expect(readdirSync(lib).filter((f) => f.startsWith("."))).toEqual([]);
 });

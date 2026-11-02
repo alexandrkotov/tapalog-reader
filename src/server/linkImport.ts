@@ -1,9 +1,11 @@
+import { renameSync } from "node:fs";
 import { open, rm } from "node:fs/promises";
 import { formatOf, type Format } from "./formats";
 import { EditError, type LibraryEditor } from "./editor";
 import type { Library } from "./library";
 import { contentId } from "./scanner";
 import { safeGet, UnsafeAddress } from "./safeGet";
+import { extractEntry, zipEntries, ZipError, type ZipEntry } from "./zip";
 
 export type ImportErrorCode =
   | "bad-link" // not an http(s) link at all
@@ -16,6 +18,10 @@ export type ImportErrorCode =
   | "duplicate" // the same book is already in the library (the job says where)
   | "unsupported" // a file that is not one of the library's formats
   | "wrong-content" // the bytes are not what the name says (an error page, a different file type)
+  | "archive-empty" // a zip with no book in it
+  | "archive-many" // a zip with several books: which one is wanted is not for the program to guess
+  | "archive-encrypted" // a zip that needs a password
+  | "archive-broken" // a zip that is damaged or packed in a way that is not handled
   | "too-big"
   | "unreachable"
   | "busy"
@@ -89,6 +95,8 @@ export interface Inspected {
   ext: string;
   /** In bytes; 0 when the server does not say. */
   size: number;
+  /** A zip file: the book is taken out of it once it is here, and `ext` is only a guess ("zip" when there is none) from a name like book.fb2.zip. */
+  archive: boolean;
 }
 
 /** What a server's content type says when the name has no extension the library knows. */
@@ -102,7 +110,12 @@ const TYPE_EXT: Record<string, string> = {
   "application/vnd.comicbook+zip": "cbz",
   "application/x-cbz": "cbz",
   "text/plain": "txt",
+  "application/zip": "zip",
+  "application/x-zip-compressed": "zip",
+  "application/x-zip": "zip",
 };
+
+const isZipName = (file: string) => /\.zip$/i.test(file);
 
 /** The file's name: the one the server gives, else the last part of the address; the content type fills in a missing extension. */
 function fileNameFor(disposition: string | null, finalUrl: URL | null, type: string | null): string | null {
@@ -115,7 +128,7 @@ function fileNameFor(disposition: string | null, finalUrl: URL | null, type: str
       file = last;
     }
   }
-  if (file && formatOf(file)) return file;
+  if (file && (formatOf(file) || isZipName(file))) return file;
   const ext = TYPE_EXT[(type ?? "").split(";")[0]!.trim().toLowerCase()];
   return ext ? `${file || "Book"}.${ext}` : file || null;
 }
@@ -165,6 +178,8 @@ const sniff: Partial<Record<Format, (head: Uint8Array) => boolean>> = {
 const text = (bytes: Uint8Array, at: number, expected: string) => expected.split("").every((c, i) => bytes[at + i] === c.charCodeAt(0));
 const looksLikeHtml = (head: Uint8Array) => /^\s*<(!doctype html|html)/i.test(new TextDecoder().decode(head));
 
+type Slot = ReturnType<LibraryEditor["reserve"]>;
+
 export interface ImportJob {
   id: string;
   state: "running" | "done" | "failed";
@@ -176,6 +191,8 @@ export interface ImportJob {
   error: string | null;
   /** With the error "duplicate": where the same book already is. */
   duplicateOf: string | null;
+  /** The download is over and the book is being taken out of a zip. */
+  unpacking: boolean;
 }
 
 interface Running extends ImportJob {
@@ -273,9 +290,14 @@ export class LinkImports {
     await res.body?.cancel();
     const file = fileNameFor(res.headers.get("content-disposition"), url, res.headers.get("content-type"));
     if (!file || !Number.isFinite(size)) throw new ImportError("failed");
-    if (!formatOf(file)) throw new ImportError("unsupported");
-    const dot = file.lastIndexOf(".");
-    return { id: target.drive ?? null, name: suggestName(file.slice(0, dot)), ext: file.slice(dot + 1).toLowerCase(), size };
+    const archive = isZipName(file);
+    if (!archive && !formatOf(file)) throw new ImportError("unsupported");
+    // book.fb2.zip: the name is "book" and the book inside is likely an fb2
+    const unzipped = archive ? file.slice(0, -4) : file;
+    const dot = unzipped.lastIndexOf(".");
+    const guess = dot > 0 && formatOf(unzipped) ? unzipped.slice(dot + 1).toLowerCase() : archive ? "zip" : null;
+    const base = guess && guess !== "zip" ? unzipped.slice(0, dot) : unzipped.slice(0, archive ? undefined : dot);
+    return { id: target.drive ?? null, name: suggestName(base), ext: guess ?? file.slice(file.lastIndexOf(".") + 1).toLowerCase(), size, archive };
   }
 
   /** The picture Drive shows for the file, passed on so the page does not have to talk to Google. */
@@ -303,13 +325,16 @@ export class LinkImports {
     if (info.size > this.maxBytes) throw new ImportError("too-big");
     const target = parseLink(link);
     const slot = this.editor.reserve(folder, name, info.ext);
-    const job: Running = { id: crypto.randomUUID(), state: "running", received: 0, total: info.size, path: null, bookId: null, error: null, duplicateOf: null, keep: keepDuplicate, abort: new AbortController(), finished: 0 };
+    const job: Running = { id: crypto.randomUUID(), state: "running", received: 0, total: info.size, path: null, bookId: null, error: null, duplicateOf: null, unpacking: false, keep: keepDuplicate, abort: new AbortController(), finished: 0 };
     this.jobs.set(job.id, job);
-    void this.run(job, target, info, slot);
+    void this.run(job, target, info, slot, folder, name);
     return this.view(job);
   }
 
-  private async run(job: Running, target: Link, info: Inspected, slot: ReturnType<LibraryEditor["reserve"]>): Promise<void> {
+  private async run(job: Running, target: Link, info: Inspected, first: Slot, folder: string, name: unknown): Promise<void> {
+    let slot = first;
+    let ext = info.ext;
+    const spare: string[] = [first.temp]; // removed if this fails: the download and what is made from it
     try {
       const { res } = await this.download(target, { signal: job.abort.signal });
       const file = await open(slot.temp, "w");
@@ -323,27 +348,74 @@ export class LinkImports {
         await file.close();
       }
       if (info.size && job.received !== info.size) throw new ImportError("failed"); // the connection ended early
+      if (info.archive) {
+        const zipHead = new Uint8Array(await Bun.file(first.temp).slice(0, 4).arrayBuffer());
+        if (!text(zipHead, 0, "PK\u0003\u0004") && !text(zipHead, 0, "PK\u0005\u0006")) throw new ImportError("wrong-content"); // an error page or text with the name of a zip
+        job.unpacking = true;
+        const unpacked = await this.unpack(first.temp, folder, name, spare);
+        slot = unpacked.slot;
+        ext = unpacked.ext;
+        job.unpacking = false;
+      }
+      const size = Bun.file(slot.temp).size;
       const head = new Uint8Array(await Bun.file(slot.temp).slice(0, 64).arrayBuffer());
-      if (looksLikeHtml(head) || !(sniff[formatOf(`x.${info.ext}`) as Format]?.(head) ?? head.length > 0)) throw new ImportError("wrong-content");
+      if (looksLikeHtml(head) || !(sniff[formatOf(`x.${ext}`) as Format]?.(head) ?? head.length > 0)) throw new ImportError("wrong-content");
       if (!job.keep) {
-        const same = this.library.byId(await contentId(slot.temp, job.received));
+        const same = this.library.byId(await contentId(slot.temp, size));
         if (same) {
           job.duplicateOf = same.path;
           throw new ImportError("duplicate");
         }
       }
       job.path = slot.commit();
+      if (slot !== first) await rm(first.temp, { force: true }); // the zip itself is not kept
       await this.library.rescan();
       for (let i = 0; i < 50 && !this.library.bookAt(job.path); i++) await Bun.sleep(100); // a scan already running will pick it up
       job.bookId = this.library.bookAt(job.path)?.id ?? null;
       job.state = "done";
     } catch (err) {
-      await rm(slot.temp, { force: true });
+      for (const path of spare) await rm(path, { force: true });
+      job.unpacking = false;
       job.state = "failed";
       job.error = job.abort.signal.aborted ? "cancelled" : err instanceof ImportError || err instanceof EditError ? err.code : "failed";
     } finally {
       job.finished = Date.now();
     }
+  }
+
+  /**
+   * Takes the book out of a downloaded zip: the one file in it that is a book (a readme.txt beside a book
+   * does not count), unpacked next to the zip under the name chosen. A zip that really is a comic (only
+   * pictures) or an EPUB is kept as it is. Nothing is guessed: no book, or several, is an error.
+   */
+  private async unpack(zip: string, folder: string, name: unknown, spare: string[]): Promise<{ slot: Slot; ext: string }> {
+    const fail = (err: unknown): never => {
+      if (!(err instanceof ZipError)) throw err;
+      throw new ImportError(err.code === "encrypted" ? "archive-encrypted" : err.code === "too-big" ? "too-big" : "archive-broken");
+    };
+    const entries = await zipEntries(zip).catch(fail);
+    const files = entries.filter((e) => !e.directory && !e.name.split("/").some((part) => part === "__MACOSX" || part.startsWith(".")));
+    const nameOf = (e: ZipEntry) => e.name.slice(e.name.lastIndexOf("/") + 1);
+    const books = files.filter((e) => formatOf(nameOf(e)));
+    const wanted = books.filter((e) => formatOf(nameOf(e)) !== "txt");
+    const candidates = wanted.length ? wanted : books;
+
+    if (!candidates.length) {
+      const asIs = files.some((e) => e.name === "mimetype") && files.some((e) => e.name === "META-INF/container.xml") ? "epub" : files.length && files.every((e) => /\.(jpe?g|png|gif|webp)$/i.test(e.name)) ? "cbz" : null;
+      if (!asIs) throw new ImportError("archive-empty");
+      const slot = this.editor.reserve(folder, name, asIs);
+      spare.push(slot.temp);
+      renameSync(zip, slot.temp);
+      return { slot, ext: asIs };
+    }
+    if (candidates.length > 1) throw new ImportError("archive-many");
+    const entry = candidates[0]!;
+    const inner = nameOf(entry);
+    const ext = inner.slice(inner.lastIndexOf(".") + 1).toLowerCase();
+    const slot = this.editor.reserve(folder, name, ext);
+    spare.push(slot.temp);
+    await extractEntry(zip, entry, slot.temp, this.maxBytes).catch(fail);
+    return { slot, ext };
   }
 
   private view(job: Running): ImportJob {
