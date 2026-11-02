@@ -13,6 +13,16 @@ export interface PluginInfo {
   reader: string;
   /** Whether a share link can carry the reader's view (its place in the book). */
   shareableView: boolean;
+  /** Whether the module exports `cover(context)` too. */
+  cover: boolean;
+}
+
+/** What a plugin's `cover(context)` is given: the book's file and the size the cover will be shown at (it is scaled to fit anyway). */
+export interface CoverContext {
+  url: string;
+  ext: string;
+  width: number;
+  height: number;
 }
 
 /** What a plugin's `mount(host, context)` is given. The plugin draws into `host` and owns it until `destroy`. */
@@ -49,10 +59,21 @@ export async function loadPlugins(): Promise<void> {
 /** The plugin that reads books of this format, if any. */
 export const pluginFor = (ext: string): PluginInfo | undefined => installed.find((p) => p.exts.includes(ext));
 
-/** Mounts the plugin's reader for the book. The module is loaded on first use, from the app's own address. */
-export async function mountPlugin(host: HTMLElement, plugin: PluginInfo, spec: ReaderSpec): Promise<Reader> {
+interface PluginModule {
+  mount?: (host: HTMLElement, context: PluginContext) => PluginReader | Promise<PluginReader>;
+  /** An image (a canvas, an ImageBitmap or an image Blob) to be used as the book's cover; throw if there is none. */
+  cover?: (context: CoverContext) => Promise<CanvasImageSource | Blob>;
+}
+
+/** The plugin's module, loaded on first use from the app's own address. */
+export function pluginModule(plugin: PluginInfo): Promise<PluginModule> {
   const address: string = plugin.reader;
-  const module = (await import(/* webpackIgnore: true */ address)) as { mount?: (host: HTMLElement, context: PluginContext) => PluginReader | Promise<PluginReader> };
+  return import(/* webpackIgnore: true */ address) as Promise<PluginModule>;
+}
+
+/** Mounts the plugin's reader for the book. */
+export async function mountPlugin(host: HTMLElement, plugin: PluginInfo, spec: ReaderSpec): Promise<Reader> {
+  const module = await pluginModule(plugin);
   if (typeof module.mount !== "function") throw new Error(`${plugin.name}: the reader has no mount function`);
   const reader = await module.mount(host, {
     url: spec.fileUrl,

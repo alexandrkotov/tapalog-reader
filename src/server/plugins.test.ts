@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatOf, mimeOf, registerFormats } from "./formats";
+import { COVER_FORMATS, registerCoverFormats } from "./covers";
 import { Plugins } from "./plugins";
 import { removeDir } from "./testutil";
 
@@ -37,7 +38,7 @@ test("a good manifest becomes a plugin, with its extensions in lower case and th
   const p = install({ demo: good({ version: "2.0", shareableView: true, formats: [{ ext: ["DEMO", "dm"], mime: "application/x-demo" }, { ext: "demo2", mime: "application/x-other" }] }) });
   expect(p.problems).toEqual([]);
   expect(p.plugins[0]).toMatchObject({ id: "demo", name: "Demo", version: "2.0", exts: ["demo", "dm", "demo2"], mime: "application/x-demo", reader: "reader.js", shareableView: true });
-  expect(p.describe()).toEqual([{ id: "demo", name: "Demo", version: "2.0", exts: ["demo", "dm", "demo2"], reader: "/plugins/demo/reader.js", shareableView: true }]);
+  expect(p.describe()).toEqual([{ id: "demo", name: "Demo", version: "2.0", exts: ["demo", "dm", "demo2"], reader: "/plugins/demo/reader.js", shareableView: true, cover: false }]);
 });
 
 test("a bad manifest skips that plugin only, and says why", () => {
@@ -109,4 +110,16 @@ test("plugin formats join the library's, but a built-in extension is never taken
   expect(mimeOf("nothing")).toBe("application/octet-stream");
   registerFormats([]);
   expect(formatOf("a.demo")).toBeNull();
+});
+
+test("a plugin that says it draws covers makes its formats eligible for covers, once, by the library's names", () => {
+  const p = install({ shows: good({ id: "shows", formats: [{ ext: ["pic", "pix"] }], cover: true }), silent: good({ id: "silent", formats: [{ ext: "mute" }] }), djvu: good({ id: "djvu", formats: [{ ext: ["djvu", "djv"] }], cover: true }) });
+  registerFormats(p.formats());
+  expect(p.plugins.find((x) => x.id === "silent")?.cover).toBe(false);
+  expect(p.coverFormats().sort()).toEqual(["djvu", "pic"]);
+  registerCoverFormats(p.coverFormats());
+  expect([...COVER_FORMATS].sort()).toEqual(["cbz", "djvu", "ecatm", "epub", "fb2", "mobi", "pdf", "pic"]);
+  registerCoverFormats([]);
+  expect(COVER_FORMATS.has("djvu")).toBe(false);
+  registerFormats([]);
 });

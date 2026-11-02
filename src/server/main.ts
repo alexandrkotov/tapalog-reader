@@ -3,7 +3,7 @@ import { ConfigStore } from "./config";
 import { cleanupExtracted } from "./embedCloudflared";
 import { openDb } from "./db";
 import { resolveDataDir } from "./dataDir";
-import { Covers } from "./covers";
+import { Covers, registerCoverFormats } from "./covers";
 import { LinkImports, driveEndpoints } from "./linkImport";
 import { registerFormats } from "./formats";
 import { defaultPluginsDir, Plugins } from "./plugins";
@@ -45,6 +45,7 @@ library.onScan = () => {
 
 const plugins = new Plugins(defaultPluginsDir(arg("plugins")));
 registerFormats(plugins.formats());
+registerCoverFormats(plugins.coverFormats());
 for (const p of plugins.plugins) console.log(`   plugin          ${p.name} (${p.exts.map((e) => "." + e).join(", ")})`);
 for (const p of plugins.problems) console.warn(`   plugin ${p.folder} skipped: ${p.problem}`);
 

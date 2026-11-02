@@ -1,4 +1,5 @@
 import { api, ApiError } from "./ui";
+import { pluginFor, pluginModule } from "./readers/plugins";
 
 /**
  * Draws cover thumbnails for the library and uploads them. This runs in the administrator's
@@ -105,7 +106,24 @@ async function catalogCover(id: string): Promise<Blob> {
   return fromImage(await res.blob());
 }
 
+/** A plugin draws the cover itself: it gets the file's address and hands back an image. */
+async function pluginCover(book: Todo, plugin: NonNullable<ReturnType<typeof pluginFor>>): Promise<Blob> {
+  try {
+    const module = await pluginModule(plugin);
+    if (typeof module.cover !== "function") throw new NoCover("the plugin draws no covers");
+    const image = await module.cover({ url: `/api/file/${book.id}`, ext: book.ext, width: THUMB_W, height: THUMB_H });
+    if (image instanceof Blob) return await fromImage(image);
+    const size = image as { width?: number; height?: number; videoWidth?: number; videoHeight?: number };
+    return await scaled(image, size.width ?? size.videoWidth ?? 0, size.height ?? size.videoHeight ?? 0);
+  } catch (err) {
+    if (err instanceof NoCover || err instanceof ApiError || err instanceof TypeError) throw err; // network trouble: try again later
+    throw new NoCover(err instanceof Error ? err.message : String(err)); // a file the plugin cannot read
+  }
+}
+
 function makeCover(book: Todo): Promise<Blob> {
+  const plugin = pluginFor(book.ext);
+  if (plugin?.cover && !["pdf", "ecatm", "epub", "fb2", "mobi", "cbz"].includes(book.ext)) return pluginCover(book, plugin);
   if (book.ext === "pdf") return pdfCover(`/api/file/${book.id}`);
   if (book.ext === "ecatm") return catalogCover(book.id);
   return foliateCover(`/api/file/${book.id}`, book.ext, book.size);

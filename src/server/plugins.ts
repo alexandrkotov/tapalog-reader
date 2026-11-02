@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, extname, join, sep } from "node:path";
 import { isCompiled } from "./dataDir";
+import { formatOf } from "./formats";
 
 /**
  * Plugins add readers for book formats the program cannot open itself. A plugin is a folder inside
@@ -8,8 +9,8 @@ import { isCompiled } from "./dataDir";
  *
  *   plugins/djvu/plugin.json   { "id": "djvu", "name": "DjVu reader", "version": "1.0.0",
  *                                "formats": [{ "ext": ["djvu", "djv"], "mime": "image/vnd.djvu" }],
- *                                "reader": "reader.js", "shareableView": true }
- *   plugins/djvu/reader.js     an ES module that exports `mount(host, context)` (see docs in README)
+ *                                "reader": "reader.js", "shareableView": true, "cover": true }
+ *   plugins/djvu/reader.js     an ES module that exports `mount(host, context)` and optionally `cover(context)` (see docs in README)
  *
  * A plugin is code that runs in every reader's browser, so plugins are put in the folder by the person
  * who runs the server and by nobody else: nothing here installs or downloads one. The server only
@@ -26,6 +27,8 @@ export interface Plugin {
   reader: string;
   /** Whether the reader's view can be put in a share link or a bookmark. */
   shareableView: boolean;
+  /** Whether the module also exports `cover(context)`, which draws the book's cover thumbnail. */
+  cover: boolean;
   dir: string;
 }
 
@@ -121,12 +124,17 @@ export class Plugins {
     }
     if (!inside(m.reader) || ![".js", ".mjs"].includes(extname(m.reader))) throw new Error('"reader" must be a .js or .mjs file inside the plugin folder');
     if (!existsSync(join(abs, ...m.reader.split("/")))) throw new Error(`the reader file ${m.reader} is missing`);
-    return { id: m.id, name: m.name.trim(), version: typeof m.version === "string" ? m.version : "", exts, mime, reader: m.reader, shareableView: m.shareableView === true, dir: abs };
+    return { id: m.id, name: m.name.trim(), version: typeof m.version === "string" ? m.version : "", exts, mime, reader: m.reader, shareableView: m.shareableView === true, cover: m.cover === true, dir: abs };
   }
 
   /** What the page needs to know to use a plugin. */
   describe() {
-    return this.plugins.map((p) => ({ id: p.id, name: p.name, version: p.version, exts: p.exts, reader: `/plugins/${p.id}/${p.reader}`, shareableView: p.shareableView }));
+    return this.plugins.map((p) => ({ id: p.id, name: p.name, version: p.version, exts: p.exts, reader: `/plugins/${p.id}/${p.reader}`, shareableView: p.shareableView, cover: p.cover }));
+  }
+
+  /** The library's names of the formats whose plugin draws covers. */
+  coverFormats(): string[] {
+    return [...new Set(this.plugins.filter((p) => p.cover).flatMap((p) => p.exts.flatMap((ext) => formatOf(`x.${ext}`) ?? [])))];
   }
 
   /** extension -> media type, for the file endpoint and the scanner. */

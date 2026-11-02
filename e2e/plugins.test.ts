@@ -1,4 +1,5 @@
 import { expect } from "bun:test";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser } from "playwright-core";
 import { after, api, before, bookId, e2e, launch, setup, signedIn, startServer, watchErrors, type Instance } from "./harness";
@@ -39,6 +40,12 @@ e2e("a book in a format only a plugin knows is listed, read by the plugin and sh
   await shared.waitForSelector(".text-lines li");
   await shared.waitForFunction(() => (document.querySelector(".text-lines") as HTMLElement).scrollTop > 1000); // opened at its line, not at the top
   expect(sharedErrors).toEqual([]);
+
+  // the plugin draws the book's cover, which the library shows (drawn by the administrator's browser, as for built-in formats)
+  await page.goto(inst.url + "/");
+  await page.waitForSelector(`.thumb[data-cover-id="${id}"] img`);
+  expect(readdirSync(join(inst.data, "covers")).some((name) => name.endsWith(".jpg"))).toBe(true);
+  expect(await page.locator(".thumb img").count()).toBe(1); // the text book has none: a tile with its format
 
   // a built-in format is still read by the built-in reader
   await page.goto(`${inst.url}/#book=${await bookId(ctx, inst, "Plain.txt")}`);

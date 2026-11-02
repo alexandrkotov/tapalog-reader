@@ -4,5 +4,6 @@
   "version": "1.0.0",
   "formats": [{ "ext": ["lines"], "mime": "text/plain" }],
   "reader": "reader.js",
-  "shareableView": true
+  "shareableView": true,
+  "cover": true
 }

@@ -2,8 +2,16 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } f
 import { join } from "node:path";
 import type { BookRow } from "./library";
 
-/** Formats that have a picture to show. TXT has none; DJVU has no decoder yet. */
-export const COVER_FORMATS: ReadonlySet<string> = new Set(["pdf", "epub", "fb2", "mobi", "cbz", "ecatm"]);
+const BUILT_IN_COVER_FORMATS = ["pdf", "epub", "fb2", "mobi", "cbz", "ecatm"];
+
+/** Formats that have a picture to show: those above and the formats of plugins that draw covers. TXT has none; DJVU only through a plugin. */
+export const COVER_FORMATS: Set<string> = new Set(BUILT_IN_COVER_FORMATS);
+
+/** Adds the formats whose plugin can draw a cover (see plugins.ts); replaces what an earlier call added. */
+export function registerCoverFormats(formats: readonly string[]): void {
+  COVER_FORMATS.clear();
+  for (const f of [...BUILT_IN_COVER_FORMATS, ...formats]) COVER_FORMATS.add(f);
+}
 
 export const MAX_COVER_BYTES = 400 * 1024;
 const ID = /^[0-9a-f]{20}$/;
