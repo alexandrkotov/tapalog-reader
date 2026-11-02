@@ -6,7 +6,7 @@ import { Auth } from "./auth";
 import { Backup } from "./backup";
 import { Bookmarks } from "./bookmarks";
 import { Covers } from "./covers";
-import { DriveImports } from "./driveImport";
+import { LinkImports } from "./linkImport";
 import { startFakeDrive } from "./fakeDrive";
 import { LibraryEditor } from "./editor";
 import { FullText } from "./fulltext";
@@ -15,12 +15,15 @@ import { openDb } from "./db";
 import { Library } from "./library";
 import { startServers, type Servers } from "./server";
 import { Shares } from "./shares";
+import { Plugins } from "./plugins";
+import { Sources } from "./sources";
 import { Recovery } from "./recovery";
 import { removeDir } from "./testutil";
 import { TunnelController } from "./tunnelController";
 
 let lib: string;
 let data: string;
+let pluginsDir: string;
 let servers: Servers;
 const PDF = "%PDF-1.4 a book fetched from the stand-in Drive";
 const drive = startFakeDrive({ ABCDEFGHIJKLMNOP: { name: "Fetched book.pdf", content: PDF } });
@@ -34,6 +37,14 @@ const stops: number[] = [];
 beforeAll(async () => {
   lib = mkdtempSync(join(tmpdir(), "reader-api-lib-"));
   data = mkdtempSync(join(tmpdir(), "reader-api-data-"));
+  pluginsDir = mkdtempSync(join(tmpdir(), "reader-api-plugins-"));
+  mkdirSync(join(pluginsDir, "demo", "assets"), { recursive: true });
+  writeFileSync(join(pluginsDir, "demo", "plugin.json"), JSON.stringify({ id: "demo", name: "Demo reader", version: "1.2.3", formats: [{ ext: ["demo", "dmo"], mime: "application/x-demo" }], reader: "reader.js", shareableView: true }));
+  writeFileSync(join(pluginsDir, "demo", "reader.js"), "export function mount() {}\n");
+  writeFileSync(join(pluginsDir, "demo", "assets", "data.txt"), "plugin data");
+  writeFileSync(join(pluginsDir, "secret.txt"), "not for the web");
+  mkdirSync(join(pluginsDir, "broken"));
+  writeFileSync(join(pluginsDir, "broken", "plugin.json"), "{ nope");
   mkdirSync(join(lib, "sub"));
   writeFileSync(join(lib, "one.txt"), "first book, 0123456789");
   writeFileSync(join(lib, "sub/two.txt"), "second book");
@@ -45,7 +56,7 @@ beforeAll(async () => {
   const auth = new Auth(db);
   const editor = new LibraryEditor(library, data);
   servers = startServers(
-    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), editor, driveImports: new DriveImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m), stop: () => void stops.push(1) },
+    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), sources: new Sources(db), plugins: new Plugins(pluginsDir), editor, linkImports: new LinkImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m), stop: () => void stops.push(1) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -58,6 +69,7 @@ afterAll(() => {
   db.close();
   removeDir(lib);
   removeDir(data);
+  removeDir(pluginsDir);
 });
 
 async function call(base: string, path: string, opts: { method?: string; body?: unknown; cookie?: string; headers?: Record<string, string> } = {}) {
@@ -295,7 +307,9 @@ test("a book is fetched from a shared Drive link by the administrator only, into
   }
 
   expect((await call(lan, "/api/admin/import/inspect", { body: { link: wrapped }, cookie: adminCookie })).body).toEqual({ id: "ABCDEFGHIJKLMNOP", name: "Fetched book", ext: "pdf", size: PDF.length });
-  expect((await call(lan, "/api/admin/import/inspect", { body: { link: "https://example.com/x" }, cookie: adminCookie })).body).toEqual({ error: "bad-link" });
+  expect((await call(lan, "/api/admin/import/inspect", { body: { link: "ftp://example.com/x.pdf" }, cookie: adminCookie })).body).toEqual({ error: "bad-link" });
+  expect((await call(lan, "/api/admin/import/inspect", { body: { link: "http://127.0.0.1:1/x.pdf" }, cookie: adminCookie })).body).toEqual({ error: "local-address" }); // the program cannot be pointed at its own computer
+  expect((await call(lan, "/api/admin/import/inspect", { body: { link: "http://192.168.0.1/admin.pdf" }, cookie: adminCookie })).body).toEqual({ error: "local-address" });
   const picture = await fetch(lan + "/api/admin/import/thumbnail/ABCDEFGHIJKLMNOP", { headers: { Cookie: adminCookie } });
   expect([picture.status, picture.headers.get("content-type")]).toEqual([200, "image/png"]);
   expect((await call(lan, "/api/admin/import/thumbnail/NOSUCHFILE1234", { cookie: adminCookie })).status).toBe(404);
@@ -437,4 +451,83 @@ test("the backup is for the administrator; restoring it brings back accounts and
 
   // first-run restore is only for a computer that has no accounts yet
   expect((await call(lan, "/api/setup/restore", { body: file })).status).toBe(403);
+});
+
+test("duplicates are found and extra copies are put in the trash by the administrator only, never the last copy", async () => {
+  const same = "%PDF-1.4 the very same book, twice";
+  writeFileSync(join(lib, "Twice.pdf"), same);
+  writeFileSync(join(lib, "sub/Twice (copy).pdf"), same);
+  writeFileSync(join(lib, "sub/Radio Guide.epub"), "PK one");
+  writeFileSync(join(lib, "Radio guide.pdf"), "%PDF-1.4 another");
+  await library.rescan();
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;
+  for (const cookie of ["", readerCookie]) {
+    expect((await call(lan, "/api/admin/duplicates", { body: {}, cookie })).status).toBe(cookie ? 403 : 401);
+    expect((await call(lan, "/api/admin/duplicates/trash", { body: { paths: ["Twice.pdf"] }, cookie })).status).toBe(cookie ? 403 : 401);
+  }
+  expect((await call(lan, "/api/admin/duplicates", { cookie: adminCookie })).status).toBe(404); // a plain GET is nothing
+
+  const found = (await call(lan, "/api/admin/duplicates", { body: {}, cookie: adminCookie })).body;
+  expect(found.exact.map((g: any) => g.items.map((i: any) => i.path).sort())).toEqual([["Twice.pdf", "sub/Twice (copy).pdf"]]);
+  expect(found.similar.map((g: any) => g.items.map((i: any) => i.path).sort())).toEqual([["Radio guide.pdf", "sub/Radio Guide.epub"]]);
+
+  const trash = (paths: unknown) => call(lan, "/api/admin/duplicates/trash", { body: { paths }, cookie: adminCookie });
+  expect((await trash(["Twice.pdf", "sub/Twice (copy).pdf"])).body).toEqual({ error: "last-copy" });
+  expect((await trash("Twice.pdf")).status).toBe(400);
+  expect((await trash([1, 2])).status).toBe(400);
+  expect((await trash(["nothing.pdf"])).body).toEqual({ error: "missing" });
+  expect(existsSync(join(lib, "Twice.pdf"))).toBe(true);
+
+  expect((await trash(["sub/Twice (copy).pdf"])).body).toEqual({ trashed: 1 });
+  expect(existsSync(join(lib, "sub/Twice (copy).pdf"))).toBe(false);
+  expect(existsSync(join(lib, ".tapalog-trash"))).toBe(true);
+  const books = (await call(lan, "/api/library", { cookie: adminCookie })).body.books as { path: string }[];
+  expect(books.some((b) => b.path === "sub/Twice (copy).pdf")).toBe(false);
+  expect(books.some((b) => b.path === "Twice.pdf")).toBe(true);
+  expect((await call(lan, "/api/admin/duplicates", { body: {}, cookie: adminCookie })).body.exact).toEqual([]);
+});
+
+test("saved source sites are the administrator's to manage", async () => {
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Backup Reader", password: "pin1234" } })).cookie!; // the account the restore above brought back
+  expect(readerCookie).toStartWith("sid=");
+  for (const cookie of ["", readerCookie]) {
+    const want = cookie ? 403 : 401;
+    expect((await call(lan, "/api/admin/sources", { cookie })).status).toBe(want);
+    expect((await call(lan, "/api/admin/sources", { body: { name: "x", url: "https://example.org/" }, cookie })).status).toBe(want);
+    expect((await call(lan, "/api/admin/sources/1", { method: "DELETE", cookie })).status).toBe(want);
+  }
+  const add = (name: unknown, url: unknown) => call(lan, "/api/admin/sources", { body: { name, url }, cookie: adminCookie });
+  const added = (await add("Facebook channel", "https://www.facebook.com/1shirshov/")).body.source;
+  expect(added).toMatchObject({ name: "Facebook channel", url: "https://www.facebook.com/1shirshov/" });
+  expect((await add("Again", "https://www.facebook.com/1shirshov/")).body).toEqual({ error: "exists" });
+  expect((await add("Bad", "javascript:alert(1)")).body).toEqual({ error: "bad-link" });
+  expect((await add("", "https://example.org/")).body).toEqual({ error: "invalid-name" });
+  expect((await call(lan, "/api/admin/sources", { cookie: adminCookie })).body).toEqual({ sources: [added] });
+  expect((await call(lan, `/api/admin/sources/${added.id}`, { method: "DELETE", cookie: adminCookie })).status).toBe(200);
+  expect((await call(lan, `/api/admin/sources/${added.id}`, { method: "DELETE", cookie: adminCookie })).status).toBe(404);
+  expect((await call(lan, "/api/admin/sources", { cookie: adminCookie })).body).toEqual({ sources: [] });
+});
+
+test("installed plugins are listed and their files served (also to a share link's page), and only their own files", async () => {
+  const list = (await call(lan, "/api/plugins", { cookie: adminCookie })).body;
+  expect(list).toEqual({ plugins: [{ id: "demo", name: "Demo reader", version: "1.2.3", exts: ["demo", "dmo"], reader: "/plugins/demo/reader.js", shareableView: true }] });
+
+  expect((await call(lan, "/api/plugins", { cookie: "" })).body.plugins).toHaveLength(1); // no login needed: the page of a share link reads it too
+  const reader = await fetch(lan + "/plugins/demo/reader.js");
+  expect(reader.status).toBe(200);
+  expect(reader.headers.get("content-type")).toBe("text/javascript");
+  expect(reader.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(await reader.text()).toContain("export function mount");
+  expect(await (await fetch(lan + "/plugins/demo/assets/data.txt", { headers: { Cookie: adminCookie } })).text()).toBe("plugin data");
+
+  for (const path of ["/plugins/demo/../secret.txt", "/plugins/demo/%2e%2e/secret.txt", "/plugins/demo/..%2fsecret.txt", "/plugins/demo/assets", "/plugins/demo/", "/plugins/demo", "/plugins/nope/reader.js", "/plugins/broken/plugin.json", "/plugins/demo/%00", "/plugins/demo/%E0%A4%A"]) {
+    const res = await fetch(lan + path, { headers: { Cookie: adminCookie } });
+    expect([path, res.status]).toEqual([path, 404]);
+  }
+
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Backup Reader", password: "pin1234" } })).cookie!; // the account the restore above brought back
+  expect((await call(lan, "/api/admin/plugins", { cookie: readerCookie })).status).toBe(403);
+  const admin = (await call(lan, "/api/admin/plugins", { cookie: adminCookie })).body;
+  expect(admin.dir).toBe(pluginsDir);
+  expect(admin.problems).toEqual([{ folder: "broken", problem: "plugin.json is not valid JSON" }]);
 });

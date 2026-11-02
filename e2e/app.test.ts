@@ -59,7 +59,7 @@ e2e("the library folder is chosen by browsing the computer's folders, not by typ
   await page.click(".folder-list button:has-text('Docs')");
   await page.waitForFunction((lib) => document.querySelector(".folder-where")?.textContent === lib, join(inst.lib, "Docs"));
   expect(await page.locator(".modal .muted.small").last().textContent()).toContain("2"); // Docs holds two books
-  await page.click("button:has-text('Up')");
+  await page.click("button:text-is('↑ Up')");
   await page.waitForFunction((lib) => document.querySelector(".folder-where")?.textContent === lib, inst.lib);
   await page.click(".folder-list button:has-text('Docs')");
   await page.waitForFunction((lib) => document.querySelector(".folder-where")?.textContent === lib, join(inst.lib, "Docs"));
@@ -77,7 +77,7 @@ e2e("the quick tour is offered once, lights up each button in turn and can be st
   const errors = watchErrors(page);
   await page.goto(inst.url + "/");
   await page.waitForSelector(".tour-offer");
-  expect(await page.textContent(".credit")).toBe("Presented by Tapalog"); // the credit under the folders links to the project's site
+  expect(await page.textContent(".credit")).toBe("Developed by Tapalog"); // the credit under the folders links to the project's site
   expect(await page.getAttribute(".credit a", "href")).toBe("https://tapalog.com");
   expect(await page.getAttribute(".credit a", "rel")).toContain("noopener");
   await page.click(".tour-offer >> text=No, thanks");
@@ -110,7 +110,7 @@ e2e("the quick tour is offered once, lights up each button in turn and can be st
     expect(card.y).toBeGreaterThanOrEqual(0);
     await page.click(".tour-card .btn.primary");
   }
-  expect(seen).toEqual(["panel-toggle", "panel", "search", "bookmarks", "links", "edit", "drive", "settings", "theme", "lang"]);
+  expect(seen).toEqual(["panel-toggle", "panel", "search", "bookmarks", "links", "edit", "link", "settings", "theme", "lang"]);
   expect(await page.locator(".tour-card").count()).toBe(0); // the last step's button is "Done"
 
   await page.click("#tour");

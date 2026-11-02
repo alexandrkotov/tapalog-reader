@@ -28,18 +28,16 @@ Early. Working now:
 - Accounts: the first administrator is created on the computer that runs the server; readers can create their own accounts (optional, from the local network). Passwords are argon2id hashes, sessions are random cookies stored hashed, repeated failed logins are slowed down
 - Share links with a QR code: `/s/<token>` opens exactly one book, optionally at an exact view, with no sign-in; a link can expire and be revoked
 - Internet access through a Cloudflare quick tunnel (embedded `cloudflared`, no account or port forwarding). The tunnel enters through a separate loopback listener, so a request is known to come from the internet by the socket it arrived on, not by a header; over the tunnel the library always needs sign-in, and the first-run setup and self-registration are refused
-- Download a book from Google Drive (administrator, **⬇ Google Drive** in the top bar): paste a share link of a file that is open to anyone with the link (a link wrapped in a Facebook redirect works too). The dialog shows the cover Drive draws for it, the file's name in an editable field (without the extension) and a choice of folder (the library's root by default), and only then downloads, with progress and a Cancel button. The server does the fetching and builds every address itself from the file id in the link, so it only ever talks to Google's hosts (a redirect anywhere else is refused); the file is saved under a hidden name next to its final place, checked to be what its name claims (a web page or a different file type is thrown away), and renamed into the library only when complete, never over an existing file. Folders, Google Docs and files of a format the library can't read are refused with a reason. It relies on the public download address of Drive, not on an API key, so Google may change it. The cover in the library is drawn by the browser from the book itself, as for any other
+- Download a book by link (administrator, **⬇ Download by link** in the top bar): paste the address of a file on any site (PDF, EPUB, FB2, DJVU, CBZ, MOBI, TXT) or a Google Drive share link of a file that is open to anyone with the link (a link wrapped in a Facebook redirect works too). The dialog shows the file's name in an editable field (without the extension; taken from the server's answer or the end of the address) and its size, with the cover Drive draws for it when it is a Drive link, and a choice of folder (the library's root by default), and only then downloads, with progress and a Cancel button. **The server only ever connects to addresses on the public internet**: a link into this computer or its local network (`localhost`, `192.168.x.x`, `10.x.x.x`, link-local and cloud-metadata addresses, IPv6 forms of those, numbers like `2130706433`) is refused, and the address is checked at the moment of connecting, so a name that resolves to an inside address is refused too, and so is every redirect hop. Only `http` and `https` are used, a link with a password in it is refused, and the size limit is 2 GB. The file is saved under a hidden name next to its final place, checked to be what its name claims (a web page or a different file type is thrown away), and renamed into the library only when complete, never over an existing file. Drive folders, Google Docs and files of a format the library can't read are refused with a reason. Drive links rely on its public download address, not on an API key, so Google may change it. The cover in the library is drawn by the browser from the book itself, as for any other
+- The same book is not saved twice: after a download the program compares what arrived with the library (by content, under any name and in any folder) and, if it is already there, says where and asks whether to keep it anyway. A file with a name already used in the folder is refused before anything is fetched.
+- Finding duplicates (administrator, Settings → **Find duplicates…**): *identical files* (the same content, confirmed by reading the files whole, not only by the quick id the library keeps) and *alike names* (different files whose names are the same once case, punctuation, accents and the word copy/копия are ignored: maybe the same book in another format, maybe not). In each group of identical files one stays unchecked; the others are moved to the trash after a confirmation. The trash is the hidden folder `.tapalog-trash` inside the library (on the same disk, skipped by the scanner): nothing is deleted, and the file name keeps the original folder so a book can be moved back by hand. The last copy of a book that exists more than once is never taken, checked on the server by reading the files. Bookmarks and share links follow the content, so they keep working when one copy is removed.
 - Backup and restore (administrator, in Settings; also offered on the first-run screen of a new computer): one JSON file with the accounts, bookmarks, share links and settings. Passwords are in it only as argon2id hashes, so the same passwords work after a restore, but the file should be kept private, since the share links in it are live. Books, covers and the search index are not included (they are rebuilt from the library folder) and neither is the library folder's path, which belongs to each computer. A restore replaces all accounts, bookmarks and links, signs everybody out, and keeps the administrator who did it signed in when the backup has an account of that name; a file that is not a valid backup is refused and changes nothing
 - Light, dark or the system's theme (the ◐ button in the top bar, remembered in the browser; the readers follow it)
 - Settings for the administrator: library folder, who may browse on the local network, internet tunnel, accounts
 - Interface in English, Russian and Ukrainian
 - Range requests for book files; everything the app creates lives in `tapalog-reader-data/` next to the executable (falls back to `~/.tapalog-reader-data` if that is not writable)
 
-Planned: DJVU reader (the only JS decoder, DjVu.js, is GPL v2+, which does not fit MIT, so it is postponed; `.djvu` files are listed and downloadable meanwhile).
-
-## Thanks
-
-The Google Drive download exists because of [Viacheslav Shirshov](https://www.facebook.com/1shirshov/), who shares rare old technical books of the Soviet era every day; the dialog says so too.
+- Reader plugins for more formats (see [Plugins](#plugins)). There is no built-in DJVU reader: the only JavaScript decoder, DjVu.js, is GPL v2, which does not fit this MIT project, so `.djvu` files are listed and downloadable, and a DJVU reader can be added as a plugin by whoever runs the server
 
 ## Run
 
@@ -48,7 +46,7 @@ bun install
 bun run dev -- --library /path/to/books      # http://localhost:8920
 ```
 
-Options: `--library`, `--port` (default 8920), `--host` (default 0.0.0.0), `--data`, `--no-open`.
+Options: `--library`, `--port` (default 8920), `--host` (default 0.0.0.0), `--data`, `--plugins`, `--no-open`.
 The chosen folder is remembered in `tapalog-reader-data/config.json`.
 
 Without `--library` the page asks for the folder: type its full path or press **Browse…**, which lists the folders of the computer that runs the server (drives first on Windows) with the number of books in each. The example path shown is in the style of that computer's system. The same chooser is in Settings.
@@ -61,6 +59,37 @@ Notes on access:
 - Whoever has a share link can read that book: treat it like a key. Links can be limited in time and revoked under **My links**.
 - A quick-tunnel address changes every time the tunnel starts, so a QR code printed from an internet link stops working after a restart. (Local-network links keep working as long as the computer's address does.)
 - A forgotten administrator password: on the sign-in page (local network only) choose **Forgot the administrator password?** and ask for a code. The server writes it into `reset-code.txt` in the data folder, where only someone with access to the computer can read it; type it back with the administrator's name and a new password (fifteen minutes, one use; five wrong tries from one visitor lock that visitor out for a minute, thirty from everybody burn the code). The reset signs that account out everywhere and the file is removed. Other accounts' passwords are set by an administrator in Settings.
+
+## Plugins
+
+A plugin adds a reader for a format the program does not open itself (an extension that already has a built-in reader is never taken over; `.djvu`, which is listed but has no reader, can get one). It is a folder in the `plugins` folder next to the program (or the one named by `--plugins` or the `TAPALOG_PLUGINS` environment variable; **Settings → Plugins** shows where that is), read when the program starts:
+
+```
+plugins/
+  my-format/
+    plugin.json
+    reader.js        # whatever else it needs (scripts, .wasm) can sit beside it
+```
+
+`plugin.json`:
+
+```json
+{
+  "id": "my-format",
+  "name": "My format reader",
+  "version": "1.0.0",
+  "formats": [{ "ext": ["myf", "myfile"], "mime": "application/x-my-format" }],
+  "reader": "reader.js",
+  "shareableView": true
+}
+```
+
+- `id` is the folder's name (lower case letters, digits and hyphens). `ext` is one extension or a list; files with them join the library and the first one names the format. Two plugins cannot claim the same extension, and a plugin that cannot be understood is skipped with the reason shown in **Settings → Plugins** and in the console. `mime` is the media type the files are served with. `shareableView` says whether the reader's *view* (its place in the book) may be put into a share link.
+- `reader` is an ES module that exports `mount(host, context)` and returns `{ destroy, getView?, getLabel? }` (or a promise of it). `host` is an empty element to draw into; `context` has `url` (the book's file, same origin), `name`, `ext`, `view` (what `getView` returned earlier, or null), `onView(view)` (call it when the place changes), `onError(title, text)`, `theme` (`"light"` or `"dark"`) and `onTheme(fn)` (returns the way to stop). `getView` gives the place to keep in a bookmark or a share link (any JSON, small), `getLabel` a suggested bookmark name.
+- Files of a plugin are served at `/plugins/<id>/…` to everybody who can reach the program (they have to be: a share link's page loads them too), and only files inside the plugin's own folder.
+- **A plugin is code that runs in every reader's browser, on the program's own address, with the reader's login.** Install only plugins you trust, and only the person who runs the server can install one. The page's Content-Security-Policy still applies: scripts, workers and WebAssembly from the same address and `blob:`, no other sites.
+
+[`plugins-example/text-lines`](plugins-example/text-lines) is a complete, tiny, MIT-licensed example (it shows `.lines` files, one numbered line a row).
 
 ## Build the executable
 

@@ -4,7 +4,10 @@ import { cleanupExtracted } from "./embedCloudflared";
 import { openDb } from "./db";
 import { resolveDataDir } from "./dataDir";
 import { Covers } from "./covers";
-import { DriveImports, driveEndpoints } from "./driveImport";
+import { LinkImports, driveEndpoints } from "./linkImport";
+import { registerFormats } from "./formats";
+import { defaultPluginsDir, Plugins } from "./plugins";
+import { Sources } from "./sources";
 import { LibraryEditor } from "./editor";
 import { FullText } from "./fulltext";
 import { Library } from "./library";
@@ -32,13 +35,18 @@ const shares = new Shares(db);
 const bookmarks = new Bookmarks(db);
 const backup = new Backup(db, config);
 const editor = new LibraryEditor(library, dataDir);
-const driveImports = new DriveImports(library, editor, driveEndpoints());
+const linkImports = new LinkImports(library, editor, driveEndpoints());
 const covers = new Covers(dataDir);
 const fullText = new FullText(dataDir, library, config);
 library.onScan = () => {
   covers.prune(new Set(library.books().map((b) => b.id)));
   fullText.onScan();
 };
+
+const plugins = new Plugins(defaultPluginsDir(arg("plugins")));
+registerFormats(plugins.formats());
+for (const p of plugins.plugins) console.log(`   plugin          ${p.name} (${p.exts.map((e) => "." + e).join(", ")})`);
+for (const p of plugins.problems) console.warn(`   plugin ${p.folder} skipped: ${p.problem}`);
 
 const libraryArg = arg("library");
 if (libraryArg) await library.setRoot(libraryArg);
@@ -62,7 +70,7 @@ const setMode = (mode: "lan" | "internet") => {
 
 for (let port = preferred; port < preferred + 20 && !servers; port++) {
   try {
-    servers = startServers({ library, auth, recovery, shares, config, covers, bookmarks, backup, editor, driveImports, fullText, tunnel, lanUrls, setMode, stop: () => shutdown() }, { hostname, port });
+    servers = startServers({ library, auth, recovery, shares, config, covers, bookmarks, backup, editor, linkImports, sources: new Sources(db), plugins, fullText, tunnel, lanUrls, setMode, stop: () => shutdown() }, { hostname, port });
   } catch (err) {
     if ((err as { code?: string }).code !== "EADDRINUSE") throw err;
   }

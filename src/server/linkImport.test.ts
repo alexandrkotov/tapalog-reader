@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigStore } from "./config";
 import { openDb } from "./db";
-import { DriveImports, driveEndpoints, driveFileId, fileNameFrom, suggestName, type ImportJob } from "./driveImport";
+import { LinkImports, driveEndpoints, fileNameFrom, parseLink, suggestName, type ImportJob } from "./linkImport";
 import { LibraryEditor } from "./editor";
 import { startFakeDrive } from "./fakeDrive";
 import { Library } from "./library";
@@ -20,6 +20,8 @@ const code = (fn: () => unknown): string => {
   }
 };
 
+const driveId = (text: string) => parseLink(text).drive;
+
 test("the file id comes out of every form of a Drive link", () => {
   for (const link of [
     `https://drive.google.com/file/d/${ID}/view?usp=sharing`,
@@ -30,27 +32,32 @@ test("the file id comes out of every form of a Drive link", () => {
     `  https://drive.google.com/open?id=${ID}\n`,
     `https://drive.usercontent.google.com/download?id=${ID}&export=download`,
   ]) {
-    expect(driveFileId(link)).toBe(ID);
+    expect(driveId(link)).toBe(ID);
   }
 });
 
-test("a Drive link wrapped in a Facebook redirect is unwrapped, and the wrapper itself is never what is requested", () => {
+test("a link wrapped in a Facebook redirect is unwrapped, and the wrapper itself is never what is requested", () => {
   const inner = encodeURIComponent(`https://drive.google.com/open?id=${ID}&usp=drive_fs&fbclid=IwZXh0`);
-  expect(driveFileId(`https://l.facebook.com/l.php?u=${inner}&h=AUBwnurAdZkj&__tn__=R]-R&c[0]=AUAufG4u`)).toBe(ID);
-  const toElsewhere = encodeURIComponent("https://evil.example/open?id=" + ID);
-  expect(code(() => driveFileId(`https://l.facebook.com/l.php?u=${toElsewhere}`))).toBe("bad-link");
-  expect(code(() => driveFileId("https://l.facebook.com/l.php"))).toBe("bad-link");
+  expect(driveId(`https://l.facebook.com/l.php?u=${inner}&h=AUBwnurAdZkj&__tn__=R]-R&c[0]=AUAufG4u`)).toBe(ID);
+  const toElsewhere = encodeURIComponent("https://example.org/books/a.pdf");
+  expect(parseLink(`https://l.facebook.com/l.php?u=${toElsewhere}`).url?.href).toBe("https://example.org/books/a.pdf");
+  expect(code(() => parseLink("https://l.facebook.com/l.php"))).toBe("bad-link");
 });
 
-test("what is not a link to a file is told apart", () => {
-  expect(code(() => driveFileId("hello"))).toBe("bad-link");
-  expect(code(() => driveFileId(`https://example.com/file/d/${ID}/view`))).toBe("bad-link");
-  expect(code(() => driveFileId(`https://drive.google.com.evil.example/file/d/${ID}/view`))).toBe("bad-link");
-  expect(code(() => driveFileId("https://drive.google.com/file/d/short/view"))).toBe("bad-link");
-  expect(code(() => driveFileId("https://drive.google.com/open?id="))).toBe("bad-link");
-  expect(code(() => driveFileId(`https://drive.google.com/drive/folders/${ID}`))).toBe("folder");
-  expect(code(() => driveFileId(`https://docs.google.com/document/d/${ID}/edit`))).toBe("not-a-file");
-  expect(code(() => driveFileId(`https://docs.google.com/spreadsheets/d/${ID}/edit`))).toBe("not-a-file");
+test("a link to any other site is kept as it is, and what is not a link to a file is told apart", () => {
+  expect(parseLink("https://example.org/library/book.pdf?x=1").url?.href).toBe("https://example.org/library/book.pdf?x=1");
+  expect(parseLink("http://example.org/a.epub").url?.protocol).toBe("http:");
+  expect(parseLink(`https://drive.google.com.evil.example/file/d/${ID}/view`).drive).toBeUndefined(); // an ordinary site, not Drive
+  expect(code(() => parseLink("hello"))).toBe("bad-link");
+  expect(code(() => parseLink("ftp://example.org/a.pdf"))).toBe("bad-link");
+  expect(code(() => parseLink("file:///etc/passwd"))).toBe("bad-link");
+  expect(code(() => parseLink("javascript:alert(1)"))).toBe("bad-link");
+  expect(code(() => parseLink("https://user:secret@example.org/a.pdf"))).toBe("bad-link");
+  expect(code(() => parseLink("https://drive.google.com/file/d/short/view"))).toBe("bad-link");
+  expect(code(() => parseLink("https://drive.google.com/open?id="))).toBe("bad-link");
+  expect(code(() => parseLink(`https://drive.google.com/drive/folders/${ID}`))).toBe("folder");
+  expect(code(() => parseLink(`https://docs.google.com/document/d/${ID}/edit`))).toBe("not-a-file");
+  expect(code(() => parseLink(`https://docs.google.com/spreadsheets/d/${ID}/edit`))).toBe("not-a-file");
 });
 
 test("a name that arrives as UTF-8 bytes in a Latin-1 header is read back, and the extension-less name is made safe", () => {
@@ -90,12 +97,18 @@ const drive = startFakeDrive({
   WRONGCONTENT1: { name: "fake.pdf", content: "<!doctype html><html>Sign in</html>" },
   NOTPDFBYTES12: { name: "fake2.pdf", content: "this is plain text, not a PDF" },
   MOVIE12345678: { name: "film.mp4", content: "xxxx" },
+  URLBOOK: { name: null, content: PDF },
+  NOEXTENSION: { name: null, content: PDF, type: "application/pdf" },
+  NOWHERE1: { name: null, content: PDF, type: "application/octet-stream" },
+  WEBPAGE: { name: null, content: "<!doctype html><title>A page</title>", type: "text/html" },
+  IGNORERANGE: { name: "norange.pdf", content: PDF, ignoreRange: true },
+  UNKNOWNSIZE: { name: "chunked.pdf", content: PDF, chunked: true },
   SLOWBOOK12345: { name: "slow.pdf", content: new Uint8Array([...new TextEncoder().encode("%PDF-")].concat(Array(5000).fill(32))), slow: { chunk: 500, everyMs: 50 } },
 });
 afterAll(() => drive.stop());
 
 let lib: string;
-let imports: DriveImports;
+let imports: LinkImports;
 let library: Library;
 let n = 0;
 
@@ -110,7 +123,7 @@ beforeEach(async () => {
   library = new Library(db, new ConfigStore(dir), data);
   opened.push(db, library);
   await library.setRoot(lib);
-  imports = new DriveImports(library, new LibraryEditor(library, data), drive.endpoints, 20_000);
+  imports = new LinkImports(library, new LibraryEditor(library, data), drive.endpoints, 20_000);
 });
 afterEach(() => {
   drive.hits.length = 0;
@@ -125,6 +138,7 @@ const finished = async (job: ImportJob): Promise<ImportJob> => {
   throw new Error("the import did not finish");
 };
 const link = (id: string) => `https://drive.google.com/file/d/${id}/view`;
+const at = (id: string, name = "") => `${drive.origin}/files/${id}/${name}`;
 const refused = async (run: () => Promise<unknown>) => {
   try {
     await run();
@@ -141,6 +155,39 @@ test("inspecting a file gives its name, format and size without downloading it",
   expect(await imports.thumbnail("NOSUCHFILE123")).toBeNull();
   expect(await imports.thumbnail("../etc/passwd")).toBeNull();
   expect(drive.hits.filter((h) => h.startsWith("/download"))).toHaveLength(1); // one request for a byte, never the whole file
+});
+
+test("a link to a file on any site is inspected and saved like a Drive one, named after the address when the server gives no name", async () => {
+  expect(await imports.inspect(at("URLBOOK", "Radio%20Book%201950.pdf?download=1"))).toEqual({ id: null, name: "Radio Book 1950", ext: "pdf", size: PDF.length });
+  expect(await imports.inspect(at("NOEXTENSION", "download"))).toEqual({ id: null, name: "download", ext: "pdf", size: PDF.length }); // the content type says what it is
+  expect(await imports.inspect(at("IGNORERANGE"))).toMatchObject({ name: "norange", size: PDF.length }); // a server that sends everything for a one-byte request
+  expect(await imports.inspect(at("UNKNOWNSIZE"))).toMatchObject({ name: "chunked", size: 0 }); // no length given
+  expect(await refused(() => imports.inspect(at("NOWHERE1", "thing")))).toBe("unsupported");
+  const job = await finished(await imports.start(at("URLBOOK", "x.pdf"), "Radio", "From a site"));
+  expect(job).toMatchObject({ state: "done", path: "Radio/From a site.pdf", received: PDF.length });
+  expect(readFileSync(join(lib, "Radio/From a site.pdf"))).toEqual(Buffer.from(PDF));
+  const unknown = await finished(await imports.start(at("UNKNOWNSIZE"), "", "no length", true));
+  expect(unknown).toMatchObject({ state: "done", path: "no length.pdf", received: PDF.length, total: 0 });
+});
+
+test("a link that leads into this computer or its network is never followed", async () => {
+  const hits = drive.hits.length;
+  for (const inside of ["http://127.0.0.1:1/a.pdf", "http://localhost:1/a.pdf", "http://[::1]:1/a.pdf", "http://10.0.0.5/a.pdf", "http://192.168.1.1/a.pdf", "http://169.254.169.254/latest/a.pdf", "http://2130706433/a.pdf", "http://0x7f.1/a.pdf", "http://[::ffff:127.0.0.1]/a.pdf", "http://0.0.0.0/a.pdf"]) {
+    expect(await refused(() => imports.inspect(inside))).toBe("local-address");
+    expect(await refused(() => imports.start(inside, "", "x"))).toBe("local-address");
+  }
+  expect(await refused(() => imports.inspect(at("TOMETADATA", "a.pdf")))).toBe("local-address"); // a redirect on a friendly site to an address inside
+  expect(await refused(() => imports.inspect(at("TOLOCALHOST", "a.pdf")))).toBe("local-address"); // a name that resolves to this computer
+  expect(drive.hits.length).toBe(hits + 2); // only the two friendly requests were made
+  expect(readdirSync(lib).filter((f) => f.startsWith("."))).toEqual([]);
+});
+
+test("a page, a missing file, a refusal and a redirect loop are told apart", async () => {
+  expect(await refused(() => imports.inspect(at("WEBPAGE", "a.pdf")))).toBe("web-page");
+  expect(await refused(() => imports.inspect(at("NOSUCHFILE", "a.pdf")))).toBe("not-found");
+  expect(await refused(() => imports.inspect(at("FORBIDDEN", "a.pdf")))).toBe("closed");
+  expect(await refused(() => imports.inspect(at("LOOP", "a.pdf")))).toBe("failed");
+  expect(await refused(() => imports.inspect("https://example.invalid/a.pdf"))).toBe("unreachable");
 });
 
 test("a book is saved under the chosen name in the chosen folder, listed at once, with no leftovers", async () => {
@@ -168,6 +215,20 @@ test("a refusal comes before anything is downloaded", async () => {
   expect(readdirSync(lib).filter((f) => f.startsWith("."))).toEqual([]);
 });
 
+test("a book the library already has, under any name and in any folder, is not saved again unless asked", async () => {
+  writeFileSync(join(lib, "Radio", "already here.pdf"), PDF);
+  await library.rescan();
+  const job = await finished(await imports.start(link(ID), "", "same book, other name"));
+  expect(job).toMatchObject({ state: "failed", error: "duplicate", duplicateOf: "Radio/already here.pdf", path: null });
+  expect(readdirSync(lib).sort()).toEqual(["Radio", "taken.pdf", "tapalog-reader-data"]); // the download was thrown away
+  expect(readdirSync(join(lib, "Radio"))).toEqual(["already here.pdf"]);
+
+  const kept = await finished(await imports.start(link(ID), "", "same book, other name", true));
+  expect(kept).toMatchObject({ state: "done", path: "same book, other name.pdf", duplicateOf: null });
+  const other = await finished(await imports.start(link("BOOKTXT123456"), "", "a different book")); // not a duplicate of anything
+  expect(other.state).toBe("done");
+});
+
 test("a download that is not the book it claims to be is thrown away", async () => {
   for (const id of ["WRONGCONTENT1", "NOTPDFBYTES12"]) {
     const job = await finished(await imports.start(link(id), "", "bad-" + id));
@@ -177,7 +238,7 @@ test("a download that is not the book it claims to be is thrown away", async () 
 });
 
 test("a file bigger than the limit is refused before it is fetched", async () => {
-  const small = new DriveImports(library, new LibraryEditor(library, join(lib, "tapalog-reader-data")), drive.endpoints, 100);
+  const small = new LinkImports(library, new LibraryEditor(library, join(lib, "tapalog-reader-data")), drive.endpoints, 100);
   expect(await refused(() => small.start(link(ID), "", "big"))).toBe("too-big");
 });
 

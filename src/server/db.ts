@@ -49,5 +49,11 @@ export function openDb(dataDir: string): Database {
     created_at INTEGER NOT NULL
   )`);
   db.run("CREATE INDEX IF NOT EXISTS bookmarks_user ON bookmarks(user_id, book_id)");
+  db.run(`CREATE TABLE IF NOT EXISTS sources (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    url        TEXT NOT NULL UNIQUE,          -- an http(s) address of a site books are taken from; only ever opened by the browser, never fetched by the server
+    created_at INTEGER NOT NULL
+  )`);
   return db;
 }

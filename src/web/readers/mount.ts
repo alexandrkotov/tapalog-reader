@@ -8,6 +8,7 @@ import { el } from "../ui";
 import type { PageView } from "./types";
 import type { TextView } from "./book";
 import type { TxtView } from "./txt";
+import { mountPlugin, pluginError, pluginFor } from "./plugins";
 
 /** What the shell needs from whichever reader shows a book. */
 export interface Reader {
@@ -32,8 +33,11 @@ export interface ReaderSpec {
   onError(title: string, text: string): void;
 }
 
-/** Formats whose readers report a view the user can share. */
-export const VIEW_FORMATS = new Set(["pdf", "ecatm", "epub", "fb2", "mobi", "txt"]);
+/** Built-in formats whose readers report a view the user can share. */
+const VIEW_FORMATS = new Set(["pdf", "ecatm", "epub", "fb2", "mobi", "txt"]);
+
+/** Whether the reader for this format reports a view that a share link can carry (a plugin's reader says so in its manifest). */
+export const hasShareableView = (ext: string): boolean => VIEW_FORMATS.has(ext) || pluginFor(ext)?.shareableView === true;
 
 /** Formats shown by the text engine (foliate-js). */
 const TEXT_FORMATS = new Set(["epub", "fb2", "mobi", "cbz"]);
@@ -95,6 +99,16 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onError: (err) => spec.onError(t("book.error"), err.message),
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), printJob: () => reader.printJob() };
+  }
+
+  const plugin = pluginFor(spec.ext); // after the built-in readers: a plugin adds formats, it does not replace what the program already opens
+  if (plugin) {
+    try {
+      return await mountPlugin(host, plugin, spec);
+    } catch (err) {
+      spec.onError(pluginError(), err instanceof Error ? err.message : String(err));
+      return { destroy: () => host.replaceChildren() };
+    }
   }
 
   const box = el("div", { class: "message" }, el("h2", { textContent: spec.name }), el("p", { textContent: t("reader.soon", { fmt: spec.ext.toUpperCase() }) }), el("a", { class: "button", href: spec.fileUrl, textContent: t("reader.download") }));

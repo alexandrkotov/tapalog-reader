@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { validateName } from "./auth";
 import { MAX_LABEL, MAX_PER_USER, MAX_VIEW_BYTES } from "./bookmarks";
 import type { Config, ConfigStore } from "./config";
+import { cleanSourceName, cleanSourceUrl, MAX_SOURCES, SourceError } from "./sources";
 
 /**
  * A backup of what cannot be rebuilt from the book folder: the accounts (with their password
@@ -20,6 +21,8 @@ export interface BackupFile {
   users: { name: string; hash: string; role: "admin" | "user"; createdAt: number }[];
   bookmarks: { user: string; bookId: string; label: string; view: unknown; createdAt: number }[];
   shares: { token: string; bookId: string; view: unknown; createdBy: string | null; createdAt: number; expiresAt: number | null }[];
+  /** The saved sites books come from. Backups made before they existed have none, and restoring one leaves the saved sites as they are. */
+  sources?: { name: string; url: string }[];
 }
 
 export type BackupErrorCode = "not-backup" | "version" | "invalid" | "no-admin" | "too-big";
@@ -87,6 +90,24 @@ export function parseBackup(raw: unknown): BackupFile {
     return { token: s.token, bookId: s.bookId, view: s.view, createdBy: s.createdBy as string | null, createdAt: s.createdAt as number, expiresAt: s.expiresAt as number | null };
   });
 
+  let cleanSources: BackupFile["sources"];
+  if (raw.sources !== undefined) {
+    if (!Array.isArray(raw.sources) || raw.sources.length > MAX_SOURCES) bad();
+    const urls = new Set<string>();
+    cleanSources = (raw.sources as unknown[]).map((entry) => {
+      if (!isObject(entry)) return bad();
+      try {
+        const clean = { name: cleanSourceName(entry.name), url: cleanSourceUrl(entry.url) };
+        if (urls.has(clean.url)) bad();
+        urls.add(clean.url);
+        return clean;
+      } catch (err) {
+        if (err instanceof SourceError) return bad();
+        throw err;
+      }
+    });
+  }
+
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -101,6 +122,7 @@ export function parseBackup(raw: unknown): BackupFile {
     users: cleanUsers,
     bookmarks: cleanBookmarks,
     shares: cleanShares,
+    ...(cleanSources ? { sources: cleanSources } : {}),
   };
 }
 
@@ -126,6 +148,7 @@ export class Backup {
       users: users.map(({ name, hash, role, createdAt }) => ({ name, hash, role, createdAt })),
       bookmarks: bookmarks.flatMap((b) => (nameOf.has(b.userId) ? [{ user: nameOf.get(b.userId)!, bookId: b.bookId, label: b.label, view: JSON.parse(b.view), createdAt: b.createdAt }] : [])),
       shares: shares.map((s) => ({ token: s.token, bookId: s.bookId, view: s.view ? JSON.parse(s.view) : null, createdBy: s.createdBy === null ? null : (nameOf.get(s.createdBy) ?? null), createdAt: s.createdAt, expiresAt: s.expiresAt })),
+      sources: this.db.query("SELECT name, url FROM sources ORDER BY id").all() as { name: string; url: string }[],
     };
   }
 
@@ -145,6 +168,10 @@ export class Backup {
         ids.set(u.name.toLowerCase(), row.id);
       }
       for (const b of file.bookmarks) this.db.query("INSERT INTO bookmarks (user_id, book_id, label, view, created_at) VALUES (?, ?, ?, ?, ?)").run(ids.get(b.user.toLowerCase())!, b.bookId, b.label, JSON.stringify(b.view), b.createdAt);
+      if (file.sources) {
+        this.db.run("DELETE FROM sources");
+        for (const source of file.sources) this.db.query("INSERT INTO sources (name, url, created_at) VALUES (?, ?, ?)").run(source.name, source.url, Date.now());
+      }
       for (const s of file.shares) {
         this.db.query("INSERT INTO shares (token, book_id, view, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)").run(s.token, s.bookId, s.view === null ? null : JSON.stringify(s.view), s.createdBy === null ? null : ids.get(s.createdBy.toLowerCase())!, s.createdAt, s.expiresAt);
       }

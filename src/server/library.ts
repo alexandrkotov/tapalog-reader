@@ -13,6 +13,10 @@ export interface BookRow {
   size: number;
 }
 
+export interface BookFile extends BookRow {
+  mtime: number;
+}
+
 /** Owns the scan state of the one configured library folder and keeps it fresh. */
 export class Library {
   scanning = false;
@@ -101,6 +105,16 @@ export class Library {
     return this.db.query("SELECT id, path, name, ext, size FROM books ORDER BY path").all() as BookRow[];
   }
 
+  /** Every book with the time its file was last changed, for finding duplicates. */
+  files(): BookFile[] {
+    return this.db.query("SELECT id, path, name, ext, size, mtime FROM books ORDER BY path").all() as BookFile[];
+  }
+
+  /** The paths of all books with this content id: more than one means identical files. */
+  pathsWithId(id: string): string[] {
+    return (this.db.query("SELECT path FROM books WHERE id = ? ORDER BY path").all(id) as { path: string }[]).map((r) => r.path);
+  }
+
   byId(id: string): BookRow | null {
     return (this.db.query("SELECT id, path, name, ext, size FROM books WHERE id = ? LIMIT 1").get(id) as BookRow | null) ?? null;
   }
@@ -131,6 +145,15 @@ export class Library {
       this.db.run("UPDATE books SET path = ? || substr(path, ?) WHERE path LIKE ? ESCAPE '\\'", [to, cut, `${escape(from)}/%`]);
       this.db.run("UPDATE folders SET path = ? || substr(path, ?) WHERE path = ? OR path LIKE ? ESCAPE '\\'", [to, cut, from, `${escape(from)}/%`]);
     })();
+  }
+
+  /** Books the app has just taken out of the library (to the trash): gone from the list at once, the scan confirms it. */
+  removed(paths: string[]): void {
+    this.edits++;
+    this.db.transaction(() => {
+      for (const path of paths) this.db.run("DELETE FROM books WHERE path = ?", [path]);
+    })();
+    void this.rescan();
   }
 
   /** A book was put into the folder by the app: scan again (and not trust a scan that began before it). */

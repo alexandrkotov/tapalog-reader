@@ -7,11 +7,14 @@ import type { Bookmarks } from "./bookmarks";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
 import { BrowseError, browse as listFolders } from "./browse";
-import { ImportError, isFileId, type DriveImports } from "./driveImport";
+import { findDuplicates } from "./duplicates";
+import { SourceError, type Sources } from "./sources";
+import { ImportError, isFileId, type LinkImports } from "./linkImport";
 import { EditError, type LibraryEditor } from "./editor";
 import { ecatmCover } from "./ecatmCover";
 import type { FullText } from "./fulltext";
-import { MIME, type Format } from "./formats";
+import { mimeOf } from "./formats";
+import { Plugins } from "./plugins";
 import type { Library } from "./library";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
 import { RESET_FILE, type Recovery } from "./recovery";
@@ -28,8 +31,10 @@ export interface App {
   covers: Covers;
   bookmarks: Bookmarks;
   backup: Backup;
+  sources: Sources;
+  plugins: Plugins;
   editor: LibraryEditor;
-  driveImports: DriveImports;
+  linkImports: LinkImports;
   fullText: FullText;
   tunnel: TunnelController;
   /** Addresses of this computer on the local network, for share links. */
@@ -204,6 +209,19 @@ function buildRoutes(app: App, origin: Origin) {
     "/": index,
     "/s/:token": index,
     "/pdfjs/*": servePdfjsAsset,
+    // files of the installed plugins: readers and what they load. Open like /pdfjs/*, because the page of a share link needs them too and they hold no library data
+    "/plugins/*": (req: Request) => {
+      const [, , id = "", ...rest] = new URL(req.url).pathname.split("/");
+      let found: ReturnType<Plugins["file"]> = null;
+      try {
+        found = app.plugins.file(decodeURIComponent(id), rest.map(decodeURIComponent));
+      } catch {
+        /* a broken escape in the address: not found */
+      }
+      return found ? new Response(Bun.file(found.path), { headers: { "Content-Type": found.type, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache" } }) : notFound();
+    },
+    "/api/plugins": () => json({ plugins: app.plugins.describe() }),
+    "/api/admin/plugins": { GET: admin(() => json({ dir: app.plugins.dir, plugins: app.plugins.describe(), problems: app.plugins.problems })) },
 
     // ----- who am I -----
     "/api/me": (req: Request, server: Server<unknown>) => {
@@ -516,17 +534,48 @@ function buildRoutes(app: App, origin: Origin) {
     },
     // ----- editing the library: real changes to the files on disk -----
     // ----- books fetched from a shared Google Drive link -----
+    "/api/admin/sources": {
+      GET: admin(() => json({ sources: app.sources.list() })),
+      POST: admin(async (req) => {
+        const data = await body(req);
+        if (!data) return bad();
+        try {
+          return json({ source: app.sources.add(data.name, data.url) });
+        } catch (err) {
+          if (err instanceof SourceError) return bad(err.code);
+          throw err;
+        }
+      }),
+    },
+    "/api/admin/sources/:id": {
+      DELETE: admin((req) => (app.sources.remove(Number(param(req, "id"))) ? json({ ok: true }) : notFound())),
+    },
+    "/api/admin/duplicates": {
+      POST: admin(async (req) => ((await body(req)) ? json(await findDuplicates(app.library)) : bad())),
+    },
+    "/api/admin/duplicates/trash": {
+      POST: admin(async (req) => {
+        const data = await body(req);
+        if (!data || !Array.isArray(data.paths) || data.paths.length > 5000 || !data.paths.every((p) => typeof p === "string")) return bad();
+        try {
+          return json({ trashed: await app.editor.trash(data.paths as string[]) });
+        } catch (err) {
+          if (err instanceof EditError) return bad(err.code);
+          throw err;
+        }
+      }),
+    },
     "/api/admin/import/inspect": {
       POST: admin(async (req) => {
         const data = await body(req);
         if (!data) return bad();
-        return importing(async () => json(await app.driveImports.inspect(str(data.link))));
+        return importing(async () => json(await app.linkImports.inspect(str(data.link))));
       }),
     },
     "/api/admin/import/thumbnail/:id": {
       GET: admin(async (req) => {
         const id = param(req, "id");
-        const picture = isFileId(id) ? await app.driveImports.thumbnail(id) : null;
+        const picture = isFileId(id) ? await app.linkImports.thumbnail(id) : null;
         return picture ? new Response(picture.bytes, { headers: { "Content-Type": picture.type, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600" } }) : notFound();
       }),
     },
@@ -534,15 +583,15 @@ function buildRoutes(app: App, origin: Origin) {
       POST: admin(async (req) => {
         const data = await body(req);
         if (!data) return bad();
-        return importing(async () => json({ job: await app.driveImports.start(str(data.link), str(data.folder), data.name) }));
+        return importing(async () => json({ job: await app.linkImports.start(str(data.link), str(data.folder), data.name, data.keep === true) }));
       }),
     },
     "/api/admin/import/:job": {
       GET: admin((req) => {
-        const job = app.driveImports.job(param(req, "job"));
+        const job = app.linkImports.job(param(req, "job"));
         return job ? json({ job }) : notFound();
       }),
-      DELETE: admin((req) => (app.driveImports.cancel(param(req, "job")) ? json({ ok: true }) : notFound())),
+      DELETE: admin((req) => (app.linkImports.cancel(param(req, "job")) ? json({ ok: true }) : notFound())),
     },
     "/api/admin/fs/move": {
       POST: admin((req) => edit(req, (d) => app.editor.move(d.kind === "folder" ? "folder" : "book", str(d.path), str(d.to)))),
@@ -595,7 +644,7 @@ function buildRoutes(app: App, origin: Origin) {
     const root = app.library.root;
     if (!root) return notFound();
     const fileName = book.path.slice(book.path.lastIndexOf("/") + 1);
-    return serveFile(join(root, ...book.path.split("/")), MIME[book.ext as Format] ?? "application/octet-stream", req.headers.get("range"), fileName);
+    return serveFile(join(root, ...book.path.split("/")), mimeOf(book.ext), req.headers.get("range"), fileName);
   }
 
   return routes;

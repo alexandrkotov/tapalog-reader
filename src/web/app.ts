@@ -1,4 +1,4 @@
-import { openDriveImport } from "./driveImport";
+import { openLinkImport } from "./linkImport";
 import { examplePath, pickFolder } from "./folderPicker";
 import { authScreen, openAuthDialog, setupScreen, signOut, type Me } from "./account";
 import { openAdmin } from "./admin";
@@ -8,7 +8,8 @@ import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
 import { offerTour, startTour, type TourStep } from "./tour";
 import { openPrintDialog } from "./print";
-import { mountReader, VIEW_FORMATS, type Reader } from "./readers/mount";
+import { hasShareableView, mountReader, type Reader } from "./readers/mount";
+import { loadPlugins } from "./readers/plugins";
 import { openMyLinks, openShareDialog } from "./share";
 import { api, ApiError, badge, el, openModal, store } from "./ui";
 
@@ -633,7 +634,7 @@ function openBook(book: Book, view: unknown): void {
     view,
     onView: (v) => writeView(book, v),
     bar: (current) => {
-      share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.name, ext: book.ext, view: VIEW_FORMATS.has(book.ext) ? (current()?.getView?.() ?? null) : null }));
+      share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.name, ext: book.ext, view: hasShareableView(book.ext) ? (current()?.getView?.() ?? null) : null }));
       marks.addEventListener("click", () => me && openBookmarks({ me, book, reader: current, onSignedIn: () => void boot() }));
       return [marks, share];
     },
@@ -704,7 +705,7 @@ function tourSteps(): TourStep[] {
     { target: "[data-tour=bookmarks]", text: "tour.bookmarks" },
     { target: "[data-tour=links]", text: "tour.links" },
     { target: "[data-tour=edit]", text: "tour.edit" },
-    { target: "[data-tour=drive]", text: "tour.drive" },
+    { target: "[data-tour=link]", text: "tour.link" },
     { target: "[data-tour=settings]", text: "tour.settings" },
     { target: "#theme", text: "tour.theme" },
     { target: "#lang", text: "tour.lang" },
@@ -733,15 +734,15 @@ function renderAccount(): void {
       buttons.push(edit);
     }
     if (me.user.role === "admin") {
-      const drive = button(t("drive.button"), () =>
-        openDriveImport({
+      const drive = button(t("link.button"), () =>
+        openLinkImport({
           folders: [...folderNodes.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
           saved: () => afterEdit(),
           open: (id) => void (location.hash = `#book=${id}`),
         }),
-        "drive",
+        "link",
       );
-      drive.title = t("drive.title");
+      drive.title = t("link.title");
       if (!writable) {
         drive.disabled = true;
         drive.title = t("edit.readOnlyLibrary");
@@ -822,6 +823,7 @@ async function boot(): Promise<void> {
   applyStaticText();
   me = await api<Me>("/api/me");
   renderAccount();
+  await loadPlugins();
   books = [];
   root = buildTree([], []);
   renderTree();
@@ -859,6 +861,7 @@ const sharePage = location.pathname.startsWith("/s/") ? decodeURIComponent(locat
 async function bootShare(token: string): Promise<void> {
   document.body.classList.add("share-mode");
   applyStaticText();
+  await loadPlugins();
   try {
     const info = await api<{ name: string; ext: string; view: unknown }>(`/api/share/${encodeURIComponent(token)}`);
     showReader({ name: info.name, ext: info.ext, fileUrl: `/api/share/${encodeURIComponent(token)}/file`, view: info.view });

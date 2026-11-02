@@ -1,14 +1,18 @@
 import { accessSync, constants, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join, sep } from "node:path";
+import { fullHash } from "./duplicates";
 import type { Library } from "./library";
 
-export type EditErrorCode = "no-library" | "invalid-name" | "exists" | "missing" | "into-itself" | "same-place" | "forbidden" | "read-only" | "failed";
+export type EditErrorCode = "no-library" | "last-copy" | "invalid-name" | "exists" | "missing" | "into-itself" | "same-place" | "forbidden" | "read-only" | "failed";
 
 export class EditError extends Error {
   constructor(readonly code: EditErrorCode) {
     super(code);
   }
 }
+
+/** Where books taken out as duplicates wait, inside the library folder. */
+export const TRASH = ".tapalog-trash";
 
 const BAD_CHARS = /[\\/:*?"<>|\u0000-\u001f]/;
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
@@ -130,6 +134,54 @@ export class LibraryEditor {
         return to;
       },
     };
+  }
+
+  /**
+   * Takes books out of the library into a hidden folder inside it, `.tapalog-trash` (on the same disk,
+   * so it is one rename; the scanner skips it). Nothing is deleted: the files can be moved back by
+   * hand. The last remaining copy of a book that exists more than once is never taken, so a mistake
+   * can't make a book vanish: that is judged by reading the files whole, not by the library's quick id.
+   * A book that has no identical twin can be taken, because then the administrator chose it as a
+   * book whose name looked alike.
+   */
+  async trash(paths: string[]): Promise<number> {
+    const root = this.library.root;
+    if (!root) throw new EditError("no-library");
+    const unique = [...new Set(paths)];
+    const rows = unique.map((path) => this.library.bookAt(path));
+    if (!unique.length || rows.some((row) => row === null)) throw new EditError("missing");
+    const hashes = new Map<string, string | null>();
+    const hashOf = async (path: string) => {
+      if (!hashes.has(path)) hashes.set(path, await fullHash(this.abs(path)));
+      return hashes.get(path)!;
+    };
+    for (const row of rows) {
+      const candidates = this.library.pathsWithId(row!.id);
+      if (candidates.length < 2) continue;
+      const mine = await hashOf(row!.path);
+      const identical: string[] = [];
+      for (const path of candidates) if (mine !== null && (await hashOf(path)) === mine) identical.push(path);
+      if (identical.length > 1 && identical.every((path) => unique.includes(path))) throw new EditError("last-copy");
+    }
+    const folder = join(root, TRASH);
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const moved: string[] = [];
+    try {
+      mkdirSync(folder, { recursive: true });
+      unique.forEach((path, i) => {
+        const dot = path.lastIndexOf(".");
+        const base = path.slice(0, dot).split("/").join(" - ").slice(0, 150); // the folder stays in the name, so the file can be put back
+        const target = join(folder, `${stamp}-${i + 1} ${base}${path.slice(dot)}`);
+        renameSync(this.abs(path), target);
+        moved.push(path);
+      });
+    } catch (err) {
+      if (moved.length) this.library.removed(moved);
+      const code = (err as { code?: string }).code;
+      throw new EditError(code === "ENOENT" ? "missing" : code === "EACCES" || code === "EPERM" || code === "EROFS" ? "read-only" : "failed");
+    }
+    this.library.removed(moved);
+    return moved.length;
   }
 
   mkdir(parent: string, name: unknown): string {

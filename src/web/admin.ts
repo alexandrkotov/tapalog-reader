@@ -1,5 +1,6 @@
 import { restoreFromFile } from "./backup";
 import { t } from "./i18n";
+import { openDuplicates } from "./duplicates";
 import { pickFolder } from "./folderPicker";
 import { api, ApiError, el, formatBytes, openModal } from "./ui";
 
@@ -89,6 +90,17 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
       onLibraryChanged();
     });
 
+    const duplicates = el("button", { type: "button", class: "btn", textContent: t("dup.button") });
+    duplicates.addEventListener("click", () =>
+      openDuplicates({
+        changed: onLibraryChanged,
+        open: (id) => {
+          modal.close();
+          location.hash = `#book=${id}`;
+        },
+      }),
+    );
+
     const stopButton = el("button", { type: "button", class: "btn", textContent: t("admin.stop") });
     stopButton.addEventListener("click", async () => {
       if (!confirm(t("admin.stop.confirm"))) return;
@@ -163,17 +175,28 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
       ),
     );
 
+    // reader plugins: what was found in the plugins folder when the program started (nothing to change here: they are files)
+    const pluginsBox = section(
+      t("admin.plugins"),
+      note(t("admin.plugins.note")),
+      el("p", { class: "small" }, el("code", { textContent: pluginsInfo.dir })),
+      ...(pluginsInfo.plugins.length ? [el("ul", { class: "plain" }, ...pluginsInfo.plugins.map((p) => el("li", { textContent: `${p.name} ${p.version} (${p.exts.map((e) => "." + e).join(", ")})` })))] : [note(t("admin.plugins.none"))]),
+      ...pluginsInfo.problems.map((p) => el("div", { class: "error", textContent: `${p.folder}: ${p.problem}` })),
+    );
+
     modal.body.replaceChildren(
-      section(t("admin.library"), el("div", { class: "row" }, path, browseFolder, useFolder, rescan), libError),
+      section(t("admin.library"), el("div", { class: "row" }, path, browseFolder, useFolder, rescan), libError, el("div", { class: "row" }, duplicates)),
       section(t("admin.access"), radio("open", t("admin.access.open")), radio("login", t("admin.access.login")), el("label", { class: "choice" }, registration, t("admin.register"))),
       section(t("admin.internet"), el("label", { class: "choice" }, internet, s.mode === "internet" ? t("admin.internet.on") : t("admin.internet.off")), tunnelStatus, note(t("admin.internet.note"))),
       section(t("admin.fulltext"), indexBox),
       section(t("admin.users"), ...users, el("div", { class: "user-row" }, newName, newPass, newRole, add), addError),
+      pluginsBox,
       section(t("backup.title"), note(t("backup.note")), el("div", { class: "row" }, download, restore), backupMessage),
       ...(canStop ? [section(t("admin.server"), note(t("admin.stop.note")), el("div", { class: "row" }, stopButton))] : []),
     );
   }
 
+  const pluginsInfo = await api<{ dir: string; plugins: { name: string; version: string; exts: string[] }[]; problems: { folder: string; problem: string }[] }>("/api/admin/plugins").catch(() => ({ dir: "", plugins: [], problems: [] }));
   render(await api<Settings>("/api/admin/settings"));
   drawIndex(await api<FullTextStatus>("/api/admin/fulltext"));
 }
