@@ -9,6 +9,10 @@
  * Usage: bun run scripts/fetch-cloudflared.ts <platform>
  */
 
+import { chmodSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+
 interface PlatformSpec {
   /** Exact asset filename on cloudflared's GitHub Releases. */
   asset: string;
@@ -33,9 +37,10 @@ if (!spec) {
   process.exit(1);
 }
 
-const vendorDir = new URL("../vendor/", import.meta.url);
-await Bun.$`mkdir -p ${vendorDir.pathname}`;
-const outPath = new URL(spec.outName, vendorDir).pathname;
+// plain file-system calls and real paths (not URL pathnames), so this also runs on Windows, where the Windows build is made
+const vendorDir = fileURLToPath(new URL("../vendor/", import.meta.url));
+mkdirSync(vendorDir, { recursive: true });
+const outPath = join(vendorDir, spec.outName);
 
 const downloadUrl = `https://github.com/cloudflare/cloudflared/releases/latest/download/${spec.asset}`;
 console.log(`Fetching ${downloadUrl} …`);
@@ -53,14 +58,18 @@ async function curlDownload(target: string): Promise<void> {
 if (spec.archive === "raw") {
   await curlDownload(outPath);
 } else {
-  const tmpTgz = new URL(`_${spec.outName}.tgz`, vendorDir).pathname;
+  const tmpTgz = join(vendorDir, `_${spec.outName}.tgz`);
   await curlDownload(tmpTgz);
   // The archive contains one file, literally named "cloudflared" — extract
   // straight into vendor/ then rename to this platform's outName.
-  await Bun.$`tar -xzf ${tmpTgz} -C ${vendorDir.pathname}`;
-  await Bun.$`mv ${vendorDir.pathname}cloudflared ${outPath}`;
-  await Bun.$`rm ${tmpTgz}`;
+  await Bun.$`tar -xzf ${tmpTgz} -C ${vendorDir}`;
+  renameSync(join(vendorDir, "cloudflared"), outPath);
+  rmSync(tmpTgz);
 }
-await Bun.$`chmod +x ${outPath}`.catch(() => {}); // chmod is a no-op-ish concept on Windows binaries; ignore rather than fail the build over it
+try {
+  chmodSync(outPath, 0o755);
+} catch {
+  /* chmod is a no-op-ish concept on Windows binaries; ignore rather than fail the build over it */
+}
 
 console.log(`Wrote ${outPath} (${(await Bun.file(outPath).arrayBuffer()).byteLength} bytes)`);
