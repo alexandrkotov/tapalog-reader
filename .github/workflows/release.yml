@@ -13,11 +13,17 @@ permissions:
 jobs:
   build:
     name: ${{ matrix.target }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        target: [linux-x64, linux-arm64, macos-arm64, macos-x64, windows-x64]
+        include:
+          - { target: linux-x64, os: ubuntu-24.04 }
+          - { target: linux-arm64, os: ubuntu-24.04 }
+          - { target: macos-arm64, os: ubuntu-24.04 }
+          - { target: macos-x64, os: ubuntu-24.04 }
+          # the Windows build runs on Windows: Bun can put the program's icon into the .exe only there
+          - { target: windows-x64, os: windows-latest }
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -32,16 +38,20 @@ jobs:
         if: matrix.target == 'linux-x64'
         run: bun scripts/smoke.ts dist/tapalog-reader-linux-x64
       - name: Pack
+        if: matrix.target != 'windows-x64'
         run: |
           mkdir -p out
           cp LICENSE dist/
           cd dist
-          if [ "${{ matrix.target }}" = windows-x64 ]; then
-            zip ../out/tapalog-reader-${{ matrix.target }}.zip tapalog-reader-windows-x64.exe LICENSE
-          else
-            chmod +x tapalog-reader-${{ matrix.target }}
-            tar czf ../out/tapalog-reader-${{ matrix.target }}.tar.gz tapalog-reader-${{ matrix.target }} LICENSE
-          fi
+          chmod +x tapalog-reader-${{ matrix.target }}
+          tar czf ../out/tapalog-reader-${{ matrix.target }}.tar.gz tapalog-reader-${{ matrix.target }} LICENSE
+      - name: Pack (Windows)
+        if: matrix.target == 'windows-x64'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item LICENSE dist/
+          Compress-Archive -Path dist/tapalog-reader-windows-x64.exe, dist/LICENSE -DestinationPath out/tapalog-reader-windows-x64.zip
       - uses: actions/upload-artifact@v6
         with:
           name: tapalog-reader-${{ matrix.target }}
