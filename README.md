@@ -49,6 +49,8 @@ bun run dev -- --library /path/to/books      # http://localhost:8920
 Options: `--library`, `--port` (default 8920), `--host` (default 0.0.0.0), `--data`, `--plugins`, `--no-open`.
 The chosen folder is remembered in `tapalog-reader-data/config.json`.
 
+One program runs per data folder. Starting it a second time (a double click on the file again) finds the one that is already running, opens it in the browser and exits, instead of starting another server on the next port. If the usual ports 8920–8939 are not available (Windows keeps whole ranges of ports for itself and which ones changes from start to start), and no `--port` was given, the system picks a free one and the console says which.
+
 Without `--library` the page asks for the folder: type its full path or press **Browse…**, which lists the folders of the computer that runs the server (drives first on Windows) with the number of books in each. The example path shown is in the style of that computer's system. The same chooser is in Settings.
 
 To stop the program: **Settings → Stop the server** (offered to an administrator on the computer that runs it, not from the network or the internet), or Ctrl+C in its console window.

@@ -14,6 +14,7 @@ import { EditError, type LibraryEditor } from "./editor";
 import { ecatmCover } from "./ecatmCover";
 import type { FullText } from "./fulltext";
 import { mimeOf } from "./formats";
+import { APP_NAME, PING } from "./instance";
 import { Plugins } from "./plugins";
 import type { Library } from "./library";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
@@ -312,6 +313,8 @@ function buildRoutes(app: App, origin: Origin) {
     },
 
     // ----- the library -----
+    // lets a second start of the program find this one (see instance.ts)
+    [PING]: () => json({ app: APP_NAME }),
     "/api/status": browse(() =>
       json({
         configured: app.library.root !== null,
