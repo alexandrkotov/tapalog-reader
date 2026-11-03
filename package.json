@@ -1,6 +1,6 @@
 {
   "name": "tapalog-reader",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "A single-file server that turns a folder of books (PDF, EPUB, FB2, DJVU, CBZ, MOBI, TXT, ecatm) into a web library with built-in readers.",
   "license": "MIT",

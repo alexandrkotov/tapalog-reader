@@ -1,9 +1,8 @@
 ## English
 
 What's new:
-- A zip downloaded by link is unpacked automatically: the book inside is taken out and its type (FB2, DjVu, PDF…) is found from the file.
-- Reader plugins can draw cover previews: DjVu books get covers once the DjVu plugin is updated.
-- A quick tour of the reader itself: open a book and press `?`.
+- A second start no longer opens a second server on another port: it finds the program that is already running, opens it in the browser and exits.
+- Fixed a start-up failure on Windows when the usual ports 8920–8939 are reserved by the system: a free port is picked instead and the console says which.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -17,9 +16,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- Скачанный по ссылке zip распаковывается автоматически: книга из архива извлекается, а её тип (FB2, DjVu, PDF…) определяется по файлу внутри.
-- Плагины читалок могут рисовать обложки: у книг DjVu появятся обложки после обновления плагина DjVu.
-- Быстрый тур по самой читалке: откройте книгу и нажмите `?`.
+- Повторный запуск больше не открывает второй сервер на другом порту: он находит уже работающую программу, открывает её в браузере и выходит.
+- Исправлен сбой запуска в Windows, когда привычные порты 8920–8939 зарезервированы системой: выбирается свободный порт, и консоль сообщает, какой.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -33,9 +31,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- Завантажений за посиланням zip розпаковується автоматично: книгу з архіву витягується, а її тип (FB2, DjVu, PDF…) визначається за файлом усередині.
-- Плагіни читалок можуть малювати обкладинки: у книг DjVu з'являться обкладинки після оновлення плагіна DjVu.
-- Швидкий тур по самій читалці: відкрийте книгу й натисніть `?`.
+- Повторний запуск більше не відкриває другий сервер на іншому порту: він знаходить програму, що вже працює, відкриває її в браузері й виходить.
+- Виправлено збій запуску у Windows, коли звичні порти 8920–8939 зарезервовані системою: обирається вільний порт, а консоль повідомляє, який.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 
