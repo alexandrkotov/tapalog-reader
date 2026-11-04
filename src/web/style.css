@@ -186,6 +186,10 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .shelf-head a:hover { text-decoration: underline; }
 .shelf-head .sep { color: var(--muted); }
 .shelf-body { flex: 1; overflow: auto; padding: 16px; }
+.recent { margin-bottom: 20px; }
+.recent-title { font-size: 15px; margin: 0 0 8px; }
+.recent-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(120px, 140px); gap: 16px; overflow-x: auto; padding-bottom: 6px; }
+.card .place { color: var(--muted); font-size: 11px; padding: 0 2px; }
 .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }
 .shelf-empty { color: var(--muted); }
 .shelf-more { display: block; margin: 16px auto 0; }

@@ -45,7 +45,7 @@ e2e("a book in a format only a plugin knows is listed, read by the plugin and sh
   await page.goto(inst.url + "/");
   await page.waitForSelector(`.thumb[data-cover-id="${id}"] img`);
   expect(readdirSync(join(inst.data, "covers")).some((name) => name.endsWith(".jpg"))).toBe(true);
-  expect(await page.locator(".thumb img").count()).toBe(1); // the text book has none: a tile with its format
+  expect(await page.locator(".shelf .thumb img").count()).toBe(1); // the text book has none: a tile with its format
 
   // a built-in format is still read by the built-in reader
   await page.goto(`${inst.url}/#book=${await bookId(ctx, inst, "Plain.txt")}`);

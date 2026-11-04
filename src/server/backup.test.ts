@@ -7,6 +7,7 @@ import { Backup, BackupError, parseBackup } from "./backup";
 import { Bookmarks } from "./bookmarks";
 import { ConfigStore } from "./config";
 import { openDb } from "./db";
+import { ProgressStore } from "./progress";
 import { Shares } from "./shares";
 import { removeDir } from "./testutil";
 
@@ -24,7 +25,7 @@ function install() {
   const db = openDb(dir);
   open.push(db);
   const config = new ConfigStore(dir);
-  return { db, config, auth: new Auth(db), bookmarks: new Bookmarks(db), shares: new Shares(db), backup: new Backup(db, config) };
+  return { db, config, auth: new Auth(db), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), shares: new Shares(db), backup: new Backup(db, config) };
 }
 
 const ID = "0123456789abcdef0123";
@@ -35,6 +36,8 @@ async function populated() {
   const reader = await a.auth.createUser("Reader", "pin123", "user");
   a.bookmarks.add(reader.id, ID, "chapter two", { v: 1, page: 2 });
   a.bookmarks.add(admin.id, ID, "mine", { v: 1, page: 9 });
+  a.progress.save(reader.id, ID, { v: 1, page: 5 }, "Page 5");
+  a.progress.save(admin.id, ID);
   a.shares.create(ID, { v: 1, page: 3 }, reader.id, null);
   a.shares.create(ID, null, null, 7);
   a.config.update({ lanAccess: "login", allowRegistration: false, fullText: true });
@@ -59,6 +62,29 @@ test("a backup restores accounts with their passwords, bookmarks, links and sett
   expect(links.find((l) => l.view)?.createdBy).toBe(reader!.id); // the author is found by name, not by an id that no longer exists
   expect(links.find((l) => !l.view)?.createdBy).toBeNull();
   expect(old.shares.list("all").map((l) => l.token).sort()).toEqual(links.map((l) => l.token).sort()); // the same links keep working
+});
+
+test("reading places come back with the backup, and a backup from before them leaves nobody with any", async () => {
+  const old = await populated();
+  const text = JSON.stringify(old.backup.create());
+  const fresh = install();
+  fresh.backup.restore(parseBackup(JSON.parse(text)));
+  const reader = await fresh.auth.verify("Reader", "pin123", "k3");
+  const admin = await fresh.auth.verify("Alex", "secret1", "k4");
+  expect(fresh.progress.recent(reader!.id)).toMatchObject([{ bookId: ID, view: { v: 1, page: 5 }, label: "Page 5" }]);
+  expect(fresh.progress.get(admin!.id, ID)).toMatchObject({ view: null }); // opened, no place
+
+  const before = JSON.parse(text) as any;
+  delete before.progress; // what a backup made by an earlier version looks like
+  const other = install();
+  const stranger = await other.auth.createUser("Stranger", "hunter22", "admin");
+  other.progress.save(stranger.id, ID, { v: 1 });
+  other.backup.restore(parseBackup(before));
+  expect((other.db.query("SELECT COUNT(*) AS n FROM progress").get() as { n: number }).n).toBe(0);
+
+  const broken = JSON.parse(text) as any;
+  broken.progress[0].user = "Nobody";
+  expect(() => parseBackup(broken)).toThrow(BackupError);
 });
 
 test("restoring replaces what is there and signs everybody out", async () => {

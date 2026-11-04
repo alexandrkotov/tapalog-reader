@@ -8,6 +8,7 @@ import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
 import { offerTour, startTour, type TourStep } from "./tour";
 import { openPrintDialog } from "./print";
+import { recentPlaces, savedPlace, trackPlace, type Tracker } from "./progress";
 import { hasShareableView, mountReader, type Reader } from "./readers/mount";
 import { loadPlugins } from "./readers/plugins";
 import { openMyLinks, openShareDialog } from "./share";
@@ -256,10 +257,28 @@ function showShelf(path: string): void {
   };
   more.addEventListener("click", renderMore);
   renderMore();
+  const recent = el("section", { class: "recent", hidden: true });
   mainEl.replaceChildren(
     el("div", { class: "shelf-head" }, ...crumbs),
-    el("div", { class: "shelf-body" }, cards.length ? grid : el("p", { class: "shelf-empty", textContent: t("shelf.empty") }), more),
+    el("div", { class: "shelf-body" }, ...(node === root ? [recent] : []), cards.length ? grid : el("p", { class: "shelf-empty", textContent: t("shelf.empty") }), more),
   );
+  if (node === root) void fillRecent(recent);
+}
+
+const RECENT_SHOWN = 12;
+
+/** "Continue reading": the books this reader opened last, each with the place it will open at. Only on the top shelf. */
+async function fillRecent(box: HTMLElement): Promise<void> {
+  const places = await recentPlaces(!!me?.user);
+  const cards = places.flatMap((p) => {
+    const book = booksById.get(p.bookId);
+    if (!book) return []; // left the library: kept in the list on the server, just not offered
+    const caption = p.label ? el("span", { class: "place", textContent: p.label }) : "";
+    return [el("a", { class: "card", href: `#book=${book.id}`, title: book.path }, el("div", { class: "thumbwrap" }, thumb(book), badge(book.ext)), el("div", { class: "cap" }, el("span", { class: "name", textContent: book.name })), caption)];
+  });
+  if (!cards.length || !box.isConnected) return; // nothing read yet, or the reader has gone to another page meanwhile
+  box.replaceChildren(el("h2", { class: "recent-title", textContent: t("recent.title") }), el("div", { class: "recent-row" }, ...cards.slice(0, RECENT_SHOWN)));
+  box.hidden = false;
 }
 
 
@@ -566,8 +585,13 @@ searchEl.addEventListener("focus", () => {
 let reader: Reader | null = null;
 let openToken = 0; // readers load lazily: a stale load must not replace the book opened after it
 
+let tracker: Tracker | null = null; // keeps the open book's place (see progress.ts)
+let routeSeq = 0; // a place is looked up before a book opens: a newer navigation must win over that wait
+
 function stopReader(): void {
   openToken++;
+  tracker?.stop();
+  tracker = null;
   reader?.destroy();
   reader = null;
 }
@@ -622,9 +646,21 @@ function showReader(spec: { name: string; ext: string; path?: string; fileUrl: s
     });
 }
 
-function openBook(book: Book, view: unknown): void {
+/**
+ * What a book opens at: a view named by the link or bookmark that was followed, else where this reader
+ * left off, else the start. (A link that carries a view is the author's choice and always wins.)
+ */
+async function openBook(book: Book, linked: unknown, seq: number): Promise<void> {
   currentId = book.id;
   renderTree();
+  let view = linked;
+  if (view === null) {
+    view = (await savedPlace(!!me?.user, book.id))?.view ?? null;
+    if (seq !== routeSeq) return; // the reader went elsewhere while the place was being looked up
+  }
+  stopReader();
+  const mine = trackPlace(!!me?.user, book.id, () => reader?.getLabel?.());
+  tracker = mine;
   const share = el("button", { type: "button", class: "btn", textContent: t("share.button") });
   const marks = el("button", { type: "button", class: "btn", textContent: `★ ${t("bookmark.title")}` });
   share.dataset.tour = "share";
@@ -635,7 +671,7 @@ function openBook(book: Book, view: unknown): void {
     path: book.path,
     fileUrl: `/api/file/${book.id}`,
     view,
-    onView: (v) => writeView(book, v),
+    onView: (v) => (writeView(book, v), mine.view(v)),
     bar: (current) => {
       share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.name, ext: book.ext, view: hasShareableView(book.ext) ? (current()?.getView?.() ?? null) : null }));
       marks.addEventListener("click", () => me && openBookmarks({ me, book, reader: current, onSignedIn: () => void boot() }));
@@ -645,6 +681,7 @@ function openBook(book: Book, view: unknown): void {
 }
 
 function route(): void {
+  const seq = ++routeSeq;
   const { book, folder, view } = parseHash();
   if (!book) {
     if (!books.length) {
@@ -657,7 +694,7 @@ function route(): void {
   }
   const found = booksById.get(book);
   if (!found) return message(t("book.missing.title"), t("book.missing.text"));
-  openBook(found, view);
+  void openBook(found, view, seq);
   reveal(found);
 }
 addEventListener("hashchange", () => {

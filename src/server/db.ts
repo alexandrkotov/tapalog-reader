@@ -49,6 +49,15 @@ export function openDb(dataDir: string): Database {
     created_at INTEGER NOT NULL
   )`);
   db.run("CREATE INDEX IF NOT EXISTS bookmarks_user ON bookmarks(user_id, book_id)");
+  db.run(`CREATE TABLE IF NOT EXISTS progress (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    book_id    TEXT NOT NULL,                 -- content id, so a moved or renamed book keeps its place
+    view       TEXT,                          -- JSON view the reader was at, or NULL when the book was only opened
+    label      TEXT NOT NULL DEFAULT '',      -- a short name of that place, as the reader suggested it
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, book_id)
+  )`);
+  db.run("CREATE INDEX IF NOT EXISTS progress_recent ON progress(user_id, updated_at)");
   db.run(`CREATE TABLE IF NOT EXISTS sources (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL,

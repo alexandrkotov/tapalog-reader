@@ -4,6 +4,7 @@ import type { Auth, User } from "./auth";
 import { validateName, validatePassword } from "./auth";
 import { BackupError, parseBackup, type Backup, type BackupFile } from "./backup";
 import type { Bookmarks } from "./bookmarks";
+import type { ProgressStore } from "./progress";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
 import { BrowseError, browse as listFolders } from "./browse";
@@ -31,6 +32,7 @@ export interface App {
   config: ConfigStore;
   covers: Covers;
   bookmarks: Bookmarks;
+  progress: ProgressStore;
   backup: Backup;
   sources: Sources;
   plugins: Plugins;
@@ -385,6 +387,44 @@ function buildRoutes(app: App, origin: Origin) {
         if (!me) return unauthorized();
         const label = (await body(req))?.label;
         return typeof label === "string" && app.bookmarks.rename(me.id, Number(param(req, "id")), label) ? json({ ok: true }) : notFound();
+      },
+    },
+
+    // ----- reading progress: where a signed-in reader left each book -----
+    "/api/progress": {
+      GET: (req: Request) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const list = app.progress.recent(me.id).filter((p) => app.library.byId(p.bookId)); // a book that left the library is kept, just not offered
+        return json({ progress: list });
+      },
+    },
+    "/api/progress/:id": {
+      GET: (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const found = app.progress.get(me.id, param(req, "id"));
+        return json({ progress: found });
+      },
+      PUT: async (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const data = await body(req);
+        const book = app.library.byId(param(req, "id"));
+        if (!data || !book) return bad("bad progress");
+        const view = data.view;
+        if (view !== undefined && view !== null && (typeof view !== "object" || Array.isArray(view))) return bad("bad progress");
+        try {
+          app.progress.save(me.id, book.id, view, typeof data.label === "string" ? data.label : "");
+          return json({ ok: true });
+        } catch (err) {
+          return bad(err instanceof Error ? err.message : "bad progress");
+        }
+      },
+      DELETE: (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        return app.progress.remove(me.id, param(req, "id")) ? json({ ok: true }) : notFound();
       },
     },
 

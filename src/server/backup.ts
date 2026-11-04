@@ -1,12 +1,13 @@
 import type { Database } from "bun:sqlite";
 import { validateName } from "./auth";
 import { MAX_LABEL, MAX_PER_USER, MAX_VIEW_BYTES } from "./bookmarks";
+import { MAX_PROGRESS } from "./progress";
 import type { Config, ConfigStore } from "./config";
 import { cleanSourceName, cleanSourceUrl, MAX_SOURCES, SourceError } from "./sources";
 
 /**
  * A backup of what cannot be rebuilt from the book folder: the accounts (with their password
- * hashes, never passwords), each reader's bookmarks, the share links and the server's settings.
+ * hashes, never passwords), each reader's bookmarks and reading places, the share links and the server's settings.
  * Books, covers and the search index are not in it: a rescan and the background jobs make them again.
  * Sessions are not either, so after a restore everybody signs in again.
  */
@@ -23,6 +24,8 @@ export interface BackupFile {
   shares: { token: string; bookId: string; view: unknown; createdBy: string | null; createdAt: number; expiresAt: number | null }[];
   /** The saved sites books come from. Backups made before they existed have none, and restoring one leaves the saved sites as they are. */
   sources?: { name: string; url: string }[];
+  /** Each reader's last place in books. Backups made before reading places existed have none, and restoring one leaves everybody with no places. */
+  progress?: { user: string; bookId: string; view: unknown; label: string; updatedAt: number }[];
 }
 
 export type BackupErrorCode = "not-backup" | "version" | "invalid" | "no-admin" | "too-big";
@@ -108,6 +111,24 @@ export function parseBackup(raw: unknown): BackupFile {
     });
   }
 
+  let cleanProgress: BackupFile["progress"];
+  if (raw.progress !== undefined) {
+    if (!Array.isArray(raw.progress) || raw.progress.length > MAX_USERS * MAX_PROGRESS) bad();
+    const seen = new Set<string>();
+    const counts = new Map<string, number>();
+    cleanProgress = (raw.progress as unknown[]).map((p) => {
+      if (!isObject(p) || typeof p.user !== "string" || !names.has(p.user.toLowerCase()) || typeof p.bookId !== "string" || !BOOK_ID.test(p.bookId)) return bad();
+      if ((p.view !== null && !isView(p.view)) || typeof p.label !== "string" || p.label.length > MAX_LABEL || !isTime(p.updatedAt)) return bad();
+      const key = `${p.user.toLowerCase()}|${p.bookId}`;
+      if (seen.has(key)) bad();
+      seen.add(key);
+      const count = (counts.get(p.user.toLowerCase()) ?? 0) + 1;
+      if (count > MAX_PROGRESS) bad();
+      counts.set(p.user.toLowerCase(), count);
+      return { user: p.user, bookId: p.bookId, view: p.view, label: p.label, updatedAt: p.updatedAt };
+    });
+  }
+
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -123,6 +144,7 @@ export function parseBackup(raw: unknown): BackupFile {
     bookmarks: cleanBookmarks,
     shares: cleanShares,
     ...(cleanSources ? { sources: cleanSources } : {}),
+    ...(cleanProgress ? { progress: cleanProgress } : {}),
   };
 }
 
@@ -149,6 +171,9 @@ export class Backup {
       bookmarks: bookmarks.flatMap((b) => (nameOf.has(b.userId) ? [{ user: nameOf.get(b.userId)!, bookId: b.bookId, label: b.label, view: JSON.parse(b.view), createdAt: b.createdAt }] : [])),
       shares: shares.map((s) => ({ token: s.token, bookId: s.bookId, view: s.view ? JSON.parse(s.view) : null, createdBy: s.createdBy === null ? null : (nameOf.get(s.createdBy) ?? null), createdAt: s.createdAt, expiresAt: s.expiresAt })),
       sources: this.db.query("SELECT name, url FROM sources ORDER BY id").all() as { name: string; url: string }[],
+      progress: (this.db.query("SELECT user_id AS userId, book_id AS bookId, view, label, updated_at AS updatedAt FROM progress ORDER BY updated_at").all() as { userId: number; bookId: string; view: string | null; label: string; updatedAt: number }[]).flatMap((p) =>
+        nameOf.has(p.userId) ? [{ user: nameOf.get(p.userId)!, bookId: p.bookId, view: p.view === null ? null : JSON.parse(p.view), label: p.label, updatedAt: p.updatedAt }] : [],
+      ),
     };
   }
 
@@ -161,6 +186,7 @@ export class Backup {
       this.db.run("DELETE FROM sessions");
       this.db.run("DELETE FROM bookmarks");
       this.db.run("DELETE FROM shares");
+      this.db.run("DELETE FROM progress"); // goes with the users, whatever the backup holds
       this.db.run("DELETE FROM users");
       const ids = new Map<string, number>();
       for (const u of file.users) {
@@ -168,6 +194,7 @@ export class Backup {
         ids.set(u.name.toLowerCase(), row.id);
       }
       for (const b of file.bookmarks) this.db.query("INSERT INTO bookmarks (user_id, book_id, label, view, created_at) VALUES (?, ?, ?, ?, ?)").run(ids.get(b.user.toLowerCase())!, b.bookId, b.label, JSON.stringify(b.view), b.createdAt);
+      for (const p of file.progress ?? []) this.db.query("INSERT INTO progress (user_id, book_id, view, label, updated_at) VALUES (?, ?, ?, ?, ?)").run(ids.get(p.user.toLowerCase())!, p.bookId, p.view === null ? null : JSON.stringify(p.view), p.label, p.updatedAt);
       if (file.sources) {
         this.db.run("DELETE FROM sources");
         for (const source of file.sources) this.db.query("INSERT INTO sources (name, url, created_at) VALUES (?, ?, ?)").run(source.name, source.url, Date.now());

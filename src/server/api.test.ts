@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "./auth";
 import { Backup } from "./backup";
+import { ProgressStore } from "./progress";
 import { Bookmarks } from "./bookmarks";
 import { Covers } from "./covers";
 import { LinkImports } from "./linkImport";
@@ -56,7 +57,7 @@ beforeAll(async () => {
   const auth = new Auth(db);
   const editor = new LibraryEditor(library, data);
   servers = startServers(
-    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), backup: new Backup(db, config), sources: new Sources(db), plugins: new Plugins(pluginsDir), editor, linkImports: new LinkImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m), stop: () => void stops.push(1) },
+    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), backup: new Backup(db, config), sources: new Sources(db), plugins: new Plugins(pluginsDir), editor, linkImports: new LinkImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m), stop: () => void stops.push(1) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -379,6 +380,31 @@ test("bookmarks belong to the signed-in reader and nobody else", async () => {
   expect((await call(lan, "/api/bookmarks", { cookie: mine })).body.bookmarks[0].label).toBe("Renamed");
   expect((await call(lan, `/api/bookmarks/${id}`, { method: "DELETE", cookie: mine })).status).toBe(200);
   expect((await call(lan, "/api/bookmarks", { cookie: mine })).body.bookmarks).toEqual([]);
+});
+
+test("reading places belong to the signed-in reader and nobody else", async () => {
+  const mine = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;
+  const put = (cookie: string | undefined, body: unknown, id = bookId) => call(lan, `/api/progress/${id}`, { method: "PUT", body, cookie });
+  const view = { v: 1, offset: 120 };
+  expect((await call(lan, "/api/progress")).status).toBe(401); // anonymous readers keep theirs in the browser
+  expect((await put(undefined, { view })).status).toBe(401);
+
+  expect((await put(mine, { view, label: "  Page 3 " })).status).toBe(200);
+  expect((await put(mine, { view: "page 4" })).status).toBe(400);
+  expect((await put(mine, { view: { blob: "x".repeat(5000) } })).status).toBe(400);
+  expect((await put(mine, { view }, "nope")).status).toBe(400); // only books of this library
+  expect((await call(lan, `/api/progress/${bookId}`, { cookie: mine })).body.progress).toMatchObject({ bookId, view, label: "Page 3" });
+
+  // opening the book again without a place keeps the place
+  expect((await put(mine, {})).status).toBe(200);
+  expect((await call(lan, "/api/progress", { cookie: mine })).body.progress).toMatchObject([{ bookId, view, label: "Page 3" }]);
+
+  // another reader sees none of it
+  expect((await call(lan, "/api/progress", { cookie: adminCookie })).body.progress).toEqual([]);
+  expect((await call(lan, `/api/progress/${bookId}`, { cookie: adminCookie })).body.progress).toBeNull();
+  expect((await call(lan, `/api/progress/${bookId}`, { method: "DELETE", cookie: adminCookie })).status).toBe(404);
+  expect((await call(lan, `/api/progress/${bookId}`, { method: "DELETE", cookie: mine })).status).toBe(200);
+  expect((await call(lan, "/api/progress", { cookie: mine })).body.progress).toEqual([]);
 });
 
 test("deleting an account deletes its bookmarks", async () => {
