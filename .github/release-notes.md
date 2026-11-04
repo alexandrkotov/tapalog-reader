@@ -1,8 +1,8 @@
 ## English
 
 What's new:
-- A second start no longer opens a second server on another port: it finds the program that is already running, opens it in the browser and exits.
-- Fixed a start-up failure on Windows when the usual ports 8920–8939 are reserved by the system: a free port is picked instead and the console says which.
+- A book opens where you left it, on any device once you are signed in (without an account the place is kept in that browser). A link, bookmark or share link that names a place still opens exactly there.
+- **Continue reading** on the top shelf: the last 12 books you read, each with its place. Reading places are included in the backup.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -16,8 +16,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- Повторный запуск больше не открывает второй сервер на другом порту: он находит уже работающую программу, открывает её в браузере и выходит.
-- Исправлен сбой запуска в Windows, когда привычные порты 8920–8939 зарезервированы системой: выбирается свободный порт, и консоль сообщает, какой.
+- Книга открывается там, где вы остановились, на любом устройстве после входа в аккаунт (без аккаунта место хранится в этом браузере). Ссылка, закладка или ссылка для общего доступа с указанным местом по-прежнему открывается точно там.
+- **Продолжить чтение** на главной полке: последние 12 прочитанных книг, у каждой своё место. Места чтения входят в резервную копию.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -31,8 +31,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- Повторний запуск більше не відкриває другий сервер на іншому порту: він знаходить програму, що вже працює, відкриває її в браузері й виходить.
-- Виправлено збій запуску у Windows, коли звичні порти 8920–8939 зарезервовані системою: обирається вільний порт, а консоль повідомляє, який.
+- Книга відкривається там, де ви зупинилися, на будь-якому пристрої після входу в обліковий запис (без облікового запису місце зберігається в цьому браузері). Посилання, закладка чи посилання для спільного доступу з указаним місцем, як і раніше, відкривається точно там.
+- **Продовжити читання** на головній полиці: останні 12 прочитаних книг, у кожної своє місце. Місця читання входять до резервної копії.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 
