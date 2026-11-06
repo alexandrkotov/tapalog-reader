@@ -1,8 +1,24 @@
 import { store } from "./ui";
 
+/** A rectangle of a page as fractions of its width and height, in the page as the file has it (before any turn). */
+export interface CropRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Which part of the pages is shown: `all`, or `odd` / `even` pages (by page number) in place of it. */
+export interface Crop {
+  all?: CropRect;
+  odd?: CropRect;
+  even?: CropRect;
+}
+
 /** How a reader likes to see one book (never a change to the file). Mirrors the server's `Display`. */
 export interface Display {
   rotation?: 90 | 180 | 270;
+  crop?: Crop;
 }
 
 /**

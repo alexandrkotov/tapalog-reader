@@ -168,27 +168,120 @@ e2e("another account has its own look, and a guest's stays in that browser", asy
   await mine.page.close();
 });
 
+/** Prints the page being read and says whether the picture that was prepared is wider than tall. */
+async function printedShape(page: Page): Promise<"landscape" | "portrait"> {
+  await page.evaluate(() => ((window as any).__printed = false));
+  await page.click("button:has-text('Print')");
+  await page.waitForSelector(".print-choices");
+  await page.click("input[value=here]");
+  await page.click(".modal .btn.primary");
+  await page.waitForFunction(() => (window as any).__printed === true, null, { timeout: 60_000 });
+  return page.evaluate(async () => {
+    const img = document.getElementById("print-root")!.shadowRoot!.querySelector("img")!;
+    await img.decode();
+    return img.naturalWidth > img.naturalHeight ? "landscape" : "portrait";
+  });
+}
+
 e2e("what is printed is turned the way the reader sees the book", async () => {
   await reset();
   const { page } = await open(ctx);
   await page.evaluate(() => ((window as any).print = () => ((window as any).__printed = true))); // the print window cannot be driven here
-  const printedShape = async () => {
-    await page.evaluate(() => ((window as any).__printed = false));
-    await page.click("button:has-text('Print')");
-    await page.waitForSelector(".print-choices");
-    await page.click("input[value=here]");
-    await page.click(".modal .btn.primary");
-    await page.waitForFunction(() => (window as any).__printed === true, null, { timeout: 60_000 });
-    return page.evaluate(async () => {
-      const img = document.getElementById("print-root")!.shadowRoot!.querySelector("img")!;
-      await img.decode();
-      return img.naturalWidth > img.naturalHeight ? "landscape" : "portrait";
-    });
-  };
-  expect(await printedShape()).toBe("portrait");
+  expect(await printedShape(page)).toBe("portrait");
   await turn(page);
   await waitUpright(page, false);
-  expect(await printedShape()).toBe("landscape");
+  expect(await printedShape(page)).toBe("landscape");
+  await page.close();
+  await reset();
+});
+
+type R = { x: number; y: number; w: number; h: number };
+const cropped = (crop: { all?: R; odd?: R; even?: R }) => ctx.request.put(`${inst.url}/api/display/${id}`, { data: { display: { crop } }, headers: { Origin: inst.url } });
+/** An address that names the page, which always wins over the place saved by an earlier test. */
+const at = (page: number) => `#book=${id}&view=${encodeURIComponent(JSON.stringify({ v: 1, page }))}`;
+/** The shape of a page on screen: its height over its width. */
+const aspectOf = (page: Page, n: number) => page.evaluate((p) => { const r = (document.querySelector(`.pdf-scroll .page[data-page-number='${p}']`) as HTMLElement).getBoundingClientRect(); return r.height / r.width; }, n);
+/** Whether page `n`'s picture holds the fixture's red bar (it is at 0.13..0.22 across and 0.64..0.76 down the whole page). */
+const hasRed = (page: Page, n: number) =>
+  page.evaluate((p) => {
+    const canvas = document.querySelector(`.pdf-scroll .page[data-page-number='${p}'] canvas`) as HTMLCanvasElement | null;
+    if (!canvas || !canvas.width) return null;
+    const data = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 0; i < data.length; i += 4) if (data[i]! > 150 && data[i + 1]! < 100 && data[i + 2]! < 100) return true;
+    return false;
+  }, n);
+async function goTo(page: Page, n: number): Promise<void> {
+  await page.fill(".pdf-page-input", String(n));
+  await page.press(".pdf-page-input", "Enter");
+  await page.waitForFunction((want) => (document.querySelector(".pdf-page-input") as HTMLInputElement).value === String(want), n);
+}
+
+e2e("a cut shows only its part of each page, and odd and even pages can be cut apart", async () => {
+  await reset();
+  // odd pages: the lower half (the red bar is in it); even pages: the top quarter (it is not)
+  expect((await cropped({ odd: { x: 0, y: 0.5, w: 1, h: 0.5 }, even: { x: 0, y: 0, w: 1, h: 0.25 } })).ok()).toBe(true);
+  const { page, errors } = await open(ctx, at(1));
+  const whole = 842 / 595;
+  expect(Math.abs((await aspectOf(page, 1)) - whole * 0.5)).toBeLessThan(0.02);
+  expect(Math.abs((await aspectOf(page, 2)) - whole * 0.25)).toBeLessThan(0.02);
+  await page.waitForFunction((n) => {
+    const c = document.querySelector(`.pdf-scroll .page[data-page-number='${n}'] canvas`) as HTMLCanvasElement | null;
+    return !!c && c.width > 0;
+  }, 1);
+  let seen: boolean | null = null;
+  for (let i = 0; i < 40 && seen !== true; i++) (seen = await hasRed(page, 1), seen !== true && (await page.waitForTimeout(250)));
+  expect(seen).toBe(true); // the cut kept the bar ...
+  await goTo(page, 2);
+  await page.waitForSelector(".pdf-scroll .page[data-page-number='2'] canvas");
+  await page.waitForTimeout(1000);
+  expect(await hasRed(page, 2)).toBe(false); // ... and the other cut left it out
+  expect(errors).toEqual([]);
+  await page.close();
+  await reset();
+});
+
+e2e("on a cut page, areas, positions and links keep to the whole page as the file has it", async () => {
+  await reset();
+  expect((await cropped({ all: { x: 0.2, y: 0.2, w: 0.6, h: 0.6 } })).ok()).toBe(true);
+  const { page, errors } = await open(ctx, at(3));
+  await page.click(".pdf-toolbar button:has-text('Whole page')");
+  await page.click(".pdf-toolbar button:has-text('Area')");
+  const box = await settledBox(page, ".pdf-scroll .page[data-page-number='3']");
+  await page.mouse.move(box.x + box.width * 0.1, box.y + box.height * 0.1);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.2, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForSelector(".pdf-region:not(.pdf-region-draft)");
+  await page.waitForFunction(() => decodeURIComponent(location.hash).includes("region"));
+  const area = (await hashView(page)).region!;
+  // 0.1..0.5 across and 0.1..0.2 down the cut = 0.2 + 0.6 * that, in the whole page
+  expect(area.x).toBeCloseTo(0.26, 1);
+  expect(area.w).toBeCloseTo(0.24, 1);
+  expect(area.y).toBeCloseTo(0.26, 1);
+  expect(area.h).toBeCloseTo(0.06, 1);
+
+  // the same address (what a link or a bookmark holds) shows the same area in the same place of the cut
+  const before = await page.evaluate(() => { const p = document.querySelector(".pdf-scroll .page[data-page-number='3']")!.getBoundingClientRect(); const r = document.querySelector(".pdf-region:not(.pdf-region-draft)")!.getBoundingClientRect(); return { x: (r.left - p.left) / p.width, y: (r.top - p.top) / p.height, w: r.width / p.width }; });
+  await page.reload();
+  await page.waitForSelector(".pdf-region:not(.pdf-region-draft)");
+  const afterBox = await settledBox(page, ".pdf-scroll .page[data-page-number='3']");
+  const after = await page.evaluate(() => { const p = document.querySelector(".pdf-scroll .page[data-page-number='3']")!.getBoundingClientRect(); const r = document.querySelector(".pdf-region:not(.pdf-region-draft)")!.getBoundingClientRect(); return { x: (r.left - p.left) / p.width, y: (r.top - p.top) / p.height, w: r.width / p.width }; });
+  expect(afterBox.width).toBeGreaterThan(0);
+  expect(after.x).toBeCloseTo(before.x, 1);
+  expect(after.y).toBeCloseTo(before.y, 1);
+  expect(after.w).toBeCloseTo(before.w, 1);
+  expect((await hashView(page)).region).toEqual(area);
+  expect(errors).toEqual([]);
+  await page.close();
+  await reset();
+});
+
+e2e("what is printed is cut the way the reader sees the book", async () => {
+  await reset();
+  expect((await cropped({ all: { x: 0, y: 0, w: 1, h: 0.4 } })).ok()).toBe(true); // a wide strip of a tall page
+  const { page } = await open(ctx, at(1));
+  await page.evaluate(() => ((window as any).print = () => ((window as any).__printed = true)));
+  expect(await printedShape(page)).toBe("landscape");
   await page.close();
   await reset();
 });

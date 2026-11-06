@@ -26,6 +26,29 @@ test("only real settings are accepted, and ones that change nothing come out emp
   for (const bad of [null, undefined, "90", [], { rotation: 45 }, { rotation: "90" }, { rotation: -90 }, { rotation: 360 }]) expect(parseDisplay(bad)).toBeNull();
 });
 
+test("a crop is checked, tidied, and a crop of the whole page is not kept", () => {
+  const rect = { x: 0.1, y: 0.2, w: 0.5, h: 0.6 };
+  expect(parseDisplay({ crop: { all: rect } })).toEqual({ crop: { all: rect } });
+  expect(parseDisplay({ rotation: 90, crop: { odd: rect, even: { x: 0, y: 0, w: 0.8, h: 1 } } })).toEqual({ rotation: 90, crop: { odd: rect, even: { x: 0, y: 0, w: 0.8, h: 1 } } });
+  expect(parseDisplay({ crop: { all: { x: 0, y: 0, w: 1, h: 1 } } })).toEqual({}); // nothing is cut
+  expect(parseDisplay({ crop: { all: { x: 0.12345678, y: 0, w: 0.5, h: 1 } } })).toEqual({ crop: { all: { x: 0.1235, y: 0, w: 0.5, h: 1 } } });
+  expect(parseDisplay({ crop: {} })).toEqual({});
+  expect(parseDisplay({ crop: { all: rect, middle: rect } })).toEqual({ crop: { all: rect } }); // unknown parts are dropped
+  const bad = [
+    { crop: "all" },
+    { crop: [] },
+    { crop: { all: null } },
+    { crop: { all: { x: 0, y: 0, w: 1 } } },
+    { crop: { all: { x: "0", y: 0, w: 1, h: 1 } } },
+    { crop: { all: { x: -0.1, y: 0, w: 0.5, h: 0.5 } } },
+    { crop: { all: { x: 0.6, y: 0, w: 0.6, h: 0.5 } } }, // runs off the page
+    { crop: { all: { x: 0, y: 0, w: 0.01, h: 0.5 } } }, // a sliver
+    { crop: { all: { x: 0, y: 0, w: Number.NaN, h: 0.5 } } },
+    { crop: { odd: rect, even: { x: 0, y: 0, w: 0, h: 0 } } },
+  ];
+  for (const display of bad) expect(parseDisplay(display)).toBeNull();
+});
+
 test("settings are kept per reader and book, replaced by the last save, and removed when they say nothing", async () => {
   const a = await auth.createUser("A", "secret1", "admin");
   const b = await auth.createUser("B", "secret2", "user");

@@ -2,7 +2,8 @@ import * as pdfjsLib from "pdfjs-dist/build/pdf.min.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
 import { t } from "../i18n";
 import { addPageImage, type PrintJob } from "../print";
-import type { Display } from "../display";
+import type { Crop, Display } from "../display";
+import { clipToCrop, cropFor, intoCrop, outOfCrop, rectIntoCrop, rectOutOfCrop } from "./crop";
 import { readerMode, setReaderMode } from "../readerMode";
 import { mountThumbs, type Thumbs } from "./thumbs";
 import { rectToPage, rectToScreen, toPage, toScreen } from "./rotation";
@@ -127,7 +128,42 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
 
   /** Clockwise, in degrees, for every page of the book. Positions, areas and links stay in the page as the file has it. */
   let turn: number = options.display?.rotation ?? 0;
-  const reportDisplay = () => options.onDisplay?.(turn ? { rotation: turn as 90 | 180 | 270 } : {});
+  /** Which part of each page is shown. The pages are cut when they are loaded, see `cutPage`. */
+  const crop: Crop | undefined = options.display?.crop;
+  const reportDisplay = () => options.onDisplay?.({ ...(turn ? { rotation: turn as 90 | 180 | 270 } : {}), ...(crop ? { crop } : {}) });
+
+  // Everything outside this module's drawing code keeps to the whole page as the file has it. These four turn
+  // that into what is on screen (cut, then turned) and back, for page `n`; a rectangle outside the cut has no
+  // shape on screen (null).
+  const cutOf = (n: number): Rect | null => cropFor(crop, n);
+  const pointToShown = (n: number, p: { x: number; y: number }) => {
+    const q = toScreen(intoCrop(p, cutOf(n)), turn);
+    return { x: clamp(q.x, 0, 1), y: clamp(q.y, 0, 1) };
+  };
+  const pointFromShown = (n: number, p: { x: number; y: number }) => outOfCrop(toPage(p, turn), cutOf(n));
+  const rectToShown = (n: number, r: Rect): Rect | null => {
+    const inside = clipToCrop(r, cutOf(n));
+    return inside && rectToScreen(rectIntoCrop(inside, cutOf(n)), turn);
+  };
+  const rectFromShown = (n: number, r: Rect): Rect => rectOutOfCrop(rectToPage(r, turn), cutOf(n));
+
+  /**
+   * Makes the viewer see only the cut of a page: pdf.js builds every page's size, drawing and text layer from
+   * the page's visible box, so giving the page a smaller box is all it takes, and the file is not touched.
+   * The original box is kept to cut from, so cutting again never compounds.
+   */
+  const wholeBox = new WeakMap<object, number[]>();
+  function cutPage(page: pdfjsLib.PDFPageProxy, n: number): void {
+    const info = (page as unknown as { _pageInfo: { view: number[] } })._pageInfo;
+    if (!wholeBox.has(page)) wholeBox.set(page, [...info.view]);
+    info.view = wholeBox.get(page)!;
+    const c = cutOf(n);
+    if (!c) return;
+    const whole = page.getViewport({ scale: 1 });
+    const a = whole.convertToPdfPoint(c.x * whole.width, c.y * whole.height);
+    const b = whole.convertToPdfPoint((c.x + c.w) * whole.width, (c.y + c.h) * whole.height);
+    info.view = [Math.min(a[0]!, b[0]!), Math.min(a[1]!, b[1]!), Math.max(a[0]!, b[0]!), Math.max(a[1]!, b[1]!)];
+  }
 
   // ---------- page previews ----------
 
@@ -186,7 +222,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     pdfViewer.pagesRotation = turn; // a fitted page is fitted again by the viewer itself
     attachRegion();
     if (thumbs) void setThumbs(true, true);
-    const shownAt = toScreen({ x: view.cx ?? 0.5, y: view.cy ?? 0.5 }, turn);
+    const shownAt = pointToShown(view.page, { x: view.cx ?? 0.5, y: view.cy ?? 0.5 });
     centreOn(view.page, shownAt.x, shownAt.y);
     reportDisplay();
     scheduleView(0);
@@ -238,7 +274,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     const view: PageView = { v: 1, page };
     if (b && b.width > 0) {
       view.zoom = round(b.width / availableWidth());
-      const at = toPage({ x: clamp((midX - b.left) / b.width, 0, 1), y: clamp((midY - b.top) / b.height, 0, 1) }, turn);
+      const at = pointFromShown(page, { x: clamp((midX - b.left) / b.width, 0, 1), y: clamp((midY - b.top) / b.height, 0, 1) });
       view.cx = round(at.x);
       view.cy = round(at.y);
     }
@@ -277,18 +313,20 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       if (view.zoom === undefined && view.cx === undefined) {
         // A region without a position: fit it into the window with some air around it and centre it.
         const aspect = box.height / box.width; // page height / width, as shown
-        const shown = rectToScreen(rect, turn);
-        const fitWidth = Math.min((container.clientWidth * 0.9) / shown.w, (container.clientHeight * 0.9) / (shown.h * aspect));
-        scale = fitWidth / baseWidth;
-        cx = rect.x + rect.w / 2;
-        cy = rect.y + rect.h / 2;
+        const shown = rectToShown(page, rect); // null when the area lies outside the cut: then the view stays where it is
+        if (shown) {
+          const fitWidth = Math.min((container.clientWidth * 0.9) / shown.w, (container.clientHeight * 0.9) / (shown.h * aspect));
+          scale = fitWidth / baseWidth;
+          cx = rect.x + rect.w / 2;
+          cy = rect.y + rect.h / 2;
+        }
       }
     } else {
       setRegion(null, null);
     }
     if (scale === null) scale = pdfViewer.currentScale;
     pdfViewer.currentScale = clamp(scale, MIN_SCALE, MAX_SCALE);
-    const shownAt = toScreen({ x: cx, y: cy }, turn);
+    const shownAt = pointToShown(page, { x: cx, y: cy });
     centreOn(page, shownAt.x, shownAt.y);
   }
 
@@ -304,7 +342,8 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     if (!region) return regionEl.remove();
     const el = pdfViewer.getPageView(region.page - 1)?.div;
     if (!el) return;
-    const r = rectToScreen(region.rect, turn);
+    const r = rectToShown(region.page, region.rect);
+    if (!r) return regionEl.remove(); // the area lies in a margin that is cut away
     Object.assign(regionEl.style, { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` });
     if (regionEl.parentElement !== el) el.append(regionEl);
   }
@@ -351,7 +390,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       draftEl.remove();
       const rect = rectOf(at(e)); // as shown
       if (e.type === "pointerup" && rect.w >= MIN_REGION && rect.h >= MIN_REGION) {
-        setRegion(pageNumber, rectToPage(rect, turn));
+        setRegion(pageNumber, rectFromShown(pageNumber, rect));
         scheduleView(0);
       }
       setSelecting(false);
@@ -434,6 +473,15 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
 
   task.promise
     .then((doc: Parameters<typeof pdfViewer.setDocument>[0]) => {
+      if (crop && doc) {
+        // Every page the viewer, the previews and the printout ask for comes cut.
+        const getPage = doc.getPage.bind(doc);
+        doc.getPage = async (n: number) => {
+          const page = await getPage(n);
+          cutPage(page, n);
+          return page;
+        };
+      }
       pdfViewer.setDocument(doc);
       linkService.setDocument(doc, null);
     })
@@ -466,13 +514,13 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
           const page = await pdf.getPage(n);
           const rotation = (page.rotate + turn) % 360; // the printout is turned the way the reader sees the book
           const base = page.getViewport({ scale: 1, rotation });
-          const crop = choice === "area" && area ? rectToScreen(area.rect, turn) : null;
-          const scale = Math.min(MAX_SCALE, PRINT_PAGE_PX / (base.width * (crop?.w ?? 1)), PRINT_MAX_SIDE / (base.width * (crop?.w ?? 1)), PRINT_MAX_SIDE / (base.height * (crop?.h ?? 1)));
+          const part = choice === "area" && area ? rectToShown(area.page, area.rect) : null;
+          const scale = Math.min(MAX_SCALE, PRINT_PAGE_PX / (base.width * (part?.w ?? 1)), PRINT_MAX_SIDE / (base.width * (part?.w ?? 1)), PRINT_MAX_SIDE / (base.height * (part?.h ?? 1)));
           const viewport = page.getViewport({ scale, rotation });
           const canvas = document.createElement("canvas");
-          canvas.width = Math.max(1, Math.ceil(viewport.width * (crop?.w ?? 1)));
-          canvas.height = Math.max(1, Math.ceil(viewport.height * (crop?.h ?? 1)));
-          await page.render({ canvas, viewport, ...(crop ? { transform: [1, 0, 0, 1, -crop.x * viewport.width, -crop.y * viewport.height] } : {}) }).promise;
+          canvas.width = Math.max(1, Math.ceil(viewport.width * (part?.w ?? 1)));
+          canvas.height = Math.max(1, Math.ceil(viewport.height * (part?.h ?? 1)));
+          await page.render({ canvas, viewport, ...(part ? { transform: [1, 0, 0, 1, -part.x * viewport.width, -part.y * viewport.height] } : {}) }).promise;
           const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
           page.cleanup();
           if (!blob) throw new Error("could not draw page " + n);
