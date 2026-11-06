@@ -8,6 +8,7 @@ import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
 import { offerTour, startTour, type TourStep } from "./tour";
 import { openPrintDialog } from "./print";
+import { loadDisplay, saveDisplay, type Display } from "./display";
 import { recentPlaces, savedPlace, trackPlace, type Tracker } from "./progress";
 import { hasShareableView, mountReader, type Reader } from "./readers/mount";
 import { loadPlugins } from "./readers/plugins";
@@ -617,7 +618,7 @@ function parseHash(): { book: string | null; folder: string | null; view: unknow
 const writeView = (book: Book, view: unknown) => history.replaceState(null, "", `#book=${book.id}&view=${encodeURIComponent(JSON.stringify(view))}`);
 
 /** Shows a reader in the main area under a title bar. `bar` adds buttons at its right end. */
-function showReader(spec: { name: string; ext: string; path?: string; fileUrl: string; view: unknown; onView?: (view: unknown) => void; bar?: (current: () => Reader | null) => HTMLElement[] }): void {
+function showReader(spec: { name: string; ext: string; path?: string; fileUrl: string; view: unknown; onView?: (view: unknown) => void; display?: Display; onDisplay?: (display: Display) => void; bar?: (current: () => Reader | null) => HTMLElement[] }): void {
   const token = ++openToken;
   reader?.destroy();
   reader = null;
@@ -653,11 +654,10 @@ function showReader(spec: { name: string; ext: string; path?: string; fileUrl: s
 async function openBook(book: Book, linked: unknown, seq: number): Promise<void> {
   currentId = book.id;
   renderTree();
-  let view = linked;
-  if (view === null) {
-    view = (await savedPlace(!!me?.user, book.id))?.view ?? null;
-    if (seq !== routeSeq) return; // the reader went elsewhere while the place was being looked up
-  }
+  const signedIn = !!me?.user;
+  const [place, display] = await Promise.all([linked === null ? savedPlace(signedIn, book.id) : null, book.ext === "pdf" ? loadDisplay(signedIn, book.id) : ({} as Display)]);
+  if (seq !== routeSeq) return; // the reader went elsewhere while the place was being looked up
+  const view = linked ?? place?.view ?? null;
   stopReader();
   const mine = trackPlace(!!me?.user, book.id, () => reader?.getLabel?.());
   tracker = mine;
@@ -672,6 +672,8 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
     fileUrl: `/api/file/${book.id}`,
     view,
     onView: (v) => (writeView(book, v), mine.view(v)),
+    display,
+    onDisplay: (d) => saveDisplay(signedIn, book.id, d),
     bar: (current) => {
       share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.name, ext: book.ext, view: hasShareableView(book.ext) ? (current()?.getView?.() ?? null) : null }));
       marks.addEventListener("click", () => me && openBookmarks({ me, book, reader: current, onSignedIn: () => void boot() }));

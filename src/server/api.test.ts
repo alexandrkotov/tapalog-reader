@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "./auth";
 import { Backup } from "./backup";
+import { DisplayStore } from "./display";
 import { ProgressStore } from "./progress";
 import { Bookmarks } from "./bookmarks";
 import { Covers } from "./covers";
@@ -57,7 +58,7 @@ beforeAll(async () => {
   const auth = new Auth(db);
   const editor = new LibraryEditor(library, data);
   servers = startServers(
-    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), backup: new Backup(db, config), sources: new Sources(db), plugins: new Plugins(pluginsDir), editor, linkImports: new LinkImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m), stop: () => void stops.push(1) },
+    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), display: new DisplayStore(db), backup: new Backup(db, config), sources: new Sources(db), plugins: new Plugins(pluginsDir), editor, linkImports: new LinkImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m), stop: () => void stops.push(1) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -405,6 +406,26 @@ test("reading places belong to the signed-in reader and nobody else", async () =
   expect((await call(lan, `/api/progress/${bookId}`, { method: "DELETE", cookie: adminCookie })).status).toBe(404);
   expect((await call(lan, `/api/progress/${bookId}`, { method: "DELETE", cookie: mine })).status).toBe(200);
   expect((await call(lan, "/api/progress", { cookie: mine })).body.progress).toEqual([]);
+});
+
+test("display settings belong to the signed-in reader, are checked, and a default look is not kept", async () => {
+  const mine = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;
+  const put = (cookie: string | undefined, body: unknown, id = bookId) => call(lan, `/api/display/${id}`, { method: "PUT", body, cookie });
+  const get = (cookie: string | undefined) => call(lan, `/api/display/${bookId}`, { cookie });
+  expect((await get(undefined)).status).toBe(401); // guests keep theirs in the browser
+  expect((await put(undefined, { display: { rotation: 90 } })).status).toBe(401);
+
+  expect((await put(mine, { display: { rotation: 90 } })).status).toBe(200);
+  expect((await get(mine)).body.display).toEqual({ rotation: 90 });
+  expect((await put(mine, { display: { rotation: 45 } })).status).toBe(400);
+  expect((await put(mine, { display: "turn" })).status).toBe(400);
+  expect((await put(mine, {})).status).toBe(400);
+  expect((await put(mine, { display: { rotation: 90 } }, "nope")).status).toBe(400); // only books of this library
+  expect((await get(mine)).body.display).toEqual({ rotation: 90 }); // the bad ones changed nothing
+
+  expect((await get(adminCookie)).body.display).toBeNull(); // another reader sees none of it
+  expect((await put(mine, { display: { rotation: 0 } })).status).toBe(200); // back to the file's own look: nothing to keep
+  expect((await get(mine)).body.display).toBeNull();
 });
 
 test("deleting an account deletes its bookmarks", async () => {

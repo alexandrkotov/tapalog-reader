@@ -2,8 +2,10 @@ import * as pdfjsLib from "pdfjs-dist/build/pdf.min.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
 import { t } from "../i18n";
 import { addPageImage, type PrintJob } from "../print";
+import type { Display } from "../display";
 import { readerMode, setReaderMode } from "../readerMode";
 import { mountThumbs, type Thumbs } from "./thumbs";
+import { rectToPage, rectToScreen, toPage, toScreen } from "./rotation";
 import type { PageView, ReaderHandle, Rect } from "./types";
 
 /** pdf.js' own padding around the page column; "zoom 1" is the page width that leaves exactly this. */
@@ -44,6 +46,9 @@ export interface PdfOptions {
   view?: PageView | null;
   /** Called when what is on screen changes, at most every 250 ms and never twice with the same view. */
   onView(view: PageView): void;
+  /** How the reader likes to see this book; changes are reported through `onDisplay` so they can be remembered. */
+  display?: Display;
+  onDisplay?(display: Display): void;
   onError(error: Error): void;
 }
 
@@ -79,6 +84,8 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   const thumbsButton = button("▥", t("pages.toggle"), () => void setThumbs(!thumbs));
   thumbsButton.setAttribute("aria-label", t("pages.toggle"));
   const areaButton = button(`▭ ${t("pdf.area")}`, t("pdf.areaTitle"), () => setSelecting(!selecting));
+  const turnButton = button("⟳", t("pdf.turnTitle"), () => turnPages());
+  turnButton.setAttribute("aria-label", t("pdf.turn"));
   const focusButton = button("⛶", t("pdf.focusTitle"), () => setFocus(!readerMode()));
   focusButton.setAttribute("aria-label", t("pdf.focus"));
   focusButton.setAttribute("aria-pressed", "false");
@@ -95,6 +102,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     button("+", t("pdf.zoomIn"), () => pdfViewer.increaseScale()),
     button(t("pdf.fitWidth"), t("pdf.fitWidthTitle"), () => (pdfViewer.currentScaleValue = "page-width")),
     button(t("pdf.fitPage"), t("pdf.fitPageTitle"), () => (pdfViewer.currentScaleValue = "page-fit")),
+    turnButton,
     areaButton,
     focusButton,
   );
@@ -115,22 +123,30 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   const pdfViewer = new PDFViewer({ container, viewer: viewerEl, eventBus, linkService, textLayerMode: 1 });
   linkService.setViewer(pdfViewer);
 
+  // ---------- turning the pages ----------
+
+  /** Clockwise, in degrees, for every page of the book. Positions, areas and links stay in the page as the file has it. */
+  let turn: number = options.display?.rotation ?? 0;
+  const reportDisplay = () => options.onDisplay?.(turn ? { rotation: turn as 90 | 180 | 270 } : {});
+
   // ---------- page previews ----------
 
   let thumbs: Thumbs | null = null;
   let thumbsToken = 0;
-  async function setThumbs(on: boolean): Promise<void> {
+  async function setThumbs(on: boolean, rebuild = false): Promise<void> {
     const token = ++thumbsToken;
-    remember(on);
+    if (!rebuild) remember(on);
     thumbsButton.classList.toggle("active", on);
-    if (!on) {
+    if (!on || rebuild) {
       thumbs?.destroy();
       thumbs = null;
       frame.classList.remove("has-thumbs");
-    } else if (!thumbs) {
+    }
+    if (on && !thumbs) {
       const pdf = pdfViewer.pdfDocument;
       if (!pdf) return;
-      const first = (await pdf.getPage(1)).getViewport({ scale: 1 });
+      const firstPage = await pdf.getPage(1);
+      const first = firstPage.getViewport({ scale: 1, rotation: (firstPage.rotate + turn) % 360 });
       if (token !== thumbsToken) return;
       thumbs = mountThumbs({
         count: pdf.numPages,
@@ -138,8 +154,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
         pick: (n) => (pdfViewer.currentPageNumber = n),
         async draw(n, box, signal) {
           const page = await pdf.getPage(n);
-          const base = page.getViewport({ scale: 1 });
-          const viewport = page.getViewport({ scale: (THUMB_PX * Math.min(2, devicePixelRatio || 1)) / base.width });
+          const rotation = (page.rotate + turn) % 360;
+          const base = page.getViewport({ scale: 1, rotation });
+          const viewport = page.getViewport({ scale: (THUMB_PX * Math.min(2, devicePixelRatio || 1)) / base.width, rotation });
           const canvas = document.createElement("canvas");
           canvas.width = Math.ceil(viewport.width);
           canvas.height = Math.ceil(viewport.height);
@@ -162,6 +179,18 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     const mode = pdfViewer.currentScaleValue;
     if (pdfViewer.pagesCount && (mode === "page-width" || mode === "page-fit")) pdfViewer.currentScaleValue = mode;
   };
+  /** Turns every page a quarter clockwise, keeping the spot that is in the middle of the window, and remembers it for this book. */
+  function turnPages(): void {
+    const view = getView(); // in the page as the file has it, so it does not matter how the book was turned before
+    turn = (turn + 90) % 360;
+    pdfViewer.pagesRotation = turn; // a fitted page is fitted again by the viewer itself
+    attachRegion();
+    if (thumbs) void setThumbs(true, true);
+    const shownAt = toScreen({ x: view.cx ?? 0.5, y: view.cy ?? 0.5 }, turn);
+    centreOn(view.page, shownAt.x, shownAt.y);
+    reportDisplay();
+    scheduleView(0);
+  }
   const resizes = new ResizeObserver(refit);
   resizes.observe(container);
 
@@ -209,8 +238,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     const view: PageView = { v: 1, page };
     if (b && b.width > 0) {
       view.zoom = round(b.width / availableWidth());
-      view.cx = round(clamp((midX - b.left) / b.width, 0, 1));
-      view.cy = round(clamp((midY - b.top) / b.height, 0, 1));
+      const at = toPage({ x: clamp((midX - b.left) / b.width, 0, 1), y: clamp((midY - b.top) / b.height, 0, 1) }, turn);
+      view.cx = round(at.x);
+      view.cy = round(at.y);
     }
     // The rectangle belongs to the view only while its page is the one on screen: after the reader has gone on to
     // another page, a link or bookmark made there must lead there, not back to the page the rectangle was drawn on.
@@ -237,7 +267,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     const box = pageBox(page);
     if (!pv || !box) return;
     const baseWidth = box.width / pdfViewer.currentScale; // page width at scale 1
-    let cx = view.cx ?? 0.5;
+    let cx = view.cx ?? 0.5; // where the view looks, in the page as the file has it
     let cy = view.cy ?? 0.5;
     let scale = view.zoom ? (view.zoom * availableWidth()) / baseWidth : null;
 
@@ -246,8 +276,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       setRegion(page, rect);
       if (view.zoom === undefined && view.cx === undefined) {
         // A region without a position: fit it into the window with some air around it and centre it.
-        const aspect = box.height / box.width; // page height / width
-        const fitWidth = Math.min((container.clientWidth * 0.9) / rect.w, (container.clientHeight * 0.9) / (rect.h * aspect));
+        const aspect = box.height / box.width; // page height / width, as shown
+        const shown = rectToScreen(rect, turn);
+        const fitWidth = Math.min((container.clientWidth * 0.9) / shown.w, (container.clientHeight * 0.9) / (shown.h * aspect));
         scale = fitWidth / baseWidth;
         cx = rect.x + rect.w / 2;
         cy = rect.y + rect.h / 2;
@@ -257,7 +288,8 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     }
     if (scale === null) scale = pdfViewer.currentScale;
     pdfViewer.currentScale = clamp(scale, MIN_SCALE, MAX_SCALE);
-    centreOn(page, cx, cy);
+    const shownAt = toScreen({ x: cx, y: cy }, turn);
+    centreOn(page, shownAt.x, shownAt.y);
   }
 
   // ---------- highlighted rectangle ----------
@@ -272,7 +304,8 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     if (!region) return regionEl.remove();
     const el = pdfViewer.getPageView(region.page - 1)?.div;
     if (!el) return;
-    Object.assign(regionEl.style, { left: `${region.rect.x * 100}%`, top: `${region.rect.y * 100}%`, width: `${region.rect.w * 100}%`, height: `${region.rect.h * 100}%` });
+    const r = rectToScreen(region.rect, turn);
+    Object.assign(regionEl.style, { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` });
     if (regionEl.parentElement !== el) el.append(regionEl);
   }
 
@@ -316,9 +349,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       pageEl.removeEventListener("pointerup", finish);
       pageEl.removeEventListener("pointercancel", finish);
       draftEl.remove();
-      const rect = rectOf(at(e));
+      const rect = rectOf(at(e)); // as shown
       if (e.type === "pointerup" && rect.w >= MIN_REGION && rect.h >= MIN_REGION) {
-        setRegion(pageNumber, rect);
+        setRegion(pageNumber, rectToPage(rect, turn));
         scheduleView(0);
       }
       setSelecting(false);
@@ -388,6 +421,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     pageCount.textContent = `/ ${pdfViewer.pagesCount}`;
     pageInput.max = String(pdfViewer.pagesCount);
     pageInput.value = String(pdfViewer.currentPageNumber);
+    if (turn) pdfViewer.pagesRotation = turn;
     if (remembered()) void setThumbs(true);
     applyInitial();
     scheduleView();
@@ -430,10 +464,11 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
           if (ctx.signal.aborted) return;
           ctx.progress(n - first + 1, last - first + 1);
           const page = await pdf.getPage(n);
-          const base = page.getViewport({ scale: 1 });
-          const crop = choice === "area" && area ? area.rect : null;
+          const rotation = (page.rotate + turn) % 360; // the printout is turned the way the reader sees the book
+          const base = page.getViewport({ scale: 1, rotation });
+          const crop = choice === "area" && area ? rectToScreen(area.rect, turn) : null;
           const scale = Math.min(MAX_SCALE, PRINT_PAGE_PX / (base.width * (crop?.w ?? 1)), PRINT_MAX_SIDE / (base.width * (crop?.w ?? 1)), PRINT_MAX_SIDE / (base.height * (crop?.h ?? 1)));
-          const viewport = page.getViewport({ scale });
+          const viewport = page.getViewport({ scale, rotation });
           const canvas = document.createElement("canvas");
           canvas.width = Math.max(1, Math.ceil(viewport.width * (crop?.w ?? 1)));
           canvas.height = Math.max(1, Math.ceil(viewport.height * (crop?.h ?? 1)));

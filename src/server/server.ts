@@ -4,6 +4,7 @@ import type { Auth, User } from "./auth";
 import { validateName, validatePassword } from "./auth";
 import { BackupError, parseBackup, type Backup, type BackupFile } from "./backup";
 import type { Bookmarks } from "./bookmarks";
+import { parseDisplay, type DisplayStore } from "./display";
 import type { ProgressStore } from "./progress";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
@@ -33,6 +34,7 @@ export interface App {
   covers: Covers;
   bookmarks: Bookmarks;
   progress: ProgressStore;
+  display: DisplayStore;
   backup: Backup;
   sources: Sources;
   plugins: Plugins;
@@ -425,6 +427,25 @@ function buildRoutes(app: App, origin: Origin) {
         const me = user(req);
         if (!me) return unauthorized();
         return app.progress.remove(me.id, param(req, "id")) ? json({ ok: true }) : notFound();
+      },
+    },
+
+    // ----- display settings: how a signed-in reader likes to see each book (turn of the pages, ...) -----
+    "/api/display/:id": {
+      GET: (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        return json({ display: app.display.get(me.id, param(req, "id")) });
+      },
+      PUT: async (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const data = await body(req);
+        const book = app.library.byId(param(req, "id"));
+        const display = data ? parseDisplay(data.display) : null;
+        if (!book || !display) return bad("bad display");
+        app.display.save(me.id, book.id, display);
+        return json({ ok: true });
       },
     },
 

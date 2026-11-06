@@ -58,6 +58,13 @@ export function openDb(dataDir: string): Database {
     PRIMARY KEY (user_id, book_id)
   )`);
   db.run("CREATE INDEX IF NOT EXISTS progress_recent ON progress(user_id, updated_at)");
+  db.run(`CREATE TABLE IF NOT EXISTS book_display (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    book_id    TEXT NOT NULL,                 -- content id, like progress
+    display    TEXT NOT NULL,                 -- JSON settings of how the reader likes to see the book (turn, later crop)
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, book_id)
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS sources (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL,

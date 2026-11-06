@@ -8,6 +8,7 @@ import { el } from "../ui";
 import type { PageView } from "./types";
 import type { TextView } from "./book";
 import type { TxtView } from "./txt";
+import type { Display } from "../display";
 import { mountPlugin, pluginError, pluginFor } from "./plugins";
 
 /** What the shell needs from whichever reader shows a book. */
@@ -30,6 +31,9 @@ export interface ReaderSpec {
   view: unknown;
   /** Called with the current view whenever it changes (at most every 250 ms). */
   onView?(view: unknown): void;
+  /** How this reader likes to see the book (paged documents use it), and the call that remembers a change. */
+  display?: Display;
+  onDisplay?(display: Display): void;
   onError(title: string, text: string): void;
 }
 
@@ -72,6 +76,8 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       url: spec.fileUrl,
       view: spec.view as PageView | null,
       onView: (v) => spec.onView?.(v),
+      display: spec.display ?? {},
+      onDisplay: (d) => spec.onDisplay?.(d),
       onError: (err) => spec.onError(t("pdf.error"), err.message),
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => t("bookmark.page", { n: reader.getView().page }), printJob: () => reader.printJob() };

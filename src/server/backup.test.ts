@@ -7,6 +7,7 @@ import { Backup, BackupError, parseBackup } from "./backup";
 import { Bookmarks } from "./bookmarks";
 import { ConfigStore } from "./config";
 import { openDb } from "./db";
+import { DisplayStore } from "./display";
 import { ProgressStore } from "./progress";
 import { Shares } from "./shares";
 import { removeDir } from "./testutil";
@@ -25,7 +26,7 @@ function install() {
   const db = openDb(dir);
   open.push(db);
   const config = new ConfigStore(dir);
-  return { db, config, auth: new Auth(db), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), shares: new Shares(db), backup: new Backup(db, config) };
+  return { db, config, auth: new Auth(db), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), display: new DisplayStore(db), shares: new Shares(db), backup: new Backup(db, config) };
 }
 
 const ID = "0123456789abcdef0123";
@@ -38,6 +39,7 @@ async function populated() {
   a.bookmarks.add(admin.id, ID, "mine", { v: 1, page: 9 });
   a.progress.save(reader.id, ID, { v: 1, page: 5 }, "Page 5");
   a.progress.save(admin.id, ID);
+  a.display.save(reader.id, ID, { rotation: 270 });
   a.shares.create(ID, { v: 1, page: 3 }, reader.id, null);
   a.shares.create(ID, null, null, 7);
   a.config.update({ lanAccess: "login", allowRegistration: false, fullText: true });
@@ -85,6 +87,31 @@ test("reading places come back with the backup, and a backup from before them le
   const broken = JSON.parse(text) as any;
   broken.progress[0].user = "Nobody";
   expect(() => parseBackup(broken)).toThrow(BackupError);
+});
+
+test("display settings come back with the backup, and a backup from before them leaves nobody with any", async () => {
+  const old = await populated();
+  const text = JSON.stringify(old.backup.create());
+  const fresh = install();
+  fresh.backup.restore(parseBackup(JSON.parse(text)));
+  const reader = await fresh.auth.verify("Reader", "pin123", "k5");
+  const admin = await fresh.auth.verify("Alex", "secret1", "k6");
+  expect(fresh.display.get(reader!.id, ID)).toEqual({ rotation: 270 });
+  expect(fresh.display.get(admin!.id, ID)).toBeNull();
+
+  const before = JSON.parse(text) as any;
+  delete before.display;
+  const other = install();
+  const stranger = await other.auth.createUser("Stranger", "hunter22", "admin");
+  other.display.save(stranger.id, ID, { rotation: 90 });
+  other.backup.restore(parseBackup(before));
+  expect((other.db.query("SELECT COUNT(*) AS n FROM book_display").get() as { n: number }).n).toBe(0);
+
+  for (const spoil of [(b: any) => (b.display[0].user = "Nobody"), (b: any) => (b.display[0].display = { rotation: 12 }), (b: any) => b.display.push(b.display[0])]) {
+    const broken = JSON.parse(text) as any;
+    spoil(broken);
+    expect(() => parseBackup(broken)).toThrow(BackupError);
+  }
 });
 
 test("restoring replaces what is there and signs everybody out", async () => {
