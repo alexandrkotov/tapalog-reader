@@ -2,6 +2,7 @@ import * as pdfjsLib from "pdfjs-dist/build/pdf.min.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
 import { t } from "../i18n";
 import { addPageImage, type PrintJob } from "../print";
+import { readerMode, setReaderMode } from "../readerMode";
 import { mountThumbs, type Thumbs } from "./thumbs";
 import type { PageView, ReaderHandle, Rect } from "./types";
 
@@ -78,6 +79,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   const thumbsButton = button("▥", t("pages.toggle"), () => void setThumbs(!thumbs));
   thumbsButton.setAttribute("aria-label", t("pages.toggle"));
   const areaButton = button(`▭ ${t("pdf.area")}`, t("pdf.areaTitle"), () => setSelecting(!selecting));
+  const focusButton = button("⛶", t("pdf.focusTitle"), () => setFocus(!readerMode()));
+  focusButton.setAttribute("aria-label", t("pdf.focus"));
+  focusButton.setAttribute("aria-pressed", "false");
   const toolbar = document.createElement("div");
   toolbar.className = "pdf-toolbar";
   toolbar.append(
@@ -90,7 +94,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     zoomLabel,
     button("+", t("pdf.zoomIn"), () => pdfViewer.increaseScale()),
     button(t("pdf.fitWidth"), t("pdf.fitWidthTitle"), () => (pdfViewer.currentScaleValue = "page-width")),
+    button(t("pdf.fitPage"), t("pdf.fitPageTitle"), () => (pdfViewer.currentScaleValue = "page-fit")),
     areaButton,
+    focusButton,
   );
   const frame = document.createElement("div");
   frame.className = "pdf-frame";
@@ -117,7 +123,6 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     const token = ++thumbsToken;
     remember(on);
     thumbsButton.classList.toggle("active", on);
-    const fit = pdfViewer.currentScaleValue === "page-width";
     if (!on) {
       thumbs?.destroy();
       thumbs = null;
@@ -148,8 +153,29 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       frame.classList.add("has-thumbs");
       thumbs.current(pdfViewer.currentPageNumber);
     }
-    if (fit) pdfViewer.currentScaleValue = "page-width"; // the window just got narrower or wider
   }
+
+  // ---------- reading mode and fitting ----------
+
+  /** A fitted page follows the window: panels coming and going, a phone turned around, a window dragged. */
+  const refit = () => {
+    const mode = pdfViewer.currentScaleValue;
+    if (pdfViewer.pagesCount && (mode === "page-width" || mode === "page-fit")) pdfViewer.currentScaleValue = mode;
+  };
+  const resizes = new ResizeObserver(refit);
+  resizes.observe(container);
+
+  function setFocus(on: boolean): void {
+    setReaderMode(on);
+    focusButton.classList.toggle("active", on);
+    focusButton.setAttribute("aria-pressed", String(on));
+    focusButton.title = on ? t("pdf.focusExit") : t("pdf.focusTitle");
+    if (on) container.focus({ preventScroll: true });
+  }
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && readerMode() && !event.defaultPrevented) setFocus(false);
+  };
+  addEventListener("keydown", onKey);
 
   // ---------- view <-> screen ----------
 
@@ -435,6 +461,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       clearTimeout(timer);
       thumbs?.destroy();
       removeEventListener("resize", onResize);
+      removeEventListener("keydown", onKey);
+      resizes.disconnect();
+      setFocus(false);
       void task.destroy();
       pdfViewer.cleanup();
       root.remove();

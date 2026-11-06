@@ -160,6 +160,9 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 /* a shared link shows the book and nothing else */
 .share-mode .panel, .share-mode .search, .share-mode #panel-toggle, .share-mode .account, .share-mode .reader-bar .btn { display: none; }
 
+/* reading mode: the page alone; the reader's own toolbar stays and carries the way back */
+.reading-mode .topbar, .reading-mode .panel, .reading-mode .reader-bar { display: none; }
+
 .book-reader { display: flex; flex-direction: column; }
 .book-toolbar .book-chapter { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .book-toolbar button:disabled { opacity: 0.45; cursor: default; }

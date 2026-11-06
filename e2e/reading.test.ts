@@ -183,3 +183,52 @@ e2e("a PDF bookmark leads to the page that was on screen, and keeps an area only
   expect(await shown()).toBe("3");
   expect(errors).toEqual([]);
 });
+
+e2e("a PDF can be fitted whole and read in reading mode, which Esc and the toolbar both leave", async () => {
+  const { page, errors } = await openBook("Docs/pages.pdf");
+  await page.waitForSelector(".pdf-scroll .page canvas");
+  const sizes = () =>
+    page.evaluate(() => {
+      const scroll = document.querySelector(".pdf-scroll") as HTMLElement;
+      const first = (document.querySelector(".pdf-scroll .page") as HTMLElement).getBoundingClientRect();
+      return { page: Math.round(first.height), window: scroll.clientHeight };
+    });
+  const visible = (selector: string) => page.evaluate((s) => !!document.querySelector(s) && (document.querySelector(s) as HTMLElement).offsetParent !== null, selector);
+
+  // by width the first page is taller than the window; "Whole page" brings all of it into view
+  expect((await sizes()).page).toBeGreaterThan((await sizes()).window);
+  await page.click(".pdf-toolbar button:has-text('Whole page')");
+  await page.waitForFunction(() => {
+    const scroll = document.querySelector(".pdf-scroll") as HTMLElement;
+    return (document.querySelector(".pdf-scroll .page") as HTMLElement).getBoundingClientRect().height <= scroll.clientHeight;
+  });
+
+  // reading mode takes the panels away, keeps the toolbar, and the fitted page grows into the space
+  const before = (await sizes()).window;
+  await page.click(".pdf-toolbar button[aria-label='Reading mode']");
+  expect(await visible(".topbar")).toBe(false);
+  expect(await visible(".panel")).toBe(false);
+  expect(await visible(".reader-bar")).toBe(false);
+  expect(await visible(".pdf-toolbar")).toBe(true);
+  await page.waitForFunction((was) => (document.querySelector(".pdf-scroll") as HTMLElement).clientHeight > was, before);
+  await page.waitForFunction(() => {
+    const scroll = document.querySelector(".pdf-scroll") as HTMLElement;
+    return Math.abs((document.querySelector(".pdf-scroll .page") as HTMLElement).getBoundingClientRect().height - scroll.clientHeight) < 80;
+  });
+
+  await page.keyboard.press("Escape");
+  expect(await visible(".topbar")).toBe(true);
+  expect(await visible(".reader-bar")).toBe(true);
+
+  // the toolbar button leaves it too, and leaving the book never leaves the next screen bare
+  await page.click(".pdf-toolbar button[aria-label='Reading mode']");
+  expect(await visible(".topbar")).toBe(false);
+  await page.click(".pdf-toolbar button[aria-label='Reading mode']");
+  expect(await visible(".topbar")).toBe(true);
+  await page.click(".pdf-toolbar button[aria-label='Reading mode']");
+  await page.evaluate(() => (location.hash = ""));
+  await page.waitForSelector(".shelf");
+  expect(await visible(".topbar")).toBe(true);
+  expect(errors).toEqual([]);
+  await page.close();
+});
