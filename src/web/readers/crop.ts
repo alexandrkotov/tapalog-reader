@@ -36,3 +36,53 @@ export function clipToCrop(rect: Rect, c: Rect | null): Rect | null {
 
 export const rectIntoCrop = (rect: Rect, c: Rect | null): Rect => (c ? { x: (rect.x - c.x) / c.w, y: (rect.y - c.y) / c.h, w: rect.w / c.w, h: rect.h / c.h } : rect);
 export const rectOutOfCrop = (rect: Rect, c: Rect | null): Rect => (c ? { x: c.x + rect.x * c.w, y: c.y + rect.y * c.h, w: rect.w * c.w, h: rect.h * c.h } : rect);
+
+// ---------- editing a crop ----------
+
+/** Which pages an edit is for. */
+export type Scope = "all" | "odd" | "even";
+
+/** The smallest side of a crop, as a fraction of the page (the server refuses less). */
+export const MIN_CROP = 0.05;
+
+export const WHOLE: Rect = { x: 0, y: 0, w: 1, h: 1 };
+export const isWhole = (r: Rect): boolean => r.x <= 0.0005 && r.y <= 0.0005 && r.w >= 0.999 && r.h >= 0.999;
+
+/** Whether a page takes part in an edit of this scope. */
+export const inScope = (scope: Scope, n: number): boolean => scope === "all" || (scope === "odd") === (n % 2 === 1);
+
+/** What the frame starts from when a scope is picked: that scope's own crop, else what its pages show now, else the whole page. */
+export const startRect = (crop: Crop | undefined, scope: Scope): Rect => (scope === "all" ? crop?.all : cropFor(crop, scope === "odd" ? 1 : 2)) ?? WHOLE;
+
+/**
+ * The crop that results from putting `rect` on `scope`. A crop for the whole book replaces any odd/even ones
+ * (every page is cut the same); a crop for odd or even pages sits beside the others and wins over the one for all.
+ * A rectangle that is the whole page removes that scope's crop. Returns undefined when nothing is cut.
+ */
+export function withScope(crop: Crop | undefined, scope: Scope, rect: Rect): Crop | undefined {
+  const next: Crop = scope === "all" ? {} : { ...crop };
+  if (isWhole(rect)) delete next[scope];
+  else next[scope] = { x: round4(rect.x), y: round4(rect.y), w: round4(rect.w), h: round4(rect.h) };
+  return Object.keys(next).length ? next : undefined;
+}
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+export type Handle = "n" | "e" | "s" | "w" | "ne" | "nw" | "se" | "sw" | "move";
+
+/**
+ * The frame after one of its handles was dragged by (dx, dy), in fractions of the page as shown. The frame
+ * stays on the page and keeps at least MIN_CROP on each side; "move" slides it without changing its size.
+ */
+export function dragFrame(start: Rect, handle: Handle, dx: number, dy: number, min = MIN_CROP): Rect {
+  const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+  if (handle === "move") return { ...start, x: clamp(start.x + dx, 0, 1 - start.w), y: clamp(start.y + dy, 0, 1 - start.h) };
+  let x0 = start.x;
+  let y0 = start.y;
+  let x1 = start.x + start.w;
+  let y1 = start.y + start.h;
+  if (handle.includes("w")) x0 = clamp(start.x + dx, 0, x1 - min);
+  if (handle.includes("e")) x1 = clamp(x1 + dx, x0 + min, 1);
+  if (handle.includes("n")) y0 = clamp(start.y + dy, 0, y1 - min);
+  if (handle.includes("s")) y1 = clamp(y1 + dy, y0 + min, 1);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}

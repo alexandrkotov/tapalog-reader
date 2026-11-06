@@ -4,6 +4,7 @@ import { t } from "../i18n";
 import { addPageImage, type PrintJob } from "../print";
 import type { Crop, Display } from "../display";
 import { clipToCrop, cropFor, intoCrop, outOfCrop, rectIntoCrop, rectOutOfCrop } from "./crop";
+import { createCropEditor } from "./cropEditor";
 import { readerMode, setReaderMode } from "../readerMode";
 import { mountThumbs, type Thumbs } from "./thumbs";
 import { rectToPage, rectToScreen, toPage, toScreen } from "./rotation";
@@ -92,6 +93,33 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   focusButton.setAttribute("aria-pressed", "false");
   const toolbar = document.createElement("div");
   toolbar.className = "pdf-toolbar";
+  let scaleBeforeCrop: string | null = null;
+  const cropEditor = createCropEditor({
+    page: () => getView().page,
+    pageElement: (n) => pdfViewer.getPageView(n - 1)?.div ?? null,
+    pageBox: (n) => pageBox(n),
+    turn: () => turn,
+    committed: () => committed,
+    show: (next) => showCrop(next),
+    holdPlace: (change) => holdPlace(change),
+    keep: (next) => {
+      committed = next;
+      reportDisplay();
+    },
+    fitPage: () => {
+      scaleBeforeCrop = String(pdfViewer.currentScaleValue);
+      const page = getView().page; // the page under the middle of the window, which is the one being read
+      pdfViewer.currentScaleValue = "page-fit";
+      pdfViewer.scrollPageIntoView({ pageNumber: page }); // all of the page, frame handles included, is in view
+    },
+    onMode: (on) => {
+      if (on) setSelecting(false);
+      else if (scaleBeforeCrop !== null) pdfViewer.currentScaleValue = scaleBeforeCrop; // back to the zoom the reader had
+      if (!on) scaleBeforeCrop = null;
+      areaButton.disabled = on; // an area is drawn on the pages as they are kept
+      turnButton.disabled = on;
+    },
+  });
   toolbar.append(
     thumbsButton,
     button("‹", t("pdf.prev"), () => pdfViewer.previousPage()),
@@ -104,6 +132,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     button(t("pdf.fitWidth"), t("pdf.fitWidthTitle"), () => (pdfViewer.currentScaleValue = "page-width")),
     button(t("pdf.fitPage"), t("pdf.fitPageTitle"), () => (pdfViewer.currentScaleValue = "page-fit")),
     turnButton,
+    cropEditor.button,
     areaButton,
     focusButton,
   );
@@ -116,7 +145,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   viewerEl.className = "pdfViewer";
   container.append(viewerEl);
   frame.append(container);
-  root.append(toolbar, frame);
+  root.append(toolbar, cropEditor.tools, frame);
   host.append(root);
 
   const eventBus = new EventBus();
@@ -129,8 +158,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   /** Clockwise, in degrees, for every page of the book. Positions, areas and links stay in the page as the file has it. */
   let turn: number = options.display?.rotation ?? 0;
   /** Which part of each page is shown. The pages are cut when they are loaded, see `cutPage`. */
-  const crop: Crop | undefined = options.display?.crop;
-  const reportDisplay = () => options.onDisplay?.({ ...(turn ? { rotation: turn as 90 | 180 | 270 } : {}), ...(crop ? { crop } : {}) });
+  let committed: Crop | undefined = options.display?.crop; // what is kept for the book
+  let crop: Crop | undefined = committed; // what the pages are cut like on screen right now (the editor shows them whole, or in preview)
+  const reportDisplay = () => options.onDisplay?.({ ...(turn ? { rotation: turn as 90 | 180 | 270 } : {}), ...(committed ? { crop: committed } : {}) });
 
   // Everything outside this module's drawing code keeps to the whole page as the file has it. These four turn
   // that into what is on screen (cut, then turned) and back, for page `n`; a rectangle outside the cut has no
@@ -138,7 +168,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   const cutOf = (n: number): Rect | null => cropFor(crop, n);
   const pointToShown = (n: number, p: { x: number; y: number }) => {
     const q = toScreen(intoCrop(p, cutOf(n)), turn);
-    return { x: clamp(q.x, 0, 1), y: clamp(q.y, 0, 1) };
+    // a spot in a margin that is cut away goes to the nearest edge of what is left, a little inside it, so it is
+    // clearly on this page and not on the border between two
+    return { x: clamp(q.x, 0.01, 0.99), y: clamp(q.y, 0.01, 0.99) };
   };
   const pointFromShown = (n: number, p: { x: number; y: number }) => outOfCrop(toPage(p, turn), cutOf(n));
   const rectToShown = (n: number, r: Rect): Rect | null => {
@@ -163,6 +195,44 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     const a = whole.convertToPdfPoint(c.x * whole.width, c.y * whole.height);
     const b = whole.convertToPdfPoint((c.x + c.w) * whole.width, (c.y + c.h) * whole.height);
     info.view = [Math.min(a[0]!, b[0]!), Math.min(a[1]!, b[1]!), Math.max(a[0]!, b[0]!), Math.max(a[1]!, b[1]!)];
+  }
+
+  /** Runs a change that moves or resizes the reading area (a row of controls appearing), keeping the spot in the middle of the window. */
+  function holdPlace(change: () => void): void {
+    if (!pdfViewer.pagesCount) return change();
+    const view = getView();
+    change();
+    refit();
+    const shownAt = pointToShown(view.page, { x: view.cx ?? 0.5, y: view.cy ?? 0.5 });
+    centreOn(view.page, shownAt.x, shownAt.y);
+  }
+
+  /**
+   * Shows the pages with another crop without reopening the book: the pages the viewer already has are cut
+   * again and given their new size, the fitted scale is fitted again, and the spot that was in the middle of
+   * the window stays there.
+   */
+  function showCrop(next: Crop | undefined): void {
+    if (!pdfViewer.pagesCount) return;
+    const view = getView(); // read with the old crop, in the whole page
+    crop = next;
+    for (let i = 0; i < pdfViewer.pagesCount; i++) {
+      const pageView = pdfViewer.getPageView(i);
+      const page = pageView?.pdfPage;
+      if (!pageView || !page) continue; // a page not loaded yet is cut when it is
+      cutPage(page, i + 1);
+      pageView.setPdfPage(page);
+      // the viewer sizes a page's box again only when the page was turned, so a changed box is given its size here
+      pdfjsLib.setLayerDimensions(pageView.div, pageView.viewport, true, false);
+    }
+    refit();
+    pdfViewer.update();
+    const shownAt = pointToShown(view.page, { x: view.cx ?? 0.5, y: view.cy ?? 0.5 });
+    centreOn(view.page, shownAt.x, shownAt.y);
+    attachRegion();
+    if (thumbs) void setThumbs(true, true);
+    cropEditor.place();
+    scheduleView(0);
   }
 
   // ---------- page previews ----------
@@ -238,7 +308,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     if (on) container.focus({ preventScroll: true });
   }
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && readerMode() && !event.defaultPrevented) setFocus(false);
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    if (cropEditor.active()) cropEditor.cancel(); // first Esc leaves cropping, the next one reading mode
+    else if (readerMode()) setFocus(false);
   };
   addEventListener("keydown", onKey);
 
@@ -355,6 +427,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
 
   eventBus.on("pagerendered", (e: { pageNumber: number }) => {
     if (region && e.pageNumber === region.page) attachRegion();
+    if (cropEditor.active()) cropEditor.place();
   });
 
   // ---------- selecting a rectangle ----------
@@ -426,6 +499,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   eventBus.on("pagechanging", (e: { pageNumber: number }) => {
     pageInput.value = String(e.pageNumber);
     thumbs?.current(e.pageNumber);
+    if (cropEditor.active()) cropEditor.place();
     scheduleView();
   });
   pageInput.addEventListener("change", () => {
@@ -473,7 +547,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
 
   task.promise
     .then((doc: Parameters<typeof pdfViewer.setDocument>[0]) => {
-      if (crop && doc) {
+      if (doc) {
         // Every page the viewer, the previews and the printout ask for comes cut.
         const getPage = doc.getPage.bind(doc);
         doc.getPage = async (n: number) => {
@@ -545,6 +619,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       thumbs?.destroy();
       removeEventListener("resize", onResize);
       removeEventListener("keydown", onKey);
+      cropEditor.destroy();
       resizes.disconnect();
       setFocus(false);
       void task.destroy();

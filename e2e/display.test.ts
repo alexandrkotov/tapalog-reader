@@ -285,3 +285,172 @@ e2e("what is printed is cut the way the reader sees the book", async () => {
   await page.close();
   await reset();
 });
+
+// ---------- the crop editor ----------
+
+const tools = ".pdf-croptools";
+const enterCrop = async (page: Page) => {
+  await page.click(".pdf-toolbar button:has-text('Crop')");
+  await page.waitForSelector(".pdf-crop-handle.h-e");
+};
+/** Presses an arrow key `times` times (with Shift: 5 % a time) on a focused edge handle of the frame. */
+async function nudge(page: Page, edge: "n" | "e" | "s" | "w", key: string, times: number, shift = true) {
+  await page.focus(`.pdf-crop-handle.h-${edge}`);
+  for (let i = 0; i < times; i++) await page.keyboard.press(shift ? `Shift+${key}` : key);
+}
+const serverCrop = async (): Promise<any> => ((await api<{ display: { crop?: unknown } | null }>(ctx, inst, `/api/display/${id}`)).display ?? {}).crop ?? null;
+async function savedCrop(want: (crop: any) => boolean): Promise<any> {
+  for (let i = 0; i < 40; i++) {
+    const crop = await serverCrop();
+    if (want(crop)) return crop;
+    await Bun.sleep(250);
+  }
+  throw new Error("the server never held the crop that was expected: " + JSON.stringify(await serverCrop()));
+}
+const near = (a: number, b: number, digits = 2) => expect(a).toBeCloseTo(b, digits);
+
+e2e("the crop editor: edges move with the keyboard, Preview shows the result, Apply keeps it, and it survives reopening", async () => {
+  await reset();
+  const { page, errors } = await open(ctx, at(1));
+  const whole = 842 / 595;
+  expect(await page.isHidden(tools)).toBe(true);
+  await enterCrop(page);
+  expect(await page.isVisible(tools)).toBe(true);
+  near(await aspectOf(page, 1), whole); // the page is shown whole to cut from
+
+  await nudge(page, "e", "ArrowLeft", 2); // the right edge 10 % in
+  await nudge(page, "s", "ArrowUp", 6); // the bottom edge 30 % up
+  near(await aspectOf(page, 1), whole); // still whole while editing
+  await page.click(`${tools} button:has-text('Preview')`);
+  await page.waitForFunction((want) => { const r = (document.querySelector(".pdf-scroll .page[data-page-number='1']") as HTMLElement).getBoundingClientRect(); return Math.abs(r.height / r.width - want) < 0.02; }, (0.7 * 842) / (0.9 * 595));
+  expect(await page.$(".pdf-crop-handle")).toBeNull(); // no frame while previewing
+  await page.click(`${tools} button:has-text('Preview')`);
+  await page.waitForSelector(".pdf-crop-handle.h-e");
+  near(await aspectOf(page, 1), whole);
+
+  await page.click(`${tools} button:has-text('Apply')`);
+  expect(await page.isHidden(tools)).toBe(true);
+  await page.waitForFunction((want) => { const r = (document.querySelector(".pdf-scroll .page[data-page-number='1']") as HTMLElement).getBoundingClientRect(); return Math.abs(r.height / r.width - want) < 0.02; }, (0.7 * 842) / (0.9 * 595));
+  const kept = await savedCrop((c) => !!c?.all);
+  expect(Object.keys(kept)).toEqual(["all"]);
+  near(kept.all.x, 0);
+  near(kept.all.y, 0);
+  near(kept.all.w, 0.9);
+  near(kept.all.h, 0.7);
+  await page.close();
+
+  const again = await open(ctx, at(1)); // the next visit opens it cut
+  near(await aspectOf(again.page, 1), (0.7 * 842) / (0.9 * 595));
+  expect(errors).toEqual([]);
+  expect(again.errors).toEqual([]);
+  await again.page.close();
+  await reset();
+});
+
+e2e("the crop editor: dragging the frame with the pointer, Cancel and Esc change nothing, Reset brings back the file's own look", async () => {
+  await reset();
+  const { page } = await open(ctx, at(1));
+  const whole = 842 / 595;
+  await enterCrop(page);
+  const grab = async (handle: string, dx: number, dy: number) => {
+    const b = (await page.locator(`.pdf-crop-handle.h-${handle}`).boundingBox())!;
+    const page1 = (await page.locator(".pdf-scroll .page[data-page-number='1']").boundingBox())!;
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2 + dx * page1.width, b.y + b.height / 2 + dy * page1.height, { steps: 6 });
+    await page.mouse.up();
+  };
+  await page.click(".pdf-toolbar button:has-text('Whole page')"); // all of the page in view, so the drags stay on screen
+  await settledBox(page, ".pdf-scroll .page[data-page-number='1']");
+  await grab("se", -0.2, -0.4); // the bottom-right corner in by 20 % across and 40 % up
+  await page.click(`${tools} button:has-text('Apply')`);
+  const kept = await savedCrop((c) => !!c?.all);
+  near(kept.all.w, 0.8, 1);
+  near(kept.all.h, 0.6, 1);
+
+  // Cancel: leaves what was kept as it was, and the reader's zoom as it was
+  await page.click(".pdf-toolbar button:has-text('Fit width')");
+  const zoom = () => page.evaluate(() => document.querySelector(".pdf-zoom")!.textContent);
+  await page.waitForTimeout(500);
+  const before = await zoom();
+  await enterCrop(page);
+  await page.waitForFunction((was) => document.querySelector(".pdf-zoom")!.textContent !== was, before); // the whole page is fitted into the window to cut from it
+  await nudge(page, "w", "ArrowRight", 4);
+  await page.click(`${tools} button:has-text('Cancel')`);
+  expect(await page.isHidden(tools)).toBe(true);
+  await page.waitForFunction((was) => document.querySelector(".pdf-zoom")!.textContent === was, before);
+  near(await aspectOf(page, 1), (0.6 * 842) / (0.8 * 595), 1);
+  near((await serverCrop()).all.x, 0);
+
+  // Esc does the same, and a second Esc is not taken for anything else
+  await enterCrop(page);
+  await nudge(page, "n", "ArrowDown", 4);
+  await page.keyboard.press("Escape");
+  expect(await page.isHidden(tools)).toBe(true);
+  near((await serverCrop()).all.y, 0);
+
+  // Reset: the whole page again, and nothing kept
+  await enterCrop(page);
+  await page.click(`${tools} button:has-text('Reset')`);
+  expect(await page.isHidden(tools)).toBe(true);
+  await page.waitForFunction((want) => { const r = (document.querySelector(".pdf-scroll .page[data-page-number='1']") as HTMLElement).getBoundingClientRect(); return Math.abs(r.height / r.width - want) < 0.02; }, whole);
+  await savedCrop((c) => c === null);
+  await page.close();
+});
+
+e2e("the crop editor: odd and even pages are cut apart, and a crop for the whole book replaces them", async () => {
+  await reset();
+  const { page } = await open(ctx, at(1));
+  const whole = 842 / 595;
+  await enterCrop(page);
+  await page.click(`${tools} button[data-scope=odd]`);
+  await nudge(page, "s", "ArrowUp", 4); // odd pages: bottom 20 % off
+  await page.click(`${tools} button:has-text('Apply')`);
+  await savedCrop((c) => !!c?.odd);
+
+  await goTo(page, 2);
+  await enterCrop(page);
+  expect(await page.evaluate(() => document.querySelector(".pdf-crop-layer")!.classList.contains("off"))).toBe(false); // page 2 is where the even crop goes
+  await page.click(`${tools} button[data-scope=even]`);
+  await nudge(page, "n", "ArrowDown", 6); // even pages: top 30 % off
+  await page.click(`${tools} button:has-text('Apply')`);
+  const apart = await savedCrop((c) => !!c?.odd && !!c?.even);
+  near(apart.odd.h, 0.8);
+  near(apart.even.y, 0.3);
+  near(apart.even.h, 0.7);
+  await page.waitForFunction(([a, b]) => { const h = (n: number) => { const r = (document.querySelector(`.pdf-scroll .page[data-page-number='${n}']`) as HTMLElement).getBoundingClientRect(); return r.height / r.width; }; return Math.abs(h(1) - a!) < 0.02 && Math.abs(h(2) - b!) < 0.02; }, [0.8 * whole, 0.7 * whole] as const);
+
+  // the frame on a page the edit is not for is shown dimmed and cannot be grabbed
+  await enterCrop(page);
+  expect(await page.evaluate(() => (document.querySelector(".pdf-page-input") as HTMLInputElement).value)).toBe("2"); // the place being read is kept when the mode opens
+  await page.click(`${tools} button[data-scope=odd]`);
+  expect(await page.evaluate(() => document.querySelector(".pdf-crop-layer")!.classList.contains("off"))).toBe(true); // reading page 2, an even one
+  await page.keyboard.press("Escape");
+
+  // a crop for the whole book replaces both
+  await enterCrop(page);
+  await nudge(page, "e", "ArrowLeft", 2);
+  await page.click(`${tools} button:has-text('Apply')`);
+  const all = await savedCrop((c) => !!c?.all);
+  expect(Object.keys(all)).toEqual(["all"]);
+  near(all.all.w, 0.9);
+  await page.close();
+  await reset();
+});
+
+e2e("the crop editor works on turned pages: the frame follows the screen, the crop stays in the page as the file has it", async () => {
+  await reset();
+  const { page } = await open(ctx, at(1));
+  await turn(page); // a quarter clockwise: the page's top edge is now the screen's right edge
+  await waitUpright(page, false);
+  await enterCrop(page);
+  await nudge(page, "e", "ArrowLeft", 2); // the screen's right edge, 10 % in
+  await page.click(`${tools} button:has-text('Apply')`);
+  const kept = await savedCrop((c) => !!c?.all);
+  near(kept.all.x, 0);
+  near(kept.all.w, 1);
+  near(kept.all.y, 0.1); // ... which is the top of the page as the file has it
+  near(kept.all.h, 0.9);
+  await page.close();
+  await reset();
+});

@@ -108,6 +108,24 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .pdf-toolbar button, .book-toolbar button { min-width: 32px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; cursor: pointer; }
 .pdf-toolbar button:hover, .book-toolbar button:hover { background: var(--hover); }
 .pdf-toolbar button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pdf-toolbar button:disabled { opacity: 0.45; cursor: default; }
+.pdf-toolbar button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pdf-croptools { border-top: 1px solid var(--border); }
+.pdf-croptools[hidden] { display: none; }
+.pdf-crop-scopes { display: flex; gap: 4px; }
+.pdf-crop-hint { color: var(--muted); font-size: 12px; flex: 1 1 220px; }
+/* the cropping frame: it sits on the page; what is outside it is dimmed */
+.pdf-crop-layer { position: absolute; inset: -16px; overflow: hidden; pointer-events: none; z-index: 5; }
+.pdf-crop-inner { position: absolute; inset: 16px; pointer-events: none; }
+.pdf-crop { position: absolute; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.5); outline: 2px solid var(--accent); cursor: move; pointer-events: auto; touch-action: none; }
+.pdf-crop-layer.off .pdf-crop { box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.2); outline-style: dashed; pointer-events: none; }
+.pdf-toolbar .pdf-crop-handle, .pdf-crop-handle { position: absolute; width: 22px; height: 22px; min-width: 0; padding: 0; margin: -11px 0 0 -11px; border: 2px solid var(--accent); border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); touch-action: none; }
+.pdf-crop-handle:focus-visible { outline: 3px solid #ffc857; outline-offset: 2px; }
+.pdf-crop-handle.h-nw { left: 0; top: 0; cursor: nwse-resize; } .pdf-crop-handle.h-n { left: 50%; top: 0; cursor: ns-resize; } .pdf-crop-handle.h-ne { left: 100%; top: 0; cursor: nesw-resize; }
+.pdf-crop-handle.h-e { left: 100%; top: 50%; cursor: ew-resize; } .pdf-crop-handle.h-se { left: 100%; top: 100%; cursor: nwse-resize; }
+.pdf-crop-handle.h-s { left: 50%; top: 100%; cursor: ns-resize; } .pdf-crop-handle.h-sw { left: 0; top: 100%; cursor: nesw-resize; } .pdf-crop-handle.h-w { left: 0; top: 50%; cursor: ew-resize; }
+@media (max-width: 720px) { .pdf-crop-hint { display: none; } }
+@media (pointer: coarse) { .pdf-crop-handle { width: 30px; height: 30px; margin: -15px 0 0 -15px; } }
 .pdf-page-input { width: 4.5em; height: 30px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; text-align: right; }
 .pdf-zoom { min-width: 3.5em; text-align: center; color: var(--muted); }
 .pdf-frame { flex: 1; min-height: 0; position: relative; }
