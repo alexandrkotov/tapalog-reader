@@ -19,6 +19,8 @@ export interface Crop {
 export interface Display {
   rotation?: 90 | 180 | 270;
   crop?: Crop;
+  /** Pages of the file before the book's printed page 1: printed number = file page - pageOffset. */
+  pageOffset?: number;
 }
 
 /**

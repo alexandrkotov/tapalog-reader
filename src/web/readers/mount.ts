@@ -80,7 +80,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onDisplay: (d) => spec.onDisplay?.(d),
       onError: (err) => spec.onError(t("pdf.error"), err.message),
     });
-    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => t("bookmark.page", { n: reader.getView().page }), printJob: () => reader.printJob() };
+    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), printJob: () => reader.printJob() };
   }
 
   if (spec.ext === "txt") {

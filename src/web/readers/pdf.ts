@@ -1,12 +1,14 @@
 import * as pdfjsLib from "pdfjs-dist/build/pdf.min.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
 import { t } from "../i18n";
+import { el, openModal } from "../ui";
 import { addPageImage, type PrintJob } from "../print";
 import type { Crop, Display } from "../display";
 import { clipToCrop, cropFor, intoCrop, outOfCrop, rectIntoCrop, rectOutOfCrop } from "./crop";
 import { createCropEditor } from "./cropEditor";
 import { readerMode, setReaderMode } from "../readerMode";
 import { mountThumbs, type Thumbs } from "./thumbs";
+import { fileOf, offsetFor, printedOf } from "./printed";
 import { rectToPage, rectToScreen, toPage, toScreen } from "./rotation";
 import type { PageView, ReaderHandle, Rect } from "./types";
 
@@ -39,6 +41,8 @@ const remember = (on: boolean) => {
 
 export interface PdfReader extends ReaderHandle {
   getView(): PageView;
+  /** A short name of the place being read, as a bookmark would carry it: the printed page when the book has an offset. */
+  getLabel(): string;
   setView(view: PageView): void;
   printJob(): PrintJob;
 }
@@ -81,6 +85,14 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   pageInput.className = "pdf-page-input";
   pageInput.setAttribute("aria-label", t("pdf.page"));
   const pageCount = document.createElement("span");
+  const printedInput = document.createElement("input");
+  printedInput.type = "number";
+  printedInput.className = "pdf-page-input pdf-printed-input";
+  printedInput.placeholder = "—";
+  printedInput.hidden = true;
+  printedInput.setAttribute("aria-label", t("pdf.printed"));
+  printedInput.title = t("pdf.printed");
+  const printedButton = button("№", t("pdf.printedTitle"), () => openPrintedDialog());
   const zoomLabel = document.createElement("span");
   zoomLabel.className = "pdf-zoom";
   const thumbsButton = button("▥", t("pages.toggle"), () => void setThumbs(!thumbs));
@@ -126,6 +138,8 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     pageInput,
     pageCount,
     button("›", t("pdf.next"), () => pdfViewer.nextPage()),
+    printedButton,
+    printedInput,
     button("−", t("pdf.zoomOut"), () => pdfViewer.decreaseScale()),
     zoomLabel,
     button("+", t("pdf.zoomIn"), () => pdfViewer.increaseScale()),
@@ -157,10 +171,67 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
 
   /** Clockwise, in degrees, for every page of the book. Positions, areas and links stay in the page as the file has it. */
   let turn: number = options.display?.rotation ?? 0;
+  /** Pages of the file before the book's printed page 1 (see printed.ts); 0 when the file's numbers are the book's. */
+  let offset = options.display?.pageOffset ?? 0;
+
   /** Which part of each page is shown. The pages are cut when they are loaded, see `cutPage`. */
   let committed: Crop | undefined = options.display?.crop; // what is kept for the book
   let crop: Crop | undefined = committed; // what the pages are cut like on screen right now (the editor shows them whole, or in preview)
-  const reportDisplay = () => options.onDisplay?.({ ...(turn ? { rotation: turn as 90 | 180 | 270 } : {}), ...(committed ? { crop: committed } : {}) });
+  const reportDisplay = () => options.onDisplay?.({ ...(turn ? { rotation: turn as 90 | 180 | 270 } : {}), ...(committed ? { crop: committed } : {}), ...(offset ? { pageOffset: offset } : {}) });
+
+  // ---------- printed page numbers ----------
+
+  /** Shows the file's page number in the page box and the book's printed one beside it. */
+  function showNumbers(page: number): void {
+    pageInput.value = String(page);
+    printedInput.hidden = offset === 0;
+    printedInput.value = offset ? String(printedOf(page, offset) ?? "") : "";
+    printedButton.classList.toggle("active", offset !== 0);
+  }
+
+  function getLabel(): string {
+    const page = getView().page;
+    const printed = offset ? printedOf(page, offset) : page;
+    return printed === null ? t("bookmark.filePage", { n: page }) : t("bookmark.page", { n: printed });
+  }
+
+  function setOffset(next: number): void {
+    offset = next;
+    showNumbers(pdfViewer.currentPageNumber);
+    reportDisplay();
+  }
+
+  /** Asks which printed number the page being read has, which fixes the offset for the whole book. */
+  function openPrintedDialog(): void {
+    const filePage = getView().page;
+    const modal = openModal(t("pdf.printedHeading"));
+    const printed = el("input", { type: "number", min: "1", class: "pdf-page-input pdf-printed-input", value: String(printedOf(filePage, offset) ?? 1) });
+    printed.setAttribute("aria-label", t("pdf.printed"));
+    const apply = el("button", { type: "button", class: "btn primary", textContent: t("pdf.printedApply") });
+    const reset = el("button", { type: "button", class: "btn", textContent: t("pdf.printedReset"), hidden: offset === 0 });
+    const check = () => {
+      const n = Number(printed.value);
+      apply.disabled = !Number.isInteger(n) || n < 1 || Math.abs(offsetFor(filePage, n)) > 9999;
+    };
+    printed.addEventListener("input", check);
+    printed.addEventListener("keydown", (e) => e.key === "Enter" && !apply.disabled && apply.click());
+    apply.addEventListener("click", () => {
+      setOffset(offsetFor(filePage, Number(printed.value)));
+      modal.close();
+    });
+    reset.addEventListener("click", () => {
+      setOffset(0);
+      modal.close();
+    });
+    modal.body.append(
+      el("p", { textContent: t("pdf.printedText") }),
+      el("label", { class: "printed-row" }, el("span", { textContent: t("pdf.printedIs", { n: filePage }) }), printed),
+      el("div", { class: "printed-actions" }, apply, reset),
+    );
+    check();
+    printed.focus();
+    printed.select();
+  }
 
   // Everything outside this module's drawing code keeps to the whole page as the file has it. These four turn
   // that into what is on screen (cut, then turned) and back, for page `n`; a rectangle outside the cut has no
@@ -497,10 +568,15 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     scheduleView();
   });
   eventBus.on("pagechanging", (e: { pageNumber: number }) => {
-    pageInput.value = String(e.pageNumber);
+    showNumbers(e.pageNumber);
     thumbs?.current(e.pageNumber);
     if (cropEditor.active()) cropEditor.place();
     scheduleView();
+  });
+  printedInput.addEventListener("change", () => {
+    const n = Math.round(Number(printedInput.value));
+    if (!offset || !n) return showNumbers(pdfViewer.currentPageNumber); // an empty or nonsense entry puts back what is there
+    pdfViewer.currentPageNumber = clamp(fileOf(n, offset), 1, pdfViewer.pagesCount || 1);
   });
   pageInput.addEventListener("change", () => {
     pdfViewer.currentPageNumber = clamp(Math.round(Number(pageInput.value)) || 1, 1, pdfViewer.pagesCount || 1);
@@ -533,7 +609,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   eventBus.on("pagesinit", () => {
     pageCount.textContent = `/ ${pdfViewer.pagesCount}`;
     pageInput.max = String(pdfViewer.pagesCount);
-    pageInput.value = String(pdfViewer.currentPageNumber);
+    showNumbers(pdfViewer.currentPageNumber);
     if (turn) pdfViewer.pagesRotation = turn;
     if (remembered()) void setThumbs(true);
     applyInitial();
@@ -608,6 +684,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
 
   return {
     getView,
+    getLabel,
     printJob,
     setView: (view) => {
       initial = view;

@@ -110,6 +110,9 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .pdf-toolbar button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .pdf-toolbar button:disabled { opacity: 0.45; cursor: default; }
 .pdf-toolbar button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pdf-printed-input { width: 5.5em; }
+.printed-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.printed-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .pdf-croptools { border-top: 1px solid var(--border); }
 .pdf-croptools[hidden] { display: none; }
 .pdf-crop-scopes { display: flex; gap: 4px; }

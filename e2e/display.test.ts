@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
 import { expect } from "bun:test";
 import type { Browser, BrowserContext, Page } from "playwright-core";
 import { library } from "./fixtures";
@@ -452,5 +454,85 @@ e2e("the crop editor works on turned pages: the frame follows the screen, the cr
   near(kept.all.y, 0.1); // ... which is the top of the page as the file has it
   near(kept.all.h, 0.9);
   await page.close();
+  await reset();
+});
+
+// ---------- printed page numbers ----------
+
+const printed = (page: Page) => page.evaluate(() => (document.querySelector(".pdf-printed-input") as HTMLInputElement).value);
+const fileShown = (page: Page) => page.evaluate(() => (document.querySelector(".pdf-page-input") as HTMLInputElement).value);
+const serverDisplay = async (): Promise<any> => (await api<{ display: unknown }>(ctx, inst, `/api/display/${id}`)).display;
+
+e2e("printed page numbers: tell which number a page has, read and jump by printed numbers, and it is kept", async () => {
+  await reset();
+  const { page, errors } = await open(ctx, at(5));
+  expect(await page.isHidden(".pdf-printed-input")).toBe(true); // no offset: only the file's numbers
+  await page.click(".pdf-toolbar button:has-text('№')");
+  await page.waitForSelector(".modal input[type=number]");
+  await page.fill(".modal input[type=number]", "1"); // file page 5 is printed page 1
+  await page.click(".modal .btn.primary");
+  await page.waitForFunction(() => !document.querySelector(".modal"));
+  expect(await page.isVisible(".pdf-printed-input")).toBe(true);
+  expect(await printed(page)).toBe("1");
+  expect(await fileShown(page)).toBe("5");
+
+  await goTo(page, 9);
+  await page.waitForFunction(() => (document.querySelector(".pdf-printed-input") as HTMLInputElement).value === "5");
+  await goTo(page, 3); // front matter: it has no printed number
+  await page.waitForFunction(() => (document.querySelector(".pdf-printed-input") as HTMLInputElement).value === "");
+
+  // typing a printed number goes to that page of the file
+  await page.fill(".pdf-printed-input", "4");
+  await page.press(".pdf-printed-input", "Enter");
+  await page.waitForFunction(() => (document.querySelector(".pdf-page-input") as HTMLInputElement).value === "8");
+  expect(await printed(page)).toBe("4");
+
+  // a bookmark here is named by the printed page, and the saved place says the same
+  await page.click(".reader-bar button:has-text('★')");
+  await page.click(".modal button[type=submit]");
+  await page.waitForSelector(".modal .bookmark-go");
+  expect(await page.textContent(".modal .bookmark-go")).toContain("4");
+  expect(await page.textContent(".modal .bookmark-go")).not.toContain("8");
+  await page.keyboard.press("Escape");
+
+  const kept = await serverDisplay();
+  expect(kept.pageOffset).toBe(4);
+  await page.close();
+
+  const again = await open(ctx, at(7)); // the next visit has it already
+  await again.page.waitForFunction(() => (document.querySelector(".pdf-printed-input") as HTMLInputElement).value === "3");
+
+  // the file's own numbers again
+  await again.page.click(".pdf-toolbar button:has-text('№')");
+  await again.page.click(".modal button:has-text(\"Use the file's numbers\")");
+  await again.page.waitForFunction(() => !document.querySelector(".modal"));
+  expect(await again.page.isHidden(".pdf-printed-input")).toBe(true);
+  for (let i = 0; i < 40 && (await serverDisplay()) !== null; i++) await Bun.sleep(250);
+  expect(await serverDisplay()).toBeNull();
+  expect(errors).toEqual([]);
+  await again.page.close();
+  await reset();
+});
+
+e2e("turning, cropping and numbering never change the file", async () => {
+  await reset();
+  const file = `${inst.lib}/Docs/pages.pdf`;
+  const fingerprint = () => `${createHash("sha256").update(readFileSync(file)).digest("hex")} ${statSync(file).mtimeMs}`;
+  const before = fingerprint();
+  const { page } = await open(ctx, at(2));
+  await turn(page);
+  await waitUpright(page, false);
+  await enterCrop(page);
+  await nudge(page, "e", "ArrowLeft", 2);
+  await page.click(`${tools} button:has-text('Apply')`);
+  await savedCrop((c) => !!c?.all);
+  await page.click(".pdf-toolbar button:has-text('№')");
+  await page.fill(".modal input[type=number]", "1");
+  await page.click(".modal .btn.primary");
+  for (let i = 0; i < 40 && !(await serverDisplay())?.pageOffset; i++) await Bun.sleep(250);
+  expect((await serverDisplay()).rotation).toBe(90);
+  expect((await serverDisplay()).pageOffset).toBe(1);
+  await page.close();
+  expect(fingerprint()).toBe(before); // the same bytes, and not even touched
   await reset();
 });

@@ -26,7 +26,16 @@ export interface Display {
   rotation?: 90 | 180 | 270;
   /** The part of the pages that is shown; left out when the pages are whole. */
   crop?: Crop;
+  /**
+   * How many pages of the file come before the book's printed page 1, so printed number = file page - pageOffset
+   * (cover and front matter make it positive; a scan that starts in the middle of the book makes it negative).
+   * Left out when the printed numbers are the file's.
+   */
+  pageOffset?: number;
 }
+
+/** The largest offset accepted either way: more than any real book has front matter. */
+export const MAX_PAGE_OFFSET = 9999;
 
 /** The smallest side of a crop, as a fraction of the page: a sliver is a slip of the hand, not a margin. */
 export const MIN_CROP = 0.05;
@@ -57,6 +66,10 @@ export function parseDisplay(value: unknown): Display | null {
   if (raw.rotation !== undefined) {
     if (raw.rotation !== 0 && raw.rotation !== 90 && raw.rotation !== 180 && raw.rotation !== 270) return null;
     if (raw.rotation !== 0) out.rotation = raw.rotation;
+  }
+  if (raw.pageOffset !== undefined) {
+    if (typeof raw.pageOffset !== "number" || !Number.isInteger(raw.pageOffset) || Math.abs(raw.pageOffset) > MAX_PAGE_OFFSET) return null;
+    if (raw.pageOffset !== 0) out.pageOffset = raw.pageOffset;
   }
   if (raw.crop !== undefined) {
     if (typeof raw.crop !== "object" || raw.crop === null || Array.isArray(raw.crop)) return null;

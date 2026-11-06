@@ -49,6 +49,14 @@ test("a crop is checked, tidied, and a crop of the whole page is not kept", () =
   for (const display of bad) expect(parseDisplay(display)).toBeNull();
 });
 
+test("a page offset is a whole number of pages, and zero is not kept", () => {
+  expect(parseDisplay({ pageOffset: 12 })).toEqual({ pageOffset: 12 });
+  expect(parseDisplay({ pageOffset: -4 })).toEqual({ pageOffset: -4 }); // a scan that starts at printed page 5
+  expect(parseDisplay({ pageOffset: 0 })).toEqual({});
+  expect(parseDisplay({ rotation: 90, pageOffset: 3, crop: { all: { x: 0, y: 0, w: 0.5, h: 1 } } })).toEqual({ rotation: 90, pageOffset: 3, crop: { all: { x: 0, y: 0, w: 0.5, h: 1 } } });
+  for (const bad of [{ pageOffset: 1.5 }, { pageOffset: "3" }, { pageOffset: 10000 }, { pageOffset: -10000 }, { pageOffset: Number.NaN }, { pageOffset: null }]) expect(parseDisplay(bad)).toBeNull();
+});
+
 test("settings are kept per reader and book, replaced by the last save, and removed when they say nothing", async () => {
   const a = await auth.createUser("A", "secret1", "admin");
   const b = await auth.createUser("B", "secret2", "user");
