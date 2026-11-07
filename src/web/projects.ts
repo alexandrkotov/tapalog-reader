@@ -306,7 +306,9 @@ async function showProject(modal: Modal, id: number, pictures: Pictures): Promis
       small(t("projects.up"), "↑", () => move(-1), index === 0),
       small(t("projects.down"), "↓", () => move(1), index === items.length - 1),
       small(t("projects.edit"), "✎", () => ((editingItem = item.id), (editingHead = false), draw())),
-      small(t("common.delete"), "×", () => void change(() => api(`/api/projects/${id}/items/${item.id}`, undefined, "DELETE"))),
+      small(t("common.delete"), "×", () => {
+        if (confirm(t("projects.itemDeleteConfirm", { title: item.title }))) void change(() => api(`/api/projects/${id}/items/${item.id}`, undefined, "DELETE"));
+      }),
     );
   }
 

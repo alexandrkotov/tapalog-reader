@@ -96,6 +96,10 @@ e2e("a project is built, ordered and edited on its screen, opens books where the
   expect((await titles(page)).at(-1)).toBe("Order the parts");
 
   // delete an item
+  page.once("dialog", (d) => void d.dismiss());
+  await page.click(".project-item:last-child button[title='Delete']");
+  expect(await page.$$(".project-item")).toHaveLength(5); // kept when the question is declined
+  page.once("dialog", (d) => void d.accept());
   await page.click(".project-item:last-child button[title='Delete']");
   await page.waitForFunction(() => document.querySelectorAll(".project-item").length === 4);
 

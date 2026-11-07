@@ -124,6 +124,97 @@ e2e("a passage selected in a text book is added with its words and opens marked"
   await again.page.close();
 });
 
+e2e("several passages of one book go to one project as separate items, each opening marked with its own words", async () => {
+  const { page, errors } = await open(ctx, `#book=${txtId}`);
+  await page.waitForSelector(".txt-body");
+  const select = (from: number) =>
+    page.evaluate((start) => {
+      const node = document.createTreeWalker(document.querySelector(".txt-body")!, NodeFilter.SHOW_TEXT).nextNode()!; // the whole text is one node
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, start + 30);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+      return range.toString();
+    }, from);
+  const addSelected = async (title: string) => {
+    await page.click("button[title='Add this place to a project']");
+    await page.waitForSelector(".modal textarea[placeholder='Quote']");
+    await page.waitForFunction(() => (document.querySelector(".modal select") as HTMLSelectElement | null)?.value !== "");
+    await page.fill(".modal input[placeholder='Title']", title);
+    await page.click(".modal button[type=submit]");
+    await page.waitForSelector(".modal .project-added");
+    await page.click(".modal button:has-text('Close')");
+  };
+  const first = await select(300);
+  await addSelected("First passage");
+  const second = await select(1500);
+  expect(second).not.toBe(first);
+  await addSelected("Second passage");
+  await page.close();
+
+  const project = (await projects()).find((p) => p.title === "My amplifier")!;
+  const items = await itemsOf(project.id);
+  const one = items.find((i) => i.title === "First passage")!;
+  const two = items.find((i) => i.title === "Second passage")!;
+  const flat = (text: string) => text.replace(/\s+/g, " ").trim(); // the quote is kept on one line
+  expect(one.quote).toBe(flat(first));
+  expect(two.quote).toBe(flat(second));
+  expect(one.view.range).not.toEqual(two.view.range);
+
+  const again = await open(ctx, "");
+  await again.page.click("button:has-text('My projects')");
+  await again.page.click(".project-row .project-go");
+  await again.page.waitForSelector(".project-item");
+  const titles = await again.page.$$eval(".project-item .project-go", (e) => e.map((x) => x.textContent));
+  await again.page.click(`.project-item:nth-child(${titles.indexOf("Second passage") + 1}) button.project-go`);
+  await again.page.waitForSelector(".txt-body mark");
+  expect(await again.page.textContent(".txt-body mark")).toBe(second); // the second one, not the first
+  expect(errors).toEqual([]);
+  await again.page.close();
+});
+
+e2e("a passage selected in an EPUB is added with its words and the place of the words", async () => {
+  const { page, errors } = await open(ctx, `#book=${epubId}`);
+  await page.waitForFunction(() => /%/.test(document.querySelector(".book-progress")?.textContent ?? ""));
+  let quote = "";
+  for (let i = 0; i < 40 && !quote; i++) {
+    for (const frame of page.frames().filter((f) => f !== page.mainFrame())) {
+      quote = await frame
+        .evaluate(() => {
+          const p = document.querySelector("p");
+          if (!p?.firstChild) return "";
+          const range = document.createRange();
+          range.setStart(p.firstChild, 0);
+          range.setEnd(p.firstChild, Math.min(24, (p.firstChild.textContent ?? "").length));
+          getSelection()!.removeAllRanges();
+          getSelection()!.addRange(range);
+          return range.toString();
+        })
+        .catch(() => "");
+      if (quote) break;
+    }
+    if (!quote) await Bun.sleep(250);
+  }
+  expect(quote.length).toBeGreaterThan(5);
+  await page.click("button[title='Add this place to a project']");
+  await page.waitForSelector(".modal textarea[placeholder='Quote']");
+  expect(await page.inputValue(".modal textarea[placeholder='Quote']")).toBe(quote);
+  await page.waitForFunction(() => (document.querySelector(".modal select") as HTMLSelectElement | null)?.value !== "");
+  await page.fill(".modal input[placeholder='Title']", "From the story");
+  await page.click(".modal button[type=submit]");
+  await page.waitForSelector(".modal .project-added");
+  await page.close();
+
+  const project = (await projects()).find((p) => p.title === "My amplifier")!;
+  const item = (await itemsOf(project.id)).find((i) => i.title === "From the story")!;
+  expect(item.bookId).toBe(epubId);
+  expect(item.quote).toBe(quote);
+  expect(typeof item.view.cfi).toBe("string");
+  expect(typeof item.view.range).toBe("string"); // where the words are, not only the page
+  expect(errors).toEqual([]);
+});
+
 e2e("an EPUB place is added too, and an anonymous visitor is asked to sign in first", async () => {
   const { page, errors } = await open(ctx, `#book=${epubId}`);
   await page.waitForFunction(() => /%/.test(document.querySelector(".book-progress")?.textContent ?? ""));
