@@ -1,9 +1,8 @@
 ## English
 
 What's new:
-- **My projects.** A project gathers places from different books and your own notes, for example "My amplifier": a schematic from one book, a table from another and your comments between them. Press **＋ To project** in the reader bar to add the place you are looking at (or the passage you selected in a text book, with its words as a quote), choose the project or make a new one on the spot, and you stay where you were. **My projects** in the account menu lists them: put the items in order, edit titles, comments and quotes, add notes that belong to no book. Every item opens its book at the saved place, and a rename or move of the file keeps it. When a book has left the library, the item says so and keeps your words.
-- A PDF item shows a picture of its saved area (the whole page when it has none), turned the way you turned the book. **⤓** saves a project as a Markdown file with sources and links (the links work only while the server can be reached, and the file says so); **🖶** prints it or saves it as PDF. Projects are personal, need an account like bookmarks, and are included in the backup (a backup made earlier simply has none). Catalogs (`.ecatm`) have no area pictures.
-- The quick tour explains more: every step has a **More** button that opens a longer explanation with a small picture, and the **?** button on a project's screen starts a tour of that screen.
+- **The project screen explains itself.** It now says where places come from (the **＋ To project** button in the reader; the button used to be called **＋ Project**), has a hint under the title and for an empty project, labelled buttons **⤓ Markdown**, **🖶 Print / PDF** and **Edit**, and an own-note form that says it is not tied to a book. The **?** button next to them starts a tour of the screen.
+- **Every step of the quick tours has a longer explanation.** Press **More** to open it with a small picture of the buttons and dialogs it is about, in the language of the interface, in the library, in an open book and on a project's screen. **Esc** closes only the tour when it stands over a dialog, not the dialog too.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -17,9 +16,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **Мои проекты.** Проект собирает места из разных книг и ваши собственные заметки, например «Мой усилитель»: схема из одной книги, таблица из другой и ваши комментарии между ними. Нажмите **＋ В проект** в панели читалки, чтобы добавить место, на которое вы смотрите (или выделенный в текстовой книге фрагмент с его словами в виде цитаты), выберите проект или создайте новый тут же, и вы останетесь там, где были. **Мои проекты** в меню аккаунта показывает их список: расставляйте записи по порядку, правьте названия, комментарии и цитаты, добавляйте заметки, не связанные с книгой. Каждая запись открывает свою книгу на сохранённом месте, а переименование или перенос файла её не ломают. Если книги больше нет в библиотеке, запись говорит об этом и сохраняет ваши слова.
-- Запись из PDF показывает картинку сохранённой области (или всю страницу, если области нет), повёрнутую так, как вы повернули книгу. **⤓** сохраняет проект как файл Markdown с источниками и ссылками (ссылки работают, только пока сервер доступен, и файл об этом говорит); **🖶** печатает проект или сохраняет в PDF. Проекты личные, как и закладки, требуют аккаунта и входят в резервную копию (в более ранней копии их просто нет). У каталогов (`.ecatm`) картинок областей нет.
-- Быстрый тур объясняет подробнее: у каждого шага есть кнопка **Подробнее**, которая открывает длинное объяснение с небольшой картинкой, а кнопка **?** на экране проекта запускает тур по этому экрану.
+- **Экран проекта объясняет сам себя.** Теперь на нём сказано, откуда берутся места (кнопка **＋ В проект** в читалке; раньше она называлась **＋ Проект**), под названием есть подсказка (и для пустого проекта), у кнопок есть подписи **⤓ Markdown**, **🖶 Печать / PDF** и **Изменить**, а форма своей заметки говорит, что она не привязана к книге. Кнопка **?** рядом запускает тур по этому экрану.
+- **У каждого шага быстрых туров есть длинное объяснение.** Нажмите **Подробнее**, чтобы открыть его с небольшой картинкой тех кнопок и окон, о которых идёт речь, на языке интерфейса: в библиотеке, в открытой книге и на экране проекта. **Esc** закрывает только тур, если он стоит над окном, а не окно вместе с ним.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -33,9 +31,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **Мої проєкти.** Проєкт збирає місця з різних книг і ваші власні нотатки, наприклад «Мій підсилювач»: схема з однієї книги, таблиця з іншої і ваші коментарі між ними. Натисніть **＋ До проєкту** на панелі читалки, щоб додати місце, на яке ви дивитеся (або виділений у текстовій книзі уривок з його словами у вигляді цитати), виберіть проєкт або створіть новий одразу, і ви залишитеся там, де були. **Мої проєкти** в меню облікового запису показує їхній список: розставляйте записи за порядком, правте назви, коментарі й цитати, додавайте нотатки, не пов’язані з книгою. Кожен запис відкриває свою книгу на збереженому місці, а перейменування чи перенесення файлу його не ламають. Якщо книги більше немає в бібліотеці, запис каже про це й зберігає ваші слова.
-- Запис із PDF показує картинку збереженої ділянки (або всю сторінку, якщо ділянки немає), повернуту так, як ви повернули книгу. **⤓** зберігає проєкт як файл Markdown із джерелами й посиланнями (посилання працюють, лише поки сервер доступний, і файл про це каже); **🖶** друкує проєкт або зберігає його у PDF. Проєкти особисті, як і закладки, потребують облікового запису й входять до резервної копії (в ранішій копії їх просто немає). У каталогів (`.ecatm`) картинок ділянок немає.
-- Швидкий тур пояснює докладніше: у кожного кроку є кнопка **Докладніше**, яка відкриває довге пояснення з невеликою картинкою, а кнопка **?** на екрані проєкту запускає тур цим екраном.
+- **Екран проєкту пояснює сам себе.** Тепер на ньому сказано, звідки беруться місця (кнопка **＋ До проєкту** в читалці; раніше вона називалася **＋ Проєкт**), під назвою є підказка (і для порожнього проєкту), у кнопок є підписи **⤓ Markdown**, **🖶 Друк / PDF** і **Змінити**, а форма власної нотатки каже, що вона не пов’язана з книгою. Кнопка **?** поруч запускає тур цим екраном.
+- **У кожного кроку швидких турів є довге пояснення.** Натисніть **Докладніше**, щоб відкрити його з невеликою картинкою кнопок і вікон, про які йдеться, мовою інтерфейсу: у бібліотеці, у відкритій книзі та на екрані проєкту. **Esc** закриває лише тур, якщо він стоїть над вікном, а не вікно разом із ним.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 
