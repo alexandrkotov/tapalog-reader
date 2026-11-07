@@ -179,3 +179,43 @@ e2e("project items of a PDF show a picture of their area (the whole page without
   expect(errors).toEqual([]);
   await page.close();
 });
+
+e2e("a project is saved as a Markdown file whose links open the books where the items were saved", async () => {
+  const made = await api(ctx, inst, "/api/projects", { title: "Export: amp", description: "For the bench" });
+  const id = made.project.id;
+  const add = (body: unknown) => api(ctx, inst, `/api/projects/${id}/items`, body);
+  await add({ bookId: pdfId, view: { v: 1, page: 4 }, title: "Schematic", comment: "second stage" });
+  await add({ bookId: txtId, view: { v: 1 }, title: "Coil table", quote: "turns per layer" });
+  await add({ title: "Check the values", comment: "before power on" });
+
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(inst.url + "/");
+  await page.click("button:has-text('My projects')");
+  await page.click(".project-row .project-go");
+  await page.waitForSelector(".project-item");
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click(".project-head button[title='Save as a Markdown file']")]);
+  expect(download.suggestedFilename()).toBe("Export amp.md"); // the colon is not allowed in a file name on every system
+  const text = await Bun.file((await download.path())!).text();
+
+  expect(text).toStartWith("# Export: amp\n\nFor the bench\n\n*Exported on ");
+  expect(text).toContain(`from Tapalog Reader at ${inst.url}.`);
+  expect(text).toContain("only while that server can be reached");
+  expect(text.indexOf("## 1. Schematic")).toBeLessThan(text.indexOf("## 2. Coil table"));
+  expect(text.indexOf("## 2. Coil table")).toBeLessThan(text.indexOf("## 3. Check the values"));
+  expect(text).toContain("> turns per layer");
+  expect(text).toContain("second stage");
+  expect(text).toContain("_Note_");
+  expect(text).toContain("**pages** (PDF)");
+  expect(text).toContain("**notes** (TXT)");
+
+  // the first link of the file opens the PDF on the page that was saved
+  const href = /\[Open at the saved place\]\(([^)]+)\)/.exec(text)![1]!;
+  expect(href.startsWith(inst.url + "/#book=")).toBe(true);
+  await page.goto(href);
+  await page.reload();
+  await page.waitForSelector(".pdf-scroll .page canvas");
+  expect(await page.evaluate(() => (document.querySelector(".pdf-page-input") as HTMLInputElement).value)).toBe("4");
+  expect(errors).toEqual([]);
+  await page.close();
+});

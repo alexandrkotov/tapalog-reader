@@ -1,6 +1,7 @@
 import { authPanel, type Me } from "./account";
 import { bookHash } from "./bookmarks";
 import { lang, t } from "./i18n";
+import { markdownFileName, projectMarkdown } from "./projectMarkdown";
 import { createPictures, type Pictures } from "./projectPictures";
 import { api, ApiError, badge, el, openModal, store, type Modal } from "./ui";
 
@@ -237,6 +238,22 @@ async function showProject(modal: Modal, id: number, pictures: Pictures): Promis
     return b;
   };
 
+  /** The project as it is on screen now, as a file the browser saves; nothing leaves the browser for this. */
+  function exportMarkdown(p: ProjectSummary): void {
+    const text = projectMarkdown(
+      p,
+      items,
+      { intro: t("projects.exportIntro", { date: new Date().toLocaleDateString("sv"), origin: location.origin }), open: t("projects.exportOpen"), missing: t("projects.exportMissing"), note: t("projects.note"), empty: t("projects.empty") },
+      (bookId, view) => location.origin + "/" + bookHash(bookId, view),
+    );
+    const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
+    const a = el("a", { href: url, download: markdownFileName(p.title) });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
   function header(p: ProjectSummary): HTMLElement {
     if (editingHead) {
       const title = field({ value: p.title, max: 200, placeholder: t("projects.name") });
@@ -251,7 +268,9 @@ async function showProject(modal: Modal, id: number, pictures: Pictures): Promis
     }
     const edit = el("button", { type: "button", class: "icon-btn small", title: t("projects.edit"), textContent: "✎" });
     edit.addEventListener("click", () => ((editingHead = true), (editingItem = null), draw()));
-    return el("div", { class: "project-head" }, el("div", { class: "grow" }, el("h3", { class: "project-title", textContent: p.title }), ...(p.description ? [el("div", { class: "muted project-about", textContent: p.description })] : [])), edit);
+    const save = el("button", { type: "button", class: "icon-btn small project-export", title: t("projects.export"), ariaLabel: t("projects.export"), textContent: "⤓" });
+    save.addEventListener("click", () => exportMarkdown(p));
+    return el("div", { class: "project-head" }, el("div", { class: "grow" }, el("h3", { class: "project-title", textContent: p.title }), ...(p.description ? [el("div", { class: "muted project-about", textContent: p.description })] : [])), save, edit);
   }
 
   function row(item: Item, index: number): HTMLElement {
