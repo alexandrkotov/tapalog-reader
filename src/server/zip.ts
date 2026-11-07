@@ -1,4 +1,4 @@
-import { crc32, createInflateRaw } from "node:zlib";
+import { crc32, createInflateRaw, inflateRawSync } from "node:zlib";
 import { createWriteStream } from "node:fs";
 import { open } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
@@ -128,4 +128,33 @@ export async function extractEntry(path: string, entry: ZipEntry, target: string
   }
   if (written !== entry.size || sum >>> 0 !== entry.crc) throw new ZipError("damaged");
   return written;
+}
+
+/** One entry of a zip file unpacked into memory, with the same checks as `extractEntry` (a size cap, the checksum). */
+export async function readEntry(path: string, entry: ZipEntry, maxBytes: number): Promise<Uint8Array> {
+  if (entry.encrypted) throw new ZipError("encrypted");
+  if (entry.method !== 0 && entry.method !== 8) throw new ZipError("unsupported");
+  if (entry.size > maxBytes) throw new ZipError("too-big");
+  const file = await open(path, "r");
+  let packed: Buffer;
+  try {
+    const { size } = await file.stat();
+    const header = Buffer.alloc(30);
+    await file.read(header, 0, 30, entry.offset);
+    if (header.readUInt32LE(0) !== LOCAL) throw new ZipError("damaged");
+    const start = entry.offset + 30 + header.readUInt16LE(26) + header.readUInt16LE(28);
+    if (start + entry.compressed > size) throw new ZipError("damaged");
+    packed = Buffer.alloc(entry.compressed);
+    await file.read(packed, 0, entry.compressed, start);
+  } finally {
+    await file.close();
+  }
+  let data: Buffer;
+  try {
+    data = entry.method === 8 ? inflateRawSync(packed, { maxOutputLength: Math.max(1, entry.size) }) : packed;
+  } catch {
+    throw new ZipError("damaged"); // a deflate stream that does not decode, or grows past what the archive claimed
+  }
+  if (data.length !== entry.size || crc32(data) !== entry.crc) throw new ZipError("damaged");
+  return new Uint8Array(data.buffer, data.byteOffset, data.length);
 }

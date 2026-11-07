@@ -86,6 +86,13 @@ export function openDb(dataDir: string): Database {
     created_at INTEGER NOT NULL
   )`);
   db.run("CREATE INDEX IF NOT EXISTS project_items_project ON project_items(project_id, position)");
+  db.run(`CREATE TABLE IF NOT EXISTS book_meta (
+    book_id    TEXT PRIMARY KEY,              -- content id, so a moved or renamed book keeps its card; the library's, not a reader's
+    manual     TEXT NOT NULL DEFAULT '{}',    -- JSON of what the administrator typed (title, authors, year, series, description, language, tags); wins field by field
+    auto       TEXT NOT NULL DEFAULT '{}',    -- JSON of what was read out of the file (see bookmeta.ts); can be made again
+    auto_v     INTEGER NOT NULL DEFAULT 0,    -- the version of the reading that made \`auto\`; 0 = the file was not read yet
+    updated_at INTEGER NOT NULL
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS sources (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL,

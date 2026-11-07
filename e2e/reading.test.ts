@@ -44,10 +44,10 @@ e2e("searching by file name finds a book and opens it", async () => {
   await page.waitForSelector(".shelf");
   await page.fill("#search", "hostile");
   await page.waitForSelector("#search-results li");
-  expect(await page.textContent("#search-results")).toContain("hostile");
+  expect(await page.textContent("#search-results")).toContain("Hostile"); // shown by the title the EPUB itself gives (the file is hostile.epub)
   await page.click("#search-results li");
   await page.waitForSelector(".reader-bar");
-  expect(await page.textContent(".reader-bar .title")).toBe("hostile");
+  expect(await page.textContent(".reader-bar .title")).toBe("Hostile");
   await page.close();
 });
 

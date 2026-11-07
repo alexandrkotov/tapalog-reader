@@ -2,8 +2,9 @@ import type { Database } from "bun:sqlite";
 import type { Config, ConfigStore } from "./config";
 import { scanLibrary, type ScanResult } from "./scanner";
 import { watchLibrary } from "./watcher";
+import { BookMeta, extractMeta, META_FORMATS, searchText } from "./bookmeta";
 import { existsSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 export interface BookRow {
   id: string;
@@ -28,12 +29,18 @@ export class Library {
   private closed = false;
   /** Counts edits the app made itself; a scan that began before one must not write its (now wrong) result. */
   private edits = 0;
+  /** What the library knows about each book besides its file: see bookmeta.ts. */
+  readonly meta: BookMeta;
+  private filling: Promise<number> | null = null;
+  private refill = false;
 
   constructor(
     private readonly db: Database,
     private readonly config: ConfigStore,
     private readonly dataDir: string,
-  ) {}
+  ) {
+    this.meta = new BookMeta(db);
+  }
 
   get root(): string | null {
     return this.config.get().libraryPath;
@@ -84,6 +91,7 @@ export class Library {
       }
       this.lastScan = result;
       this.onScan?.();
+      void this.fillMeta().catch(() => {}); // reading the files for titles and authors goes on after the list is out
       return result;
     } catch (err) {
       if (this.closed) return null;
@@ -167,14 +175,56 @@ export class Library {
     this.db.run("INSERT OR IGNORE INTO folders (path) VALUES (?)", [path]);
   }
 
-  /** Any occurrence of the query in a file name or its folder path, case-insensitively. */
+  /**
+   * Reads the files whose metadata has not been read yet (EPUB and FB2), one at a time, giving way to the server
+   * between files. Asking again while it runs makes it look once more when it is done, and waits for that.
+   */
+  fillMeta(): Promise<number> {
+    if (this.filling) {
+      this.refill = true;
+      return this.filling;
+    }
+    const run = async (): Promise<number> => {
+      let done = 0;
+      try {
+        do {
+          this.refill = false;
+          const root = this.root;
+          if (!root) break;
+          const seen = new Set<string>();
+          const todo = this.db.query("SELECT id, path, ext FROM books ORDER BY path").all() as { id: string; path: string; ext: string }[];
+          for (const book of todo) {
+            if (this.closed) return done;
+            if (!META_FORMATS.has(book.ext) || seen.has(book.id) || !this.meta.needsAuto(book.id)) continue;
+            seen.add(book.id);
+            const auto = await extractMeta(join(root, ...book.path.split("/")), book.ext).catch(() => ({})); // not what it says it is: nothing to learn from it
+            if (this.closed) return done;
+            this.meta.setAuto(book.id, auto);
+            if (++done % 20 === 0) await Bun.sleep(0);
+          }
+        } while (this.refill && !this.closed);
+      } catch (err) {
+        if (!this.closed) throw err; // a database closed under a running read is not an error
+      } finally {
+        this.filling = null;
+      }
+      return done;
+    };
+    this.filling = run();
+    return this.filling;
+  }
+
+  /** Any occurrence of the query in a file name, its folder path, or the book's title, authors, series or tags, case-insensitively. */
   searchNames(query: string, limit = 50): BookRow[] {
-    const q = query.trim();
+    const q = query.trim().toLowerCase();
     if (!q) return [];
-    const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    return this.db
-      .query("SELECT id, path, name, ext, size FROM books WHERE path LIKE ? ESCAPE '\\' ORDER BY name LIMIT ?")
-      .all(pattern, limit) as BookRow[];
+    const meta = this.meta.all();
+    const found: BookRow[] = [];
+    for (const book of this.db.query("SELECT id, path, name, ext, size FROM books ORDER BY name").all() as BookRow[]) {
+      if (book.path.toLowerCase().includes(q) || searchText(meta.get(book.id)).includes(q)) found.push(book);
+      if (found.length >= limit) break;
+    }
+    return found;
   }
 
   count(): number {

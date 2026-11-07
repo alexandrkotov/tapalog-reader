@@ -4,6 +4,7 @@ import type { Auth, User } from "./auth";
 import { validateName, validatePassword } from "./auth";
 import { BackupError, parseBackup, type Backup, type BackupFile } from "./backup";
 import type { Bookmarks } from "./bookmarks";
+import { effective, MetaError, shelfFields } from "./bookmeta";
 import { parseDisplay, type DisplayStore } from "./display";
 import type { ProgressStore } from "./progress";
 import { ProjectError, type ProjectItem, type Projects } from "./projects";
@@ -19,7 +20,7 @@ import type { FullText } from "./fulltext";
 import { mimeOf } from "./formats";
 import { APP_NAME, PING } from "./instance";
 import { Plugins } from "./plugins";
-import type { Library } from "./library";
+import type { BookRow, Library } from "./library";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
 import { RESET_FILE, type Recovery } from "./recovery";
 import type { Shares } from "./shares";
@@ -119,6 +120,26 @@ type Handler = (req: Bun.BunRequest, server: Server<unknown>) => Response | Prom
 
 function buildRoutes(app: App, origin: Origin) {
   const withCover = <T extends { id: string }>(b: T) => (app.covers.has(b.id) ? { ...b, cover: true } : b);
+  /** A list of books as the shelf shows it: with the cover flag and the title, authors, year, series and tags the card holds. */
+  const shelf = <T extends { id: string; name: string }>(books: T[]) => {
+    const meta = app.library.meta.all();
+    return books.map((b) => ({ ...withCover(b), ...shelfFields(meta.get(b.id), b.name) }));
+  };
+  /** A book's card: what the library shows, what the file itself says, which fields were typed by hand, and where the file lies. */
+  const cardOf = (book: BookRow) => {
+    const row = app.library.meta.row(book.id);
+    return {
+      id: book.id,
+      name: book.name,
+      path: book.path,
+      ext: book.ext,
+      size: book.size,
+      copies: app.library.pathsWithId(book.id),
+      fields: effective(row?.manual ?? {}, row?.auto ?? {}),
+      auto: row?.auto ?? {},
+      edited: Object.keys(row?.manual ?? {}),
+    };
+  };
   const secureCookie = origin === "tunnel"; // the tunnel always speaks https to the visitor
   const user = (req: Request): User | null => app.auth.userFor(req);
   const canBrowse = (req: Request) => user(req) !== null || (origin === "lan" && app.config.get().lanAccess === "open");
@@ -339,17 +360,38 @@ function buildRoutes(app: App, origin: Origin) {
         writable: app.editor.writable,
       }),
     ),
-    "/api/library": browse(() => json({ folders: app.library.folders(), books: app.library.books().map(withCover) })),
-    "/api/search": browse((req) => json({ books: app.library.searchNames(new URL(req.url).searchParams.get("q") ?? "").map(withCover) })),
+    "/api/library": browse(() => json({ folders: app.library.folders(), books: shelf(app.library.books()) })),
+    "/api/search": browse((req) => json({ books: shelf(app.library.searchNames(new URL(req.url).searchParams.get("q") ?? "")) })),
     // Search inside books (only when the administrator turned the index on).
     "/api/fulltext": browse((req) => {
       const found = app.fullText.search(new URL(req.url).searchParams.get("q") ?? "");
       const books = found.flatMap((f) => {
         const book = app.library.byId(f.id);
-        return book ? [{ ...withCover(book), hits: f.hits }] : [];
+        return book ? [{ ...shelf([book])[0]!, hits: f.hits }] : [];
       });
       return json({ enabled: app.fullText.enabled, books });
     }),
+    // The card of a book: title, authors, year, series, description, language and tags. Reading it is browsing; changing it is the administrator's.
+    "/api/books/:id/meta": browse((req) => {
+      const book = app.library.byId(param(req, "id"));
+      return book ? json(cardOf(book)) : notFound();
+    }),
+    "/api/admin/books/:id/meta": {
+      PUT: admin(async (req) => {
+        const book = app.library.byId(param(req, "id"));
+        const data = await body(req);
+        if (!book) return notFound();
+        if (!data) return bad();
+        try {
+          app.library.meta.edit(book.id, data.set, data.reset);
+        } catch (err) {
+          if (err instanceof MetaError) return bad(err.message);
+          throw err;
+        }
+        return json(cardOf(book));
+      }),
+    },
+    "/api/tags": browse(() => json({ tags: app.library.meta.tags() })),
     "/api/cover/:id": browse((req) => {
       const file = app.covers.file(param(req, "id"));
       // A cover never changes for a given id (the id is the book's content), so browsers may keep it.

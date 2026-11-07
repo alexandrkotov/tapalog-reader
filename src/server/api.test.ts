@@ -644,3 +644,34 @@ test("installed plugins are listed and their files served (also to a share link'
   expect(admin.dir).toBe(pluginsDir);
   expect(admin.problems).toEqual([{ folder: "broken", problem: "plugin.json is not valid JSON" }]);
 });
+
+test("a book's card is read by anyone who can browse and changed by the administrator only; the shelf, the search and the tag list follow", async () => {
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Backup Reader", password: "pin1234" } })).cookie!;
+  const one = (await call(lan, "/api/library", { cookie: adminCookie })).body.books.find((b: { id: string }) => b.id === bookId) as { id: string; name: string; path: string; title: string }; // an earlier test moved and renamed this file
+  expect(one.title).toBe(one.name); // no card yet: the file's name
+
+  const put = (cookie: string, body: unknown, id = one.id, headers?: Record<string, string>) => call(lan, `/api/admin/books/${id}/meta`, { method: "PUT", body, cookie, headers });
+  expect((await put("", { set: { title: "x" } })).status).toBe(401);
+  expect((await put(readerCookie, { set: { title: "x" } })).status).toBe(403);
+  expect((await put(adminCookie, { set: { title: "x" } }, "0".repeat(20))).status).toBe(404);
+  expect((await put(adminCookie, { set: { title: "x" } }, one.id, { Origin: "https://evil.example" })).status).toBe(400);
+  expect((await put(adminCookie, { set: { year: "1949" } })).body).toEqual({ error: "year" });
+  expect((await put(adminCookie, { set: { colour: "red" } })).body).toEqual({ error: "unknown field" });
+  expect((await call(lan, `/api/books/${one.id}/meta`, { cookie: adminCookie })).body.edited).toEqual([]); // nothing refused was stored
+
+  const card = (await put(adminCookie, { set: { title: "  First book ", authors: ["A. Author"], year: 1949, tags: ["Радио", "радио", "схемы"], description: "About it.\n\nMore." } })).body;
+  expect(card).toMatchObject({ id: one.id, name: one.name, path: one.path, ext: "txt", copies: [one.path], edited: ["title", "authors", "year", "tags", "description"] });
+  expect(card.fields).toEqual({ title: "First book", authors: ["A. Author"], year: 1949, series: "", description: "About it.\n\nMore.", language: "", tags: ["Радио", "схемы"] });
+
+  expect((await call(lan, `/api/books/${one.id}/meta`, { cookie: readerCookie })).body.fields.title).toBe("First book"); // readers see it
+  const shelf = (await call(lan, "/api/library", { cookie: readerCookie })).body.books.find((b: { id: string }) => b.id === one.id);
+  expect(shelf).toMatchObject({ name: one.name, title: "First book", authors: ["A. Author"], year: 1949, series: "", tags: ["Радио", "схемы"] });
+  expect((await call(lan, "/api/search?q=author", { cookie: readerCookie })).body.books.map((b: { name: string }) => b.name)).toEqual([one.name]); // found by the author, not the file's name
+  expect((await call(lan, "/api/search?q=%D0%A0%D0%90%D0%94%D0%98%D0%9E", { cookie: readerCookie })).body.books.map((b: { name: string }) => b.name)).toEqual([one.name]); // a tag, in capitals
+  expect((await call(lan, "/api/tags", { cookie: readerCookie })).body).toEqual({ tags: [{ tag: "Радио", books: 1 }, { tag: "схемы", books: 1 }] });
+  expect((await call(lan, "/api/admin/backup", { cookie: adminCookie })).body.bookMeta).toEqual([{ bookId: one.id, manual: expect.objectContaining({ title: "First book" }) }]);
+
+  const reset = (await put(adminCookie, { reset: ["title", "authors", "year", "tags", "description"] })).body;
+  expect(reset.edited).toEqual([]);
+  expect((await call(lan, "/api/library", { cookie: readerCookie })).body.books.find((b: { id: string }) => b.id === one.id).title).toBe(one.name);
+});

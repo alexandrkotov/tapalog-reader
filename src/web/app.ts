@@ -19,10 +19,17 @@ import { api, ApiError, badge, el, openModal, store } from "./ui";
 interface Book {
   id: string;
   path: string;
+  /** The file's name without its extension. */
   name: string;
   ext: string;
   size: number;
   cover?: boolean;
+  /** What the shelf shows: the card's title, or the file's name when the book has none. */
+  title: string;
+  authors: string[];
+  year: number | null;
+  series: string;
+  tags: string[];
 }
 interface Status {
   configured: boolean;
@@ -123,8 +130,8 @@ function renderTree(): void {
       if (open) li.append(rows(folder)); // children of a closed folder are never built: ten thousand books stay cheap
       ul.append(li);
     }
-    for (const book of [...node.books].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))) {
-      const row = el("div", { class: `node${book.id === currentId ? " selected" : ""}`, title: book.path }, el("span", { class: "twisty" }), badge(book.ext), el("span", { class: "label", textContent: book.name }), ...(editing ? [actions("book", book.path)] : []));
+    for (const book of [...node.books].sort(byTitle)) {
+      const row = el("div", { class: `node${book.id === currentId ? " selected" : ""}`, title: book.path }, el("span", { class: "twisty" }), badge(book.ext), el("span", { class: "label", textContent: book.title }), ...(editing ? [actions("book", book.path)] : []));
       row.dataset.book = book.id;
       if (editing) {
         row.draggable = true;
@@ -220,6 +227,7 @@ function thumb(book: Book, extra = ""): HTMLElement {
 }
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { numeric: true });
+const byTitle = (a: { title: string }, b: { title: string }) => a.title.localeCompare(b.title, undefined, { numeric: true });
 const SHELF_PAGE = 240;
 
 /** What is inside one folder, as cards: sub-folders first, then books with their covers. */
@@ -246,7 +254,7 @@ function showShelf(path: string): void {
     ...[...node.folders].sort(byName).map((f) =>
       editable(el("a", { class: "card folder", href: `#folder=${encodeURIComponent(f.path)}`, title: f.path }, el("div", { class: "thumb folder-tile", textContent: "📁" }), el("div", { class: "cap" }, el("span", { class: "name", textContent: f.name }), el("span", { class: "count", textContent: String(f.total) }))), "folder", f.path),
     ),
-    ...[...node.books].sort(byName).map((b) => editable(el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.name }))), "book", b.path)),
+    ...[...node.books].sort(byTitle).map((b) => editable(el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.title }))), "book", b.path)),
   ];
   const grid = el("div", { class: "shelf" });
   const more = el("button", { type: "button", class: "btn shelf-more" });
@@ -276,7 +284,7 @@ async function fillRecent(box: HTMLElement): Promise<void> {
     const book = booksById.get(p.bookId);
     if (!book) return []; // left the library: kept in the list on the server, just not offered
     const caption = p.label ? el("span", { class: "place", textContent: p.label }) : "";
-    return [el("a", { class: "card", href: `#book=${book.id}`, title: book.path }, el("div", { class: "thumbwrap" }, thumb(book), badge(book.ext)), el("div", { class: "cap" }, el("span", { class: "name", textContent: book.name })), caption)];
+    return [el("a", { class: "card", href: `#book=${book.id}`, title: book.path }, el("div", { class: "thumbwrap" }, thumb(book), badge(book.ext)), el("div", { class: "cap" }, el("span", { class: "name", textContent: book.title })), caption)];
   });
   if (!cards.length || !box.isConnected) return; // nothing read yet, or the reader has gone to another page meanwhile
   box.replaceChildren(el("h2", { class: "recent-title", textContent: t("recent.title") }), el("div", { class: "recent-row" }, ...cards.slice(0, RECENT_SHOWN)));
@@ -510,7 +518,7 @@ function showHits(names: Book[], content: ContentBook[] | null, query: string): 
   entries = [];
   resultsEl.replaceChildren();
   const row = (book: Book, view: unknown, ...extra: (Node | string)[]) => {
-    const li = el("li", { class: entries.length === 0 ? "active" : "", role: "option" }, thumb(book, "sm"), badge(book.ext), el("span", { class: "name", textContent: book.name }), ...extra);
+    const li = el("li", { class: entries.length === 0 ? "active" : "", role: "option" }, thumb(book, "sm"), badge(book.ext), el("span", { class: "name", textContent: book.title }), ...extra);
     li.dataset.index = String(entries.length);
     entries.push({ book, view });
     return li;
@@ -669,7 +677,7 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
   marks.dataset.tour = "marks";
   toProject.dataset.tour = "project";
   showReader({
-    name: book.name,
+    name: book.title,
     ext: book.ext,
     path: book.path,
     fileUrl: `/api/file/${book.id}`,
@@ -678,7 +686,7 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
     display,
     onDisplay: (d) => saveDisplay(signedIn, book.id, d),
     bar: (current) => {
-      share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.name, ext: book.ext, view: hasShareableView(book.ext) ? (current()?.getView?.() ?? null) : null }));
+      share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.title, ext: book.ext, view: hasShareableView(book.ext) ? (current()?.getView?.() ?? null) : null }));
       marks.addEventListener("click", () => me && openBookmarks({ me, book, reader: current, onSignedIn: () => void boot() }));
       toProject.addEventListener("click", () => me && openAddToProject({ me, book, reader: current, onSignedIn: () => void boot() }));
       return [marks, toProject, share];

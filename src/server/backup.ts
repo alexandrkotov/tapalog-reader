@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { validateName } from "./auth";
 import { MAX_LABEL, MAX_PER_USER, MAX_VIEW_BYTES } from "./bookmarks";
+import { BookMeta, cleanManual, MetaError, type Manual } from "./bookmeta";
 import { MAX_DISPLAY, parseDisplay, type Display } from "./display";
 import { MAX_PROGRESS } from "./progress";
 import { cleanText, cleanView, MAX_COMMENT, MAX_DESCRIPTION, MAX_ITEMS, MAX_PROJECTS, MAX_QUOTE, MAX_TITLE, ProjectError } from "./projects";
@@ -31,6 +32,8 @@ export interface BackupFile {
   /** How each reader likes to see books (turn of the pages, ...). Backups made before that existed have none, and restoring one leaves everybody with the default look. */
   display?: { user: string; bookId: string; display: Display; updatedAt: number }[];
   /** Each reader's projects with their items in order. Backups made before projects existed have none, and restoring one leaves everybody with no projects. */
+  /** What the administrator typed into the book cards (title, authors, tags, ...); what the files themselves say is read again. Backups made before cards existed have none, and restoring one leaves the cards as they are. */
+  bookMeta?: { bookId: string; manual: Manual }[];
   projects?: { user: string; title: string; description: string; createdAt: number; updatedAt: number; items: { bookId: string | null; view: unknown; title: string; comment: string; quote: string; createdAt: number }[] }[];
 }
 
@@ -45,6 +48,7 @@ export class BackupError extends Error {
 const MAX_USERS = 5000;
 const MAX_BOOKMARKS = 500_000;
 const MAX_SHARES = 100_000;
+const MAX_BOOK_META = 500_000;
 const BOOK_ID = /^[0-9a-f]{20}$/;
 const TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
 const HASH = /^\$argon2(id|i|d)\$[\x21-\x7e]{20,500}$/;
@@ -185,6 +189,22 @@ export function parseBackup(raw: unknown): BackupFile {
     }
   }
 
+  let cleanBookMeta: BackupFile["bookMeta"];
+  if (raw.bookMeta !== undefined) {
+    if (!Array.isArray(raw.bookMeta) || raw.bookMeta.length > MAX_BOOK_META) bad();
+    const seen = new Set<string>();
+    try {
+      cleanBookMeta = (raw.bookMeta as unknown[]).map((m) => {
+        if (!isObject(m) || typeof m.bookId !== "string" || !BOOK_ID.test(m.bookId) || seen.has(m.bookId)) return bad();
+        seen.add(m.bookId);
+        return { bookId: m.bookId, manual: cleanManual(m.manual) };
+      });
+    } catch (err) {
+      if (err instanceof MetaError) bad(); // a value that does not fit the limits is not a backup this version can restore
+      throw err;
+    }
+  }
+
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -203,6 +223,7 @@ export function parseBackup(raw: unknown): BackupFile {
     ...(cleanProgress ? { progress: cleanProgress } : {}),
     ...(cleanDisplay ? { display: cleanDisplay } : {}),
     ...(cleanProjects ? { projects: cleanProjects } : {}),
+    ...(cleanBookMeta ? { bookMeta: cleanBookMeta } : {}),
   };
 }
 
@@ -229,6 +250,7 @@ export class Backup {
       bookmarks: bookmarks.flatMap((b) => (nameOf.has(b.userId) ? [{ user: nameOf.get(b.userId)!, bookId: b.bookId, label: b.label, view: JSON.parse(b.view), createdAt: b.createdAt }] : [])),
       shares: shares.map((s) => ({ token: s.token, bookId: s.bookId, view: s.view ? JSON.parse(s.view) : null, createdBy: s.createdBy === null ? null : (nameOf.get(s.createdBy) ?? null), createdAt: s.createdAt, expiresAt: s.expiresAt })),
       sources: this.db.query("SELECT name, url FROM sources ORDER BY id").all() as { name: string; url: string }[],
+      bookMeta: new BookMeta(this.db).manualAll(),
       progress: (this.db.query("SELECT user_id AS userId, book_id AS bookId, view, label, updated_at AS updatedAt FROM progress ORDER BY updated_at").all() as { userId: number; bookId: string; view: string | null; label: string; updatedAt: number }[]).flatMap((p) =>
         nameOf.has(p.userId) ? [{ user: nameOf.get(p.userId)!, bookId: p.bookId, view: p.view === null ? null : JSON.parse(p.view), label: p.label, updatedAt: p.updatedAt }] : [],
       ),
@@ -277,6 +299,7 @@ export class Backup {
         const { id } = this.db.query("INSERT INTO projects (user_id, title, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id").get(ids.get(p.user.toLowerCase())!, p.title, p.description, p.createdAt, p.updatedAt) as { id: number };
         p.items.forEach((i, position) => this.db.query("INSERT INTO project_items (project_id, position, book_id, view, title, comment, quote, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(id, position, i.bookId, i.view === null ? null : JSON.stringify(i.view), i.title, i.comment, i.quote, i.createdAt));
       }
+      if (file.bookMeta) new BookMeta(this.db).replaceManual(file.bookMeta); // inside this transaction: nested ones are savepoints
       if (file.sources) {
         this.db.run("DELETE FROM sources");
         for (const source of file.sources) this.db.query("INSERT INTO sources (name, url, created_at) VALUES (?, ?, ?)").run(source.name, source.url, Date.now());
