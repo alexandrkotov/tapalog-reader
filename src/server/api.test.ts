@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Auth } from "./auth";
 import { Backup } from "./backup";
 import { DisplayStore } from "./display";
+import { Projects } from "./projects";
 import { ProgressStore } from "./progress";
 import { Bookmarks } from "./bookmarks";
 import { Covers } from "./covers";
@@ -58,7 +59,7 @@ beforeAll(async () => {
   const auth = new Auth(db);
   const editor = new LibraryEditor(library, data);
   servers = startServers(
-    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), display: new DisplayStore(db), backup: new Backup(db, config), sources: new Sources(db), plugins: new Plugins(pluginsDir), editor, linkImports: new LinkImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m), stop: () => void stops.push(1) },
+    { library, auth, recovery: new Recovery(data, auth), shares: new Shares(db), config, covers: new Covers(data), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), projects: new Projects(db), display: new DisplayStore(db), backup: new Backup(db, config), sources: new Sources(db), plugins: new Plugins(pluginsDir), editor, linkImports: new LinkImports(library, editor, drive.endpoints), fullText: new FullText(data, library, config), tunnel: new TunnelController(() => "http://127.0.0.1:1"), lanUrls: () => [], setMode: (m) => modes.push(m), stop: () => void stops.push(1) },
     { hostname: "127.0.0.1", port: 0 },
   );
   lan = `http://127.0.0.1:${servers.lan.port}`;
@@ -381,6 +382,71 @@ test("bookmarks belong to the signed-in reader and nobody else", async () => {
   expect((await call(lan, "/api/bookmarks", { cookie: mine })).body.bookmarks[0].label).toBe("Renamed");
   expect((await call(lan, `/api/bookmarks/${id}`, { method: "DELETE", cookie: mine })).status).toBe(200);
   expect((await call(lan, "/api/bookmarks", { cookie: mine })).body.bookmarks).toEqual([]);
+});
+
+test("projects belong to the signed-in reader, hold places in library books and notes, and keep what a missing book leaves", async () => {
+  const mine = (await call(lan, "/api/login", { body: { name: "Reader", password: "newpin9" } })).cookie!;
+  const post = (path: string, body: unknown, cookie: string | null = mine, method = "POST") => call(lan, `/api/projects${path}`, { method, body, cookie: cookie ?? undefined }); // null: not signed in
+  expect((await call(lan, "/api/projects")).status).toBe(401); // anonymous readers have none
+  expect((await post("", { title: "x" }, null)).status).toBe(401);
+
+  const made = await post("", { title: "  My amplifier  ", description: "two stages" });
+  expect(made.status).toBe(200);
+  expect(made.body.project).toMatchObject({ title: "My amplifier", description: "two stages", items: 0 });
+  const id = made.body.project.id;
+  expect((await post("", { title: "  " })).status).toBe(400);
+  expect((await post("", "title")).status).toBe(400);
+
+  const view = { v: 1, page: 4, region: { x: 0.1, y: 0.2, w: 0.3, h: 0.4 } };
+  const item = await post(`/${id}/items`, { bookId, view, title: "Schematic", comment: "second stage" });
+  expect(item.status).toBe(200);
+  expect(item.body.item).toMatchObject({ bookId, view, title: "Schematic", comment: "second stage", book: { name: "one", ext: "txt" }, missing: false });
+  const note = await post(`/${id}/items`, { title: "Check the values", comment: "own note" });
+  expect(note.body.item).toMatchObject({ bookId: null, book: null, missing: false });
+  expect((await post(`/${id}/items`, { bookId: "nope", view, title: "x" })).status).toBe(400); // only books of this library
+  expect((await post(`/${id}/items`, { bookId, view: "page 4", title: "x" })).status).toBe(400);
+  expect((await post(`/${id}/items`, { bookId, view, title: " " })).status).toBe(400);
+  expect((await post("/999999/items", { title: "x" })).status).toBe(404);
+
+  const opened = (await call(lan, `/api/projects/${id}`, { cookie: mine })).body;
+  expect(opened.project).toMatchObject({ title: "My amplifier", items: 2 });
+  expect(opened.items.map((i: { title: string }) => i.title)).toEqual(["Schematic", "Check the values"]);
+  expect((await call(lan, "/api/projects", { cookie: mine })).body.projects).toHaveLength(1);
+
+  // another reader sees none of it and cannot change it
+  const itemId = item.body.item.id;
+  expect((await call(lan, "/api/projects", { cookie: adminCookie })).body.projects).toEqual([]);
+  expect((await call(lan, `/api/projects/${id}`, { cookie: adminCookie })).status).toBe(404);
+  expect((await post(`/${id}`, { title: "taken" }, adminCookie)).status).toBe(404);
+  expect((await post(`/${id}/items`, { title: "intruder" }, adminCookie)).status).toBe(404);
+  expect((await post(`/${id}/items/${itemId}`, { title: "taken" }, adminCookie)).status).toBe(404);
+  expect((await post(`/${id}/items/${itemId}`, undefined, adminCookie, "DELETE")).status).toBe(404);
+  expect((await post(`/${id}/order`, { items: [itemId, note.body.item.id] }, adminCookie)).status).toBe(404);
+  expect((await post(`/${id}`, undefined, adminCookie, "DELETE")).status).toBe(404);
+
+  // editing, ordering
+  expect((await post(`/${id}`, { title: "Amplifier v2" })).status).toBe(200);
+  expect((await post(`/${id}/items/${itemId}`, { comment: "third stage" })).status).toBe(200);
+  expect((await post(`/${id}/items/${itemId}`, { title: "" })).status).toBe(400);
+  expect((await post(`/${id}/items/999999`, { title: "x" })).status).toBe(404);
+  expect((await post(`/${id}/order`, { items: [note.body.item.id, itemId] })).status).toBe(200);
+  expect((await post(`/${id}/order`, { items: [itemId] })).status).toBe(400); // must name every item
+  expect((await post(`/${id}/order`, { items: "last" })).status).toBe(400);
+  const again = (await call(lan, `/api/projects/${id}`, { cookie: mine })).body;
+  expect(again.project.title).toBe("Amplifier v2");
+  expect(again.items.map((i: { title: string; comment: string }) => [i.title, i.comment])).toEqual([["Check the values", "own note"], ["Schematic", "third stage"]]);
+
+  // a book that left the library is marked; the item keeps its notes and source
+  const owner = (db.query("SELECT user_id AS id FROM projects WHERE id = ?").get(id) as { id: number }).id;
+  new Projects(db).addItem(owner, id, { bookId: "ffffffffffffffffffff", view: { v: 1, page: 2 }, title: "From a lost book", quote: "words" });
+  const lost = (await call(lan, `/api/projects/${id}`, { cookie: mine })).body.items.at(-1);
+  expect(lost).toMatchObject({ title: "From a lost book", quote: "words", bookId: "ffffffffffffffffffff", view: { v: 1, page: 2 }, book: null, missing: true });
+
+  expect((await post(`/${id}/items/${itemId}`, undefined, mine, "DELETE")).status).toBe(200);
+  expect((await call(lan, `/api/projects/${id}`, { cookie: mine })).body.items).toHaveLength(2);
+  expect((await post(`/${id}`, undefined, mine, "DELETE")).status).toBe(200);
+  expect((await call(lan, `/api/projects/${id}`, { cookie: mine })).status).toBe(404);
+  expect((await call(lan, "/api/projects", { cookie: mine })).body.projects).toEqual([]);
 });
 
 test("reading places belong to the signed-in reader and nobody else", async () => {

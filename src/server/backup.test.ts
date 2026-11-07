@@ -9,6 +9,7 @@ import { ConfigStore } from "./config";
 import { openDb } from "./db";
 import { DisplayStore } from "./display";
 import { ProgressStore } from "./progress";
+import { Projects } from "./projects";
 import { Shares } from "./shares";
 import { removeDir } from "./testutil";
 
@@ -26,7 +27,7 @@ function install() {
   const db = openDb(dir);
   open.push(db);
   const config = new ConfigStore(dir);
-  return { db, config, auth: new Auth(db), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), display: new DisplayStore(db), shares: new Shares(db), backup: new Backup(db, config) };
+  return { db, config, auth: new Auth(db), bookmarks: new Bookmarks(db), progress: new ProgressStore(db), display: new DisplayStore(db), projects: new Projects(db), shares: new Shares(db), backup: new Backup(db, config) };
 }
 
 const ID = "0123456789abcdef0123";
@@ -40,6 +41,11 @@ async function populated() {
   a.progress.save(reader.id, ID, { v: 1, page: 5 }, "Page 5");
   a.progress.save(admin.id, ID);
   a.display.save(reader.id, ID, { rotation: 270 });
+  const amp = a.projects.create(reader.id, "My amplifier", "two stages");
+  a.projects.addItem(reader.id, amp.id, { bookId: ID, view: { v: 1, page: 7 }, title: "Schematic", comment: "second stage", quote: "a passage" });
+  a.projects.addItem(reader.id, amp.id, { title: "Check the values", comment: "own note" });
+  a.projects.addItem(reader.id, amp.id, { bookId: ID, view: { v: 1, page: 2 }, title: "Table" });
+  a.projects.reorder(reader.id, amp.id, a.projects.items(reader.id, amp.id)!.map((i) => i.id).reverse());
   a.shares.create(ID, { v: 1, page: 3 }, reader.id, null);
   a.shares.create(ID, null, null, 7);
   a.config.update({ lanAccess: "login", allowRegistration: false, fullText: true });
@@ -108,6 +114,46 @@ test("display settings come back with the backup, and a backup from before them 
   expect((other.db.query("SELECT COUNT(*) AS n FROM book_display").get() as { n: number }).n).toBe(0);
 
   for (const spoil of [(b: any) => (b.display[0].user = "Nobody"), (b: any) => (b.display[0].display = { rotation: 12 }), (b: any) => b.display.push(b.display[0])]) {
+    const broken = JSON.parse(text) as any;
+    spoil(broken);
+    expect(() => parseBackup(broken)).toThrow(BackupError);
+  }
+});
+
+test("projects come back with the backup in their order, and a backup from before them leaves nobody with any", async () => {
+  const old = await populated();
+  const text = JSON.stringify(old.backup.create());
+  const fresh = install();
+  fresh.backup.restore(parseBackup(JSON.parse(text)));
+  const reader = await fresh.auth.verify("Reader", "pin123", "k7");
+  const admin = await fresh.auth.verify("Alex", "secret1", "k8");
+  const [project] = fresh.projects.list(reader!.id);
+  expect(project).toMatchObject({ title: "My amplifier", description: "two stages", items: 3 });
+  expect(fresh.projects.items(reader!.id, project!.id)!.map((i) => i.title)).toEqual(["Table", "Check the values", "Schematic"]);
+  expect(fresh.projects.items(reader!.id, project!.id)![2]).toMatchObject({ bookId: ID, view: { v: 1, page: 7 }, comment: "second stage", quote: "a passage" });
+  expect(fresh.projects.items(reader!.id, project!.id)![1]).toMatchObject({ bookId: null, view: null, comment: "own note" });
+  expect(fresh.projects.list(admin!.id)).toEqual([]);
+
+  const before = JSON.parse(text) as any;
+  delete before.projects;
+  const other = install();
+  const stranger = await other.auth.createUser("Stranger", "hunter22", "admin");
+  other.projects.create(stranger.id, "Old project");
+  other.backup.restore(parseBackup(before));
+  expect((other.db.query("SELECT COUNT(*) AS n FROM projects").get() as { n: number }).n).toBe(0);
+  expect((other.db.query("SELECT COUNT(*) AS n FROM project_items").get() as { n: number }).n).toBe(0);
+
+  const spoilers: ((b: any) => void)[] = [
+    (b) => (b.projects[0].user = "Nobody"),
+    (b) => (b.projects[0].title = "  "),
+    (b) => (b.projects[0].items[0].title = ""),
+    (b) => (b.projects[0].items[0].bookId = "not an id"),
+    (b) => (b.projects[0].items[0].view = "page 7"),
+    (b) => (b.projects[0].items[0].comment = "x".repeat(6000)),
+    (b) => (b.projects[0].items = "none"),
+    (b) => (b.projects = {}),
+  ];
+  for (const spoil of spoilers) {
     const broken = JSON.parse(text) as any;
     spoil(broken);
     expect(() => parseBackup(broken)).toThrow(BackupError);

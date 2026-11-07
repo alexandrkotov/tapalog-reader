@@ -18,6 +18,7 @@ import { Backup } from "./backup";
 import { Recovery } from "./recovery";
 import { Bookmarks } from "./bookmarks";
 import { DisplayStore } from "./display";
+import { Projects } from "./projects";
 import { ProgressStore } from "./progress";
 import { Shares } from "./shares";
 import { startServers } from "./server";
@@ -51,6 +52,7 @@ const shares = new Shares(db);
 const bookmarks = new Bookmarks(db);
 const progress = new ProgressStore(db);
 const display = new DisplayStore(db);
+const projects = new Projects(db);
 const backup = new Backup(db, config);
 const editor = new LibraryEditor(library, dataDir);
 const linkImports = new LinkImports(library, editor, driveEndpoints());
@@ -95,7 +97,7 @@ const candidates = [...Array.from({ length: 20 }, (_, i) => preferred + i), ...(
 for (const port of candidates) {
   if (servers) break;
   try {
-    servers = startServers({ library, auth, recovery, shares, config, covers, bookmarks, progress, display, backup, editor, linkImports, sources: new Sources(db), plugins, fullText, tunnel, lanUrls, setMode, stop: () => shutdown() }, { hostname, port });
+    servers = startServers({ library, auth, recovery, shares, config, covers, bookmarks, progress, projects, display, backup, editor, linkImports, sources: new Sources(db), plugins, fullText, tunnel, lanUrls, setMode, stop: () => shutdown() }, { hostname, port });
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (code !== "EADDRINUSE" && code !== "EACCES") throw err; // a port Windows keeps for itself is refused with EACCES

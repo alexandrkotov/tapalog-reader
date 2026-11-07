@@ -65,6 +65,27 @@ export function openDb(dataDir: string): Database {
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (user_id, book_id)
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS projects (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  )`);
+  db.run("CREATE INDEX IF NOT EXISTS projects_user ON projects(user_id, updated_at)");
+  db.run(`CREATE TABLE IF NOT EXISTS project_items (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    position   INTEGER NOT NULL,              -- the reader's order inside the project
+    book_id    TEXT,                          -- content id, so a moved or renamed book keeps its place; NULL for a note of the reader's own
+    view       TEXT,                          -- JSON view (page, position, marked area or passage) or NULL
+    title      TEXT NOT NULL,
+    comment    TEXT NOT NULL DEFAULT '',
+    quote      TEXT NOT NULL DEFAULT '',      -- the passage, for text formats
+    created_at INTEGER NOT NULL
+  )`);
+  db.run("CREATE INDEX IF NOT EXISTS project_items_project ON project_items(project_id, position)");
   db.run(`CREATE TABLE IF NOT EXISTS sources (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL,

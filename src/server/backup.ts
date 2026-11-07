@@ -3,6 +3,7 @@ import { validateName } from "./auth";
 import { MAX_LABEL, MAX_PER_USER, MAX_VIEW_BYTES } from "./bookmarks";
 import { MAX_DISPLAY, parseDisplay, type Display } from "./display";
 import { MAX_PROGRESS } from "./progress";
+import { cleanText, cleanView, MAX_COMMENT, MAX_DESCRIPTION, MAX_ITEMS, MAX_PROJECTS, MAX_QUOTE, MAX_TITLE, ProjectError } from "./projects";
 import type { Config, ConfigStore } from "./config";
 import { cleanSourceName, cleanSourceUrl, MAX_SOURCES, SourceError } from "./sources";
 
@@ -29,6 +30,8 @@ export interface BackupFile {
   progress?: { user: string; bookId: string; view: unknown; label: string; updatedAt: number }[];
   /** How each reader likes to see books (turn of the pages, ...). Backups made before that existed have none, and restoring one leaves everybody with the default look. */
   display?: { user: string; bookId: string; display: Display; updatedAt: number }[];
+  /** Each reader's projects with their items in order. Backups made before projects existed have none, and restoring one leaves everybody with no projects. */
+  projects?: { user: string; title: string; description: string; createdAt: number; updatedAt: number; items: { bookId: string | null; view: unknown; title: string; comment: string; quote: string; createdAt: number }[] }[];
 }
 
 export type BackupErrorCode = "not-backup" | "version" | "invalid" | "no-admin" | "too-big";
@@ -151,6 +154,37 @@ export function parseBackup(raw: unknown): BackupFile {
     });
   }
 
+  let cleanProjects: BackupFile["projects"];
+  if (raw.projects !== undefined) {
+    if (!Array.isArray(raw.projects) || raw.projects.length > MAX_USERS * MAX_PROJECTS) bad();
+    const counts = new Map<string, number>();
+    try {
+      cleanProjects = (raw.projects as unknown[]).map((p) => {
+        if (!isObject(p) || typeof p.user !== "string" || !names.has(p.user.toLowerCase()) || !isTime(p.createdAt) || !isTime(p.updatedAt) || !Array.isArray(p.items) || p.items.length > MAX_ITEMS) return bad();
+        const count = (counts.get(p.user.toLowerCase()) ?? 0) + 1;
+        if (count > MAX_PROJECTS) bad();
+        counts.set(p.user.toLowerCase(), count);
+        const items = (p.items as unknown[]).map((i) => {
+          if (!isObject(i) || !isTime(i.createdAt)) return bad();
+          const bookId = i.bookId ?? null;
+          if (bookId !== null && (typeof bookId !== "string" || !BOOK_ID.test(bookId))) bad();
+          return {
+            bookId: bookId as string | null,
+            view: bookId === null ? null : cleanView(i.view),
+            title: cleanText(i.title, MAX_TITLE, "title", true),
+            comment: cleanText(i.comment, MAX_COMMENT, "comment"),
+            quote: cleanText(i.quote, MAX_QUOTE, "quote"),
+            createdAt: i.createdAt,
+          };
+        });
+        return { user: p.user, title: cleanText(p.title, MAX_TITLE, "title", true), description: cleanText(p.description, MAX_DESCRIPTION, "description"), createdAt: p.createdAt, updatedAt: p.updatedAt, items };
+      });
+    } catch (err) {
+      if (err instanceof ProjectError) bad(); // a text that does not fit the limits is not a backup this version can restore
+      throw err;
+    }
+  }
+
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -168,6 +202,7 @@ export function parseBackup(raw: unknown): BackupFile {
     ...(cleanSources ? { sources: cleanSources } : {}),
     ...(cleanProgress ? { progress: cleanProgress } : {}),
     ...(cleanDisplay ? { display: cleanDisplay } : {}),
+    ...(cleanProjects ? { projects: cleanProjects } : {}),
   };
 }
 
@@ -200,6 +235,20 @@ export class Backup {
       display: (this.db.query("SELECT user_id AS userId, book_id AS bookId, display, updated_at AS updatedAt FROM book_display ORDER BY updated_at").all() as { userId: number; bookId: string; display: string; updatedAt: number }[]).flatMap((d) =>
         nameOf.has(d.userId) ? [{ user: nameOf.get(d.userId)!, bookId: d.bookId, display: JSON.parse(d.display) as Display, updatedAt: d.updatedAt }] : [],
       ),
+      projects: (this.db.query("SELECT id, user_id AS userId, title, description, created_at AS createdAt, updated_at AS updatedAt FROM projects ORDER BY id").all() as { id: number; userId: number; title: string; description: string; createdAt: number; updatedAt: number }[]).flatMap((p) =>
+        nameOf.has(p.userId)
+          ? [
+              {
+                user: nameOf.get(p.userId)!,
+                title: p.title,
+                description: p.description,
+                createdAt: p.createdAt,
+                updatedAt: p.updatedAt,
+                items: (this.db.query("SELECT book_id AS bookId, view, title, comment, quote, created_at AS createdAt FROM project_items WHERE project_id = ? ORDER BY position, id").all(p.id) as { bookId: string | null; view: string | null; title: string; comment: string; quote: string; createdAt: number }[]).map((i) => ({ ...i, view: i.view === null ? null : JSON.parse(i.view) })),
+              },
+            ]
+          : [],
+      ),
     };
   }
 
@@ -214,6 +263,7 @@ export class Backup {
       this.db.run("DELETE FROM shares");
       this.db.run("DELETE FROM progress"); // goes with the users, whatever the backup holds
       this.db.run("DELETE FROM book_display");
+      this.db.run("DELETE FROM projects"); // and their items; goes with the users, whatever the backup holds
       this.db.run("DELETE FROM users");
       const ids = new Map<string, number>();
       for (const u of file.users) {
@@ -223,6 +273,10 @@ export class Backup {
       for (const b of file.bookmarks) this.db.query("INSERT INTO bookmarks (user_id, book_id, label, view, created_at) VALUES (?, ?, ?, ?, ?)").run(ids.get(b.user.toLowerCase())!, b.bookId, b.label, JSON.stringify(b.view), b.createdAt);
       for (const p of file.progress ?? []) this.db.query("INSERT INTO progress (user_id, book_id, view, label, updated_at) VALUES (?, ?, ?, ?, ?)").run(ids.get(p.user.toLowerCase())!, p.bookId, p.view === null ? null : JSON.stringify(p.view), p.label, p.updatedAt);
       for (const d of file.display ?? []) this.db.query("INSERT INTO book_display (user_id, book_id, display, updated_at) VALUES (?, ?, ?, ?)").run(ids.get(d.user.toLowerCase())!, d.bookId, JSON.stringify(d.display), d.updatedAt);
+      for (const p of file.projects ?? []) {
+        const { id } = this.db.query("INSERT INTO projects (user_id, title, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id").get(ids.get(p.user.toLowerCase())!, p.title, p.description, p.createdAt, p.updatedAt) as { id: number };
+        p.items.forEach((i, position) => this.db.query("INSERT INTO project_items (project_id, position, book_id, view, title, comment, quote, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(id, position, i.bookId, i.view === null ? null : JSON.stringify(i.view), i.title, i.comment, i.quote, i.createdAt));
+      }
       if (file.sources) {
         this.db.run("DELETE FROM sources");
         for (const source of file.sources) this.db.query("INSERT INTO sources (name, url, created_at) VALUES (?, ?, ?)").run(source.name, source.url, Date.now());

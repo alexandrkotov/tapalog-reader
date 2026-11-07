@@ -6,6 +6,7 @@ import { BackupError, parseBackup, type Backup, type BackupFile } from "./backup
 import type { Bookmarks } from "./bookmarks";
 import { parseDisplay, type DisplayStore } from "./display";
 import type { ProgressStore } from "./progress";
+import { ProjectError, type ProjectItem, type Projects } from "./projects";
 import type { ConfigStore } from "./config";
 import { COVER_FORMATS, MAX_COVER_BYTES, type Covers } from "./covers";
 import { BrowseError, browse as listFolders } from "./browse";
@@ -34,6 +35,7 @@ export interface App {
   covers: Covers;
   bookmarks: Bookmarks;
   progress: ProgressStore;
+  projects: Projects;
   display: DisplayStore;
   backup: Backup;
   sources: Sources;
@@ -153,6 +155,12 @@ function buildRoutes(app: App, origin: Origin) {
   }
   const bad = (message = "bad request") => json({ error: message }, 400);
   const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const wholeNumber = (v: string) => (/^\d{1,15}$/.test(v) ? Number(v) : -1); // -1 names nothing
+  /** A project item with what the page needs to show its book; a book that left the library is marked, and the item keeps its notes and quote. */
+  const withBook = (item: ProjectItem) => {
+    const info = item.bookId ? app.library.byId(item.bookId) : null;
+    return { ...item, book: info ? { name: info.name, ext: info.ext, path: info.path } : null, missing: item.bookId !== null && !info };
+  };
 
   /** Runs one library edit; a refused edit answers with a short code the page turns into words. */
   async function edit(req: Request, change: (data: Record<string, unknown>) => void): Promise<Response> {
@@ -389,6 +397,96 @@ function buildRoutes(app: App, origin: Origin) {
         if (!me) return unauthorized();
         const label = (await body(req))?.label;
         return typeof label === "string" && app.bookmarks.rename(me.id, Number(param(req, "id")), label) ? json({ ok: true }) : notFound();
+      },
+    },
+
+    // ----- projects: a signed-in reader's own collections of places in books and notes -----
+    "/api/projects": {
+      GET: (req: Request) => {
+        const me = user(req);
+        return me ? json({ projects: app.projects.list(me.id) }) : unauthorized();
+      },
+      POST: async (req: Request) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const data = await body(req);
+        if (!data) return bad("bad project");
+        try {
+          return json({ project: app.projects.create(me.id, data.title, data.description) });
+        } catch (err) {
+          return bad(err instanceof ProjectError ? err.message : "bad project");
+        }
+      },
+    },
+    "/api/projects/:id": {
+      GET: (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const id = wholeNumber(param(req, "id"));
+        const project = app.projects.get(me.id, id);
+        const items = project ? app.projects.items(me.id, id) : null;
+        return project && items ? json({ project, items: items.map(withBook) }) : notFound();
+      },
+      POST: async (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const data = await body(req);
+        if (!data) return bad("bad project");
+        try {
+          return app.projects.update(me.id, wholeNumber(param(req, "id")), { title: data.title, description: data.description }) ? json({ ok: true }) : notFound();
+        } catch (err) {
+          return bad(err instanceof ProjectError ? err.message : "bad project");
+        }
+      },
+      DELETE: (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        return app.projects.remove(me.id, wholeNumber(param(req, "id"))) ? json({ ok: true }) : notFound();
+      },
+    },
+    "/api/projects/:id/items": {
+      POST: async (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const data = await body(req);
+        if (!data) return bad("bad item");
+        const bookId = data.bookId === undefined || data.bookId === null ? null : app.library.byId(str(data.bookId))?.id; // only books of this library
+        if (bookId === undefined) return bad("bad item");
+        try {
+          const item = app.projects.addItem(me.id, wholeNumber(param(req, "id")), { bookId, view: data.view, title: data.title, comment: data.comment, quote: data.quote });
+          return item ? json({ item: withBook(item) }) : notFound();
+        } catch (err) {
+          return bad(err instanceof ProjectError ? err.message : "bad item");
+        }
+      },
+    },
+    "/api/projects/:id/items/:item": {
+      POST: async (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const data = await body(req);
+        if (!data) return bad("bad item");
+        try {
+          return app.projects.updateItem(me.id, wholeNumber(param(req, "id")), wholeNumber(param(req, "item")), { title: data.title, comment: data.comment, quote: data.quote }) ? json({ ok: true }) : notFound();
+        } catch (err) {
+          return bad(err instanceof ProjectError ? err.message : "bad item");
+        }
+      },
+      DELETE: (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        return app.projects.removeItem(me.id, wholeNumber(param(req, "id")), wholeNumber(param(req, "item"))) ? json({ ok: true }) : notFound();
+      },
+    },
+    "/api/projects/:id/order": {
+      POST: async (req: Bun.BunRequest) => {
+        const me = user(req);
+        if (!me) return unauthorized();
+        const data = await body(req);
+        const order = data?.items;
+        if (!Array.isArray(order) || !order.every((n) => Number.isInteger(n))) return bad("bad order");
+        if (!app.projects.get(me.id, wholeNumber(param(req, "id")))) return notFound();
+        return app.projects.reorder(me.id, wholeNumber(param(req, "id")), order as number[]) ? json({ ok: true }) : bad("bad order");
       },
     },
 
