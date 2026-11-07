@@ -7,6 +7,7 @@ import type { Crop, Display } from "../display";
 import { clipToCrop, cropFor, intoCrop, outOfCrop, rectIntoCrop, rectOutOfCrop } from "./crop";
 import { createCropEditor } from "./cropEditor";
 import { readerMode, setReaderMode } from "../readerMode";
+import { pdfDocumentOptions } from "./pdfAssets";
 import { mountThumbs, type Thumbs } from "./thumbs";
 import { fileOf, offsetFor, printedOf } from "./printed";
 import { rectToPage, rectToScreen, toPage, toScreen } from "./rotation";
@@ -586,15 +587,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
 
   // ---------- open the document ----------
 
-  const task = pdfjsLib.getDocument({
-    url: options.url,
-    withCredentials: true,
-    wasmUrl: "/pdfjs/wasm/",
-    cMapUrl: "/pdfjs/cmaps/",
-    cMapPacked: true,
-    standardFontDataUrl: "/pdfjs/standard_fonts/",
-    iccUrl: "/pdfjs/iccs/",
-  });
+  const task = pdfjsLib.getDocument(pdfDocumentOptions(options.url));
   task.onPassword = (update: (password: string) => void, reason: number) => {
     const entered = prompt(reason === 2 ? t("pdf.passwordAgain") : t("pdf.password"));
     if (entered === null) options.onError(new Error(t("pdf.passwordNeeded")));

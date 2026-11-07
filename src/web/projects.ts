@@ -1,6 +1,7 @@
 import { authPanel, type Me } from "./account";
 import { bookHash } from "./bookmarks";
 import { lang, t } from "./i18n";
+import { createPictures, type Pictures } from "./projectPictures";
 import { api, ApiError, badge, el, openModal, store, type Modal } from "./ui";
 
 interface ProjectSummary {
@@ -38,7 +39,8 @@ const date = (ms: number) => new Date(ms).toLocaleDateString(lang());
  * on the server under the reader's name, so anonymous visitors are offered an account first.
  */
 export function openProjects(ctx: ProjectsContext): void {
-  const modal = openModal(t("projects.title"));
+  const pictures = createPictures();
+  const modal = openModal(t("projects.title"), () => pictures.destroy());
   if (!ctx.me.user) {
     modal.body.append(
       el("p", { class: "muted", textContent: t("projects.signIn") }),
@@ -49,7 +51,7 @@ export function openProjects(ctx: ProjectsContext): void {
     );
     return;
   }
-  void showList(modal);
+  void showList(modal, pictures);
 }
 
 export interface AddToProjectContext {
@@ -72,7 +74,8 @@ const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
  * one. The reading place is untouched: the dialog is over the book, and the place is taken when it opens.
  */
 export function openAddToProject(ctx: AddToProjectContext): void {
-  const modal = openModal(t("projects.addTitle"));
+  const pictures = createPictures();
+  const modal = openModal(t("projects.addTitle"), () => pictures.destroy());
   if (!ctx.me.user) {
     modal.body.append(
       el("p", { class: "muted", textContent: t("projects.signIn") }),
@@ -136,7 +139,7 @@ export function openAddToProject(ctx: AddToProjectContext): void {
       store.set(LAST_PROJECT, String(target.id));
       const chosen = target;
       const open = el("button", { type: "button", class: "btn primary", textContent: t("projects.open") });
-      open.addEventListener("click", () => void showProject(modal, chosen.id));
+      open.addEventListener("click", () => void showProject(modal, chosen.id, pictures));
       const close = el("button", { type: "button", class: "btn", textContent: t("common.close") });
       close.addEventListener("click", () => modal.close());
       modal.body.replaceChildren(el("p", { class: "project-added", textContent: t("projects.added", { title: chosen.title }) }), el("div", { class: "row project-buttons" }, open, close));
@@ -164,7 +167,7 @@ async function attempt(error: HTMLElement, run: () => Promise<unknown>): Promise
 const field = (props: { value?: string; placeholder?: string; max: number; label?: string }) => el("input", { type: "text", maxLength: props.max, value: props.value ?? "", placeholder: props.placeholder ?? "", autocomplete: "off", ariaLabel: props.label ?? props.placeholder ?? "" });
 const area = (props: { value?: string; placeholder?: string; max: number }) => el("textarea", { rows: 3, maxLength: props.max, value: props.value ?? "", placeholder: props.placeholder ?? "", ariaLabel: props.placeholder ?? "" });
 
-async function showList(modal: Modal): Promise<void> {
+async function showList(modal: Modal, pictures: Pictures): Promise<void> {
   const error = el("div", { class: "error" });
   const list = el("div", { class: "project-list" });
   const name = field({ max: 200, placeholder: t("projects.new") });
@@ -175,7 +178,7 @@ async function showList(modal: Modal): Promise<void> {
     const title = name.value.trim();
     if (!title) return;
     let made: { project: ProjectSummary } | null = null;
-    if (await attempt(error, async () => (made = await api<{ project: ProjectSummary }>("/api/projects", { title })))) void showProject(modal, made!.project.id);
+    if (await attempt(error, async () => (made = await api<{ project: ProjectSummary }>("/api/projects", { title })))) void showProject(modal, made!.project.id, pictures);
   });
   modal.body.replaceChildren(form, error, list);
 
@@ -188,11 +191,11 @@ async function showList(modal: Modal): Promise<void> {
     ...(projects.length
       ? projects.map((p) => {
           const go = el("button", { type: "button", class: "link project-go", textContent: p.title });
-          go.addEventListener("click", () => void showProject(modal, p.id));
+          go.addEventListener("click", () => void showProject(modal, p.id, pictures));
           const del = el("button", { type: "button", class: "icon-btn small", title: t("common.delete"), textContent: "×" });
           del.addEventListener("click", async () => {
             if (!confirm(t("projects.deleteConfirm", { title: p.title }))) return;
-            if (await attempt(error, () => api(`/api/projects/${p.id}`, undefined, "DELETE"))) void showList(modal);
+            if (await attempt(error, () => api(`/api/projects/${p.id}`, undefined, "DELETE"))) void showList(modal, pictures);
           });
           const meta = `${t("projects.items", { n: p.items })} · ${date(p.updatedAt)}`;
           return el("div", { class: "project-row" }, el("div", { class: "grow" }, go, ...(p.description ? [el("div", { class: "muted small project-about", textContent: p.description })] : []), el("div", { class: "muted small", textContent: meta })), del);
@@ -201,7 +204,7 @@ async function showList(modal: Modal): Promise<void> {
   );
 }
 
-async function showProject(modal: Modal, id: number): Promise<void> {
+async function showProject(modal: Modal, id: number, pictures: Pictures): Promise<void> {
   let project: ProjectSummary | null = null;
   let items: Item[] = [];
   let editingHead = false;
@@ -214,7 +217,7 @@ async function showProject(modal: Modal, id: number): Promise<void> {
       project = data.project;
       items = data.items;
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) return void showList(modal); // it is gone (deleted elsewhere): back to the list
+      if (err instanceof ApiError && err.status === 404) return void showList(modal, pictures); // it is gone (deleted elsewhere): back to the list
       error.textContent = t("projects.failed");
     }
     draw();
@@ -266,12 +269,15 @@ async function showProject(modal: Modal, id: number): Promise<void> {
     }
 
     let name: HTMLElement;
+    const picture = el("div", { class: "project-slot" }); // a picture of the area appears here when it scrolls into view, for the formats that can be pictured
     if (item.bookId && !item.missing) {
-      name = el("button", { type: "button", class: "link project-go", textContent: item.title });
-      name.addEventListener("click", () => {
+      const go = () => {
         modal.close();
         location.hash = bookHash(item.bookId!, item.view);
-      });
+      };
+      name = el("button", { type: "button", class: "link project-go", textContent: item.title });
+      name.addEventListener("click", go);
+      pictures.show(picture, item, go);
     } else name = el("span", { class: "project-go", textContent: item.title });
 
     const source = item.missing ? el("div", { class: "project-missing", textContent: t("projects.missing") }) : item.book ? el("div", { class: "muted small project-source" }, `${item.book.name} `, badge(item.book.ext)) : el("div", { class: "muted small project-source", textContent: t("projects.note") });
@@ -293,6 +299,7 @@ async function showProject(modal: Modal, id: number): Promise<void> {
         { class: "grow" },
         name,
         source,
+        picture,
         ...(item.quote ? [el("blockquote", { class: "project-quote", textContent: item.quote })] : []),
         ...(item.comment ? [el("p", { class: "project-comment", textContent: item.comment })] : []),
       ),
@@ -306,7 +313,7 @@ async function showProject(modal: Modal, id: number): Promise<void> {
   function draw(): void {
     if (!project) return;
     const back = el("button", { type: "button", class: "btn project-back", textContent: t("projects.back") });
-    back.addEventListener("click", () => void showList(modal));
+    back.addEventListener("click", () => void showList(modal, pictures));
 
     const title = field({ max: 200, placeholder: t("projects.itemTitle") });
     const comment = area({ max: 5000, placeholder: t("projects.comment") });

@@ -241,6 +241,8 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .bookmark-go { text-align: left; font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
 .project-row, .project-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .project-go { text-align: left; font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
+.project-thumb { display: block; margin-top: 6px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: #fff; max-width: 100%; line-height: 0; cursor: pointer; overflow: hidden; }
+.project-thumb canvas { max-width: 100%; height: auto !important; }
 .project-head { display: flex; align-items: flex-start; gap: 8px; }
 .project-title { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
 .project-about { white-space: pre-wrap; overflow-wrap: anywhere; }

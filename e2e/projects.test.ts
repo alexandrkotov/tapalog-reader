@@ -113,9 +113,65 @@ e2e("a project is built, ordered and edited on its screen, opens books where the
   expect(await page.$$(".project-row")).toHaveLength(1); // kept when the question is declined
   page.once("dialog", (d) => void d.accept());
   await page.click(".project-row button[title='Delete']");
-  await page.waitForSelector(".project-list .muted");
+  await page.waitForFunction(() => !document.querySelector(".project-row")); // the list is drawn again without it
   expect(await page.textContent(".project-list .muted")).toContain("No projects yet");
   expect((await api(ctx, inst, "/api/projects")).projects).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+e2e("project items of a PDF show a picture of their area (the whole page without one), turned as the reader turned the book", async () => {
+  const made = await api(ctx, inst, "/api/projects", { title: "Pictures" });
+  const id = made.project.id;
+  const add = (body: unknown) => api(ctx, inst, `/api/projects/${id}/items`, body);
+  // the red bar the fixture draws on page 5 lies at about x 0.13..0.25, y 0.64..0.76 of the page
+  await add({ bookId: pdfId, view: { v: 1, page: 5, region: { x: 0.15, y: 0.66, w: 0.06, h: 0.09 } }, title: "The bar" });
+  await add({ bookId: pdfId, view: { v: 1, page: 3 }, title: "A whole page" });
+  await add({ bookId: txtId, view: { v: 1 }, title: "Some text" });
+  await add({ title: "A note" });
+
+  const shapes = (page: Page) =>
+    page.$$eval(".project-item", (rows) =>
+      rows.map((row) => {
+        const canvas = row.querySelector<HTMLCanvasElement>(".project-thumb canvas");
+        if (!canvas) return null;
+        const px = canvas.getContext("2d")!.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
+        return { ratio: canvas.width / canvas.height, red: px[0]! > 150 && px[1]! < 100 && px[2]! < 100 };
+      }),
+    );
+  const openProject = async (page: Page) => {
+    await page.click("button:has-text('My projects')");
+    await page.click(".project-row .project-go");
+    await page.waitForSelector(".project-item");
+  };
+
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(inst.url + "/");
+  await openProject(page);
+  await page.waitForFunction(() => document.querySelectorAll(".project-thumb canvas").length === 2);
+  const [bar, whole, text, note] = await shapes(page);
+  expect(bar!.ratio).toBeCloseTo((0.06 * 595) / (0.09 * 842), 1); // the area's own shape, not the page's
+  expect(bar!.red).toBe(true); // and it is the area that is drawn: the middle of it is the red bar
+  expect(whole!.ratio).toBeCloseTo(595 / 842, 1);
+  expect(text).toBeNull();
+  expect(note).toBeNull();
+
+  // a picture opens the book where the item was saved
+  await page.click(".project-item:first-child .project-thumb");
+  await page.waitForSelector(".pdf-scroll .page canvas");
+  expect(await page.evaluate(() => (document.querySelector(".pdf-page-input") as HTMLInputElement).value)).toBe("5");
+
+  // the reader turned this book: the picture is turned the same way
+  const turned = await ctx.request.put(`${inst.url}/api/display/${pdfId}`, { data: { display: { rotation: 90 } }, headers: { Origin: inst.url } });
+  expect(turned.ok()).toBe(true);
+  await openProject(page);
+  await page.waitForFunction(() => document.querySelectorAll(".project-thumb canvas").length === 2);
+  const [turnedBar, turnedWhole] = await shapes(page);
+  expect(turnedBar!.ratio).toBeCloseTo((0.09 * 842) / (0.06 * 595), 1);
+  expect(turnedBar!.red).toBe(true);
+  expect(turnedWhole!.ratio).toBeCloseTo(842 / 595, 1);
+  await ctx.request.put(`${inst.url}/api/display/${pdfId}`, { data: { display: {} }, headers: { Origin: inst.url } });
   expect(errors).toEqual([]);
   await page.close();
 });
