@@ -20,13 +20,20 @@ function regionOf(value: unknown): Rect {
   return w > 0.001 && h > 0.001 ? { x, y, w, h } : WHOLE;
 }
 
+/** The box a picture is fitted in (CSS pixels) and how sharp it is drawn (device pixels per CSS pixel). */
+export interface PictureSize {
+  w: number;
+  h: number;
+  dpr?: number;
+}
+
 export interface PdfPictures {
   /**
    * The area of a view (or the page, when it has none) drawn upright as the reader sees the book (`turn` is the
    * reader's own turn of the pages), or null when it cannot be drawn: the page is not there, the PDF needs a
    * password, the file cannot be read. Nothing but the file the reader may open is used.
    */
-  picture(view: unknown, turn: number, signal: AbortSignal): Promise<HTMLCanvasElement | null>;
+  picture(view: unknown, turn: number, signal: AbortSignal, size?: PictureSize): Promise<HTMLCanvasElement | null>;
   close(): void;
 }
 
@@ -40,7 +47,7 @@ export function openPdfPictures(url: string): PdfPictures {
     return task.promise;
   };
   return {
-    async picture(view, turn, signal) {
+    async picture(view, turn, signal, size = { w: BOX_W, h: BOX_H }) {
       try {
         const asked = Math.round(Number((view as { page?: unknown } | null)?.page));
         const pdf = await load();
@@ -49,8 +56,8 @@ export function openPdfPictures(url: string): PdfPictures {
         const rotation = (page.rotate + turn) % 360;
         const base = page.getViewport({ scale: 1, rotation });
         const r = rectToScreen(regionOf((view as { region?: unknown }).region), turn); // the area as the turned page shows it
-        const dpr = Math.min(2, devicePixelRatio || 1);
-        const scale = Math.min(MAX_SCALE, BOX_W / (r.w * base.width), BOX_H / (r.h * base.height));
+        const dpr = size.dpr ?? Math.min(2, devicePixelRatio || 1);
+        const scale = Math.min(MAX_SCALE, size.w / (r.w * base.width), size.h / (r.h * base.height));
         const k = scale * dpr;
         const viewport = page.getViewport({ scale: k, rotation, offsetX: -r.x * base.width * k, offsetY: -r.y * base.height * k });
         const canvas = document.createElement("canvas");

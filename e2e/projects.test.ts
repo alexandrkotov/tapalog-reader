@@ -219,3 +219,67 @@ e2e("a project is saved as a Markdown file whose links open the books where the 
   expect(errors).toEqual([]);
   await page.close();
 });
+
+e2e("a project is printed with its sources, quotes and comments, and with pictures of the saved areas when asked", async () => {
+  const made = await api(ctx, inst, "/api/projects", { title: "Print me", description: "For the bench" });
+  const id = made.project.id;
+  const add = (body: unknown) => api(ctx, inst, `/api/projects/${id}/items`, body);
+  await add({ bookId: pdfId, view: { v: 1, page: 5, region: { x: 0.15, y: 0.66, w: 0.06, h: 0.09 } }, title: "The bar", comment: "check its length" });
+  await add({ bookId: pdfId, view: { v: 1, page: 3 }, title: "A whole page" });
+  await add({ bookId: txtId, view: { v: 1 }, title: "Coil table", quote: "turns per layer" });
+  await add({ title: "Order the parts", comment: "capacitors first" });
+
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(inst.url + "/");
+  await page.evaluate(() => ((window as any).print = () => ((window as any).__printed = true))); // the print window cannot be driven here
+  await page.click("button:has-text('My projects')");
+  await page.click(".project-row .project-go");
+  await page.waitForSelector(".project-item");
+
+  const printed = async (choice: string) => {
+    await page.evaluate(() => ((window as any).__printed = false));
+    await page.click(".project-head button[title='Print or save as PDF']");
+    await page.waitForSelector(".print-choices");
+    expect(await page.$$eval(".print-choice input", (r) => r.map((x) => (x as HTMLInputElement).checked))).toEqual([true, false]); // pictures are offered first
+    await page.click(`.print-choice input[value=${choice}]`);
+    await page.click(".modal .btn.primary");
+    await page.waitForFunction(() => (window as any).__printed === true, null, { timeout: 60_000 });
+    return page.evaluate(async () => {
+      const root = document.getElementById("print-root")!.shadowRoot!;
+      const images = [...root.querySelectorAll("img")] as HTMLImageElement[];
+      await Promise.all(images.map((i) => i.decode()));
+      return {
+        title: root.querySelector("h1")?.textContent,
+        headings: [...root.querySelectorAll("h2")].map((h) => h.textContent),
+        sources: [...root.querySelectorAll(".source")].map((s) => s.textContent),
+        quotes: [...root.querySelectorAll("blockquote")].map((q) => q.textContent),
+        comments: [...root.querySelectorAll(".entry p")].map((p) => p.textContent),
+        ratios: images.map((i) => i.naturalWidth / i.naturalHeight),
+        text: root.textContent ?? "",
+        printing: document.body.classList.contains("printing"),
+      };
+    });
+  };
+
+  const withPictures = await printed("pictures");
+  expect(withPictures).toMatchObject({
+    title: "Print me",
+    headings: ["1. The bar", "2. A whole page", "3. Coil table", "4. Order the parts"],
+    sources: ["pages (PDF), page 5", "pages (PDF), page 3", "notes (TXT)", "Note"],
+    quotes: ["turns per layer"],
+    comments: ["check its length", "capacitors first"],
+    printing: true,
+  });
+  expect(withPictures.text).toContain("For the bench");
+  expect(withPictures.ratios).toHaveLength(2); // a PDF item has a picture, a text book and a note have none
+  expect(withPictures.ratios[0]).toBeCloseTo((0.06 * 595) / (0.09 * 842), 1); // the area, not the page
+  expect(withPictures.ratios[1]).toBeCloseTo(595 / 842, 1);
+
+  const plain = await printed("text");
+  expect(plain.ratios).toEqual([]);
+  expect(plain.headings).toEqual(withPictures.headings);
+  expect(plain.quotes).toEqual(["turns per layer"]);
+  expect(errors).toEqual([]);
+  await page.close();
+});

@@ -101,7 +101,7 @@ export function addPageImage(root: ShadowRoot, url: string): void {
 }
 
 /** Asks what to print, prepares it, and opens the browser's print window. */
-export function openPrintDialog(options: { name: string; fileUrl: string; job: PrintJob }): void {
+export function openPrintDialog(options: { name?: string; fileUrl?: string; job: PrintJob }): void {
   const { job } = options;
   let busy: AbortController | null = null;
   const modal = openModal(t("print.title"), () => busy?.abort());
@@ -134,14 +134,14 @@ export function openPrintDialog(options: { name: string; fileUrl: string; job: P
 
   const go = el("button", { type: "button", class: "btn primary", textContent: t("print.go") });
   const cancel = el("button", { type: "button", class: "btn", textContent: t("print.cancel") });
-  const download = el("a", { class: "muted", href: options.fileUrl, download: options.name, textContent: t("print.download") });
+  const download = options.fileUrl ? el("a", { class: "muted", href: options.fileUrl, download: options.name ?? "", textContent: t("print.download") }) : null; // what is not a file (a project) has no original to download
   modal.body.append(
     el("div", { class: "muted", textContent: t("print.what") }),
     el("div", { class: "print-choices" }, ...radios),
     rangeBox,
     el("div", { class: "muted small", textContent: t("print.hint") }),
     status,
-    el("div", { class: "row" }, go, cancel, el("span", { class: "grow" }), download),
+    el("div", { class: "row" }, go, cancel, el("span", { class: "grow" }), ...(download ? [download] : [])),
   );
   sync();
 

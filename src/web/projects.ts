@@ -3,6 +3,7 @@ import { bookHash } from "./bookmarks";
 import { lang, t } from "./i18n";
 import { markdownFileName, projectMarkdown } from "./projectMarkdown";
 import { createPictures, type Pictures } from "./projectPictures";
+import { printProject } from "./projectPrint";
 import { api, ApiError, badge, el, openModal, store, type Modal } from "./ui";
 
 interface ProjectSummary {
@@ -270,7 +271,9 @@ async function showProject(modal: Modal, id: number, pictures: Pictures): Promis
     edit.addEventListener("click", () => ((editingHead = true), (editingItem = null), draw()));
     const save = el("button", { type: "button", class: "icon-btn small project-export", title: t("projects.export"), ariaLabel: t("projects.export"), textContent: "⤓" });
     save.addEventListener("click", () => exportMarkdown(p));
-    return el("div", { class: "project-head" }, el("div", { class: "grow" }, el("h3", { class: "project-title", textContent: p.title }), ...(p.description ? [el("div", { class: "muted project-about", textContent: p.description })] : [])), save, edit);
+    const print = el("button", { type: "button", class: "icon-btn small project-print", title: t("print.title"), ariaLabel: t("print.title"), textContent: "🖶" });
+    print.addEventListener("click", () => printProject(p, items));
+    return el("div", { class: "project-head" }, el("div", { class: "grow" }, el("h3", { class: "project-title", textContent: p.title }), ...(p.description ? [el("div", { class: "muted project-about", textContent: p.description })] : [])), print, save, edit);
   }
 
   function row(item: Item, index: number): HTMLElement {
