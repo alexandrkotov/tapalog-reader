@@ -15,14 +15,18 @@ async function startAndRead(args: string[], env: Record<string, string> = {}): P
   let out = "";
   const reader = child.stdout.getReader();
   const deadline = Date.now() + 15_000;
+  // One read stays pending until it delivers: starting a new read while an earlier one is still waiting would let the
+  // earlier one swallow the next chunk (a slow start, as on a Windows runner, lost the line with the address).
+  let pending = reader.read();
   while (Date.now() < deadline && !/Data folder/.test(out)) {
-    const next = await Promise.race([reader.read(), Bun.sleep(500).then(() => null)]);
+    const next = await Promise.race([pending, Bun.sleep(500).then(() => null)]);
     if (next === null) {
       if (child.exitCode !== null) break;
       continue;
     }
     if (next.done) break;
     out += new TextDecoder().decode(next.value);
+    pending = reader.read();
   }
   child.kill();
   await child.exited;
@@ -83,11 +87,13 @@ async function startKept(data: string): Promise<{ child: ReturnType<typeof Bun.s
   const reader = (child.stdout as ReadableStream<Uint8Array>).getReader();
   let out = "";
   const deadline = Date.now() + 15_000;
+  let pending = reader.read(); // one read stays pending until it delivers (see startAndRead)
   while (Date.now() < deadline && !/Data folder/.test(out)) {
-    const next = await Promise.race([reader.read(), Bun.sleep(500).then(() => null)]);
+    const next = await Promise.race([pending, Bun.sleep(500).then(() => null)]);
     if (next === null) continue;
     if (next.done) break;
     out += new TextDecoder().decode(next.value);
+    pending = reader.read();
   }
   const port = Number(/Tapalog Reader\s+http:\/\/localhost:(\d+)\//.exec(out)?.[1]);
   return { child, port };
