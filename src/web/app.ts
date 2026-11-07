@@ -3,7 +3,7 @@ import { examplePath, pickFolder } from "./folderPicker";
 import { authScreen, openAuthDialog, setupScreen, signOut, type Me } from "./account";
 import { openAdmin } from "./admin";
 import { openBookmarks } from "./bookmarks";
-import { openProjects } from "./projects";
+import { openAddToProject, openProjects } from "./projects";
 import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
@@ -664,8 +664,10 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
   tracker = mine;
   const share = el("button", { type: "button", class: "btn", textContent: t("share.button") });
   const marks = el("button", { type: "button", class: "btn", textContent: `★ ${t("bookmark.title")}` });
+  const toProject = el("button", { type: "button", class: "btn", textContent: `＋ ${t("projects.add")}`, title: t("projects.addHint") });
   share.dataset.tour = "share";
   marks.dataset.tour = "marks";
+  toProject.dataset.tour = "project";
   showReader({
     name: book.name,
     ext: book.ext,
@@ -678,7 +680,8 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
     bar: (current) => {
       share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.name, ext: book.ext, view: hasShareableView(book.ext) ? (current()?.getView?.() ?? null) : null }));
       marks.addEventListener("click", () => me && openBookmarks({ me, book, reader: current, onSignedIn: () => void boot() }));
-      return [marks, share];
+      toProject.addEventListener("click", () => me && openAddToProject({ me, book, reader: current, onSignedIn: () => void boot() }));
+      return [marks, toProject, share];
     },
   });
 }
@@ -746,6 +749,7 @@ function tourSteps(forReader = true): TourStep[] {
       { target: ".reader-bar .title", text: "tour.reader.title" },
       { target: "[data-tour=print]", text: "tour.reader.print" },
       { target: "[data-tour=marks]", text: "tour.reader.bookmarks" },
+      { target: "[data-tour=project]", text: "tour.reader.project" },
       { target: "[data-tour=share]", text: "tour.reader.share" },
       { target: ".reader-host .pdf-toolbar", text: "tour.reader.toolbar" },
       { target: "#tour", text: "tour.reader.more" },

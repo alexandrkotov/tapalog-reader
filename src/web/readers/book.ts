@@ -34,6 +34,8 @@ export interface BookReader {
   getView(): TextView | null;
   /** A name for the place on screen: the chapter and how far in. */
   getLabel(): string;
+  /** The passage the reader has selected (or, failing that, marked): a view that opens with it marked, and its text. */
+  getPassage(): { view: TextView; quote: string } | null;
   printJob(): PrintJob;
 }
 
@@ -140,6 +142,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   let flow: "paginated" | "scrolled" = read("tr.book.flow") === "scrolled" ? "scrolled" : "paginated";
   let mark: string | null = initial?.range ?? null;
   let markIndex: number | null = null;
+  let markText = ""; // the words of the mark made in this session; one opened from a link has no text at hand
   let selection: { index: number; range: Range } | null = null;
   let destroyed = false;
   let stopTheme = () => {};
@@ -265,6 +268,13 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     return { v: 1, cfi, ...(mark ? { range: mark } : {}) };
   }
 
+  function passage(): { view: TextView; quote: string } | null {
+    const cfi = view.lastLocation?.cfi;
+    if (!cfi) return null;
+    if (selection) return { view: { v: 1, cfi, range: view.getCFI(selection.index, selection.range) }, quote: selection.range.toString() };
+    return mark && markText ? { view: { v: 1, cfi, range: mark }, quote: markText } : null;
+  }
+
   /** Tells the shell what is on screen, at most every 250 ms and never twice the same. */
   function emit() {
     if (timer) clearTimeout(timer);
@@ -290,6 +300,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   async function setMark(cfi: string | null) {
     const old = mark;
     mark = cfi;
+    if (!cfi) markText = "";
     markIndex = cfi ? (view.resolveNavigation(cfi)?.index ?? null) : null;
     if (old) await view.addAnnotation({ value: old }, true).catch(() => undefined);
     clearButton.hidden = !mark;
@@ -300,6 +311,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   function markSelection() {
     if (!selection) return;
     const cfi = view.getCFI(selection.index, selection.range);
+    markText = selection.range.toString();
     selection.range.commonAncestorContainer.ownerDocument?.getSelection()?.removeAllRanges();
     selection = null;
     markButton.disabled = true;
@@ -377,7 +389,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const file = new File([await res.blob()], `book.${options.ext}`, { type: MIME[options.ext] ?? "" });
     await view.open(file);
-    if (destroyed) return { destroy() {}, getView: () => null, getLabel: () => "", printJob };
+    if (destroyed) return { destroy() {}, getView: () => null, getLabel: () => "", getPassage: () => null, printJob };
     applyFlow();
     setFont(fontPct);
     stopTheme = onTheme(() => view.renderer.setStyles?.(css()));
@@ -446,6 +458,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
       root.remove();
     },
     getView: currentView,
+    getPassage: passage,
     getLabel: () => [chapter.textContent, progress.textContent].filter(Boolean).join(" · "),
   };
 }

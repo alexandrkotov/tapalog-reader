@@ -252,6 +252,9 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .project-add h3 { margin: 0; font-size: 13px; color: var(--muted); }
 .project-buttons { justify-content: flex-start; }
 .project-back { align-self: flex-start; }
+.project-label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.project-label select { font: inherit; }
+.project-added { margin: 0; font-weight: 600; }
 .muted.small { font-size: 12px; }
 .icon-btn.small { width: 28px; height: 28px; font-size: 14px; flex: none; }
 

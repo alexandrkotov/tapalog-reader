@@ -1,7 +1,7 @@
 import { authPanel, type Me } from "./account";
 import { bookHash } from "./bookmarks";
 import { lang, t } from "./i18n";
-import { api, ApiError, badge, el, openModal, type Modal } from "./ui";
+import { api, ApiError, badge, el, openModal, store, type Modal } from "./ui";
 
 interface ProjectSummary {
   id: number;
@@ -50,6 +50,103 @@ export function openProjects(ctx: ProjectsContext): void {
     return;
   }
   void showList(modal);
+}
+
+export interface AddToProjectContext {
+  me: Me;
+  /** The book being read. */
+  book: { id: string; name: string };
+  /** The reader showing it: where it is, a suggested name, and the passage selected or marked in it (text formats). */
+  reader: () => { getView?(): unknown; getLabel?(): string; getPassage?(): { view: unknown; quote: string } | null } | null;
+  /** Called after the reader signed in or created an account. */
+  onSignedIn(): void;
+}
+
+const LAST_PROJECT = "tapalog.project"; // a convenience of this browser: the project the last place went to
+const NEW = "new";
+const MAX_QUOTE = 2000;
+const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
+
+/**
+ * Adds the place on screen (or the passage selected in a text book) to a project, choosing one or making a new
+ * one. The reading place is untouched: the dialog is over the book, and the place is taken when it opens.
+ */
+export function openAddToProject(ctx: AddToProjectContext): void {
+  const modal = openModal(t("projects.addTitle"));
+  if (!ctx.me.user) {
+    modal.body.append(
+      el("p", { class: "muted", textContent: t("projects.signIn") }),
+      authPanel(ctx.me, () => {
+        modal.close();
+        ctx.onSignedIn();
+      }),
+    );
+    return;
+  }
+  const reader = ctx.reader();
+  const passage = reader?.getPassage?.() ?? null;
+  const view = passage?.view ?? reader?.getView?.() ?? null;
+  const unknownPlace = !!reader?.getView && !view; // the book is still opening: nothing to come back to yet
+  const error = el("div", { class: "error" });
+
+  const projectSelect = el("select", { ariaLabel: t("projects.project") });
+  const newName = field({ max: 200, placeholder: t("projects.new") });
+  const title = field({ value: reader?.getLabel?.() || ctx.book.name, max: 200, placeholder: t("projects.itemTitle") });
+  const comment = area({ max: 5000, placeholder: t("projects.comment") });
+  const quoteText = passage ? oneLine(passage.quote).slice(0, MAX_QUOTE) : "";
+  const quote = quoteText ? area({ value: quoteText, max: MAX_QUOTE, placeholder: t("projects.quote") }) : null;
+  const submit = el("button", { type: "submit", class: "btn primary", textContent: t("projects.addTitle") });
+  const form = el("form", { class: "project-edit" }, el("label", { class: "project-label", textContent: t("projects.project") }, projectSelect), newName, title, ...(quote ? [quote] : []), comment, el("div", { class: "row project-buttons" }, submit), error);
+  modal.body.append(form);
+
+  let projects: ProjectSummary[] = [];
+  const showNew = () => (newName.hidden = projectSelect.value !== NEW);
+  projectSelect.addEventListener("change", showNew);
+  void api<{ projects: ProjectSummary[] }>("/api/projects")
+    .then((data) => {
+      projects = data.projects;
+      const last = Number(store.get(LAST_PROJECT));
+      projectSelect.replaceChildren(...projects.map((p) => el("option", { value: String(p.id), textContent: p.title })), el("option", { value: NEW, textContent: t("projects.newOption") }));
+      projectSelect.value = projects.some((p) => p.id === last) ? String(last) : projects.length ? String(projects[0]!.id) : NEW;
+      showNew();
+      queueMicrotask(() => (projectSelect.value === NEW ? newName : comment).focus());
+    })
+    .catch(() => (error.textContent = t("projects.failed")));
+
+  let created: ProjectSummary | null = null; // made by an attempt that then failed: a retry must not make a second one
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    error.textContent = "";
+    if (!projects.length && !created && !projectSelect.value) return; // the list has not arrived
+    if (unknownPlace) {
+      error.textContent = t("bookmark.noView");
+      return;
+    }
+    submit.disabled = true;
+    try {
+      let target = created ?? projects.find((p) => String(p.id) === projectSelect.value) ?? null;
+      if (!target) {
+        if (!newName.value.trim()) {
+          newName.focus();
+          return;
+        }
+        created = target = (await api<{ project: ProjectSummary }>("/api/projects", { title: newName.value })).project;
+      }
+      await api(`/api/projects/${target.id}/items`, { bookId: ctx.book.id, ...(view ? { view } : {}), title: title.value.trim() || ctx.book.name, comment: comment.value, ...(quote ? { quote: quote.value } : {}) });
+      store.set(LAST_PROJECT, String(target.id));
+      const chosen = target;
+      const open = el("button", { type: "button", class: "btn primary", textContent: t("projects.open") });
+      open.addEventListener("click", () => void showProject(modal, chosen.id));
+      const close = el("button", { type: "button", class: "btn", textContent: t("common.close") });
+      close.addEventListener("click", () => modal.close());
+      modal.body.replaceChildren(el("p", { class: "project-added", textContent: t("projects.added", { title: chosen.title }) }), el("div", { class: "row project-buttons" }, open, close));
+      close.focus();
+    } catch {
+      error.textContent = t("projects.failed");
+    } finally {
+      submit.disabled = false;
+    }
+  });
 }
 
 /** Runs a change and says so when the server refused it. */

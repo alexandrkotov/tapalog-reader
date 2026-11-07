@@ -18,6 +18,8 @@ export interface Reader {
   getView?(): unknown;
   /** A suggested name for a bookmark at the current place, when one can be worked out. */
   getLabel?(): string;
+  /** The passage the reader has selected or marked, for text formats: a view that opens with it marked, and its words. */
+  getPassage?(): { view: unknown; quote: string } | null;
   /** What can be printed or saved as PDF, for formats that can do it (not catalogs: their viewer exports PDF itself). */
   printJob?(): PrintJob;
 }
@@ -91,7 +93,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
     });
-    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), printJob: () => reader.printJob() };
+    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), getPassage: () => reader.getPassage(), printJob: () => reader.printJob() };
   }
 
   if (TEXT_FORMATS.has(spec.ext)) {
@@ -104,7 +106,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
     });
-    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), printJob: () => reader.printJob() };
+    return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), getPassage: () => reader.getPassage(), printJob: () => reader.printJob() };
   }
 
   const plugin = pluginFor(spec.ext); // after the built-in readers: a plugin adds formats, it does not replace what the program already opens

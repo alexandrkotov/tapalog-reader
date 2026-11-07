@@ -120,7 +120,7 @@ e2e("the quick tour is offered once, lights up each button in turn and can be st
   await ctx.close();
 });
 
-e2e("with a book open the tour is about reading it: the title, print, bookmarks, share and the reader's own buttons", async () => {
+e2e("with a book open the tour is about reading it: the title, print, bookmarks, projects, share and the reader's own buttons", async () => {
   const ctx = await signedIn(browser, inst);
   const page = await ctx.newPage();
   const errors = watchErrors(page);
@@ -132,7 +132,7 @@ e2e("with a book open the tour is about reading it: the title, print, bookmarks,
   await page.waitForSelector("[data-tour=print]:not([hidden])"); // shown when the reader says it can print
   await page.click("#tour");
   const total = Number((await page.textContent(".tour-count"))!.split(" of ")[1]);
-  expect(total).toBe(6);
+  expect(total).toBe(7);
   const seen: (string | null)[] = [];
   for (let i = 0; i < total; i++) {
     await page.waitForTimeout(300);
@@ -152,7 +152,7 @@ e2e("with a book open the tour is about reading it: the title, print, bookmarks,
     expect(card.y).toBeGreaterThanOrEqual(0);
     await page.click(".tour-card .btn.primary");
   }
-  expect(seen).toEqual(["title", "print", "marks", "share", "pdf-toolbar", "tour"]);
+  expect(seen).toEqual(["title", "print", "marks", "project", "share", "pdf-toolbar", "tour"]);
   expect(errors).toEqual([]);
   await ctx.close();
 });

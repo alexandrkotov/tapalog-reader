@@ -25,6 +25,8 @@ export interface TxtReader {
   getView(): TxtView;
   /** A name for the place on screen: how far into the text. */
   getLabel(): string;
+  /** The passage the reader has selected (or, failing that, marked): a view that opens with it marked, and its text. */
+  getPassage(): { view: TxtView; quote: string } | null;
   printJob(): PrintJob;
 }
 
@@ -214,6 +216,20 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
     if (a !== null && b !== null && a !== b) setMark([Math.min(a, b), Math.max(a, b)]);
   }
 
+  function passage(): { view: TxtView; quote: string } | null {
+    const sel = getSelection();
+    if (sel && !sel.isCollapsed && sel.rangeCount && body.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+      const r = sel.getRangeAt(0);
+      const a = offsetOf(r.startContainer, r.startOffset);
+      const b = offsetOf(r.endContainer, r.endOffset);
+      if (a !== null && b !== null && a !== b) {
+        const range: [number, number] = [Math.min(a, b), Math.max(a, b)];
+        return { view: { v: 1, offset: topOffset(), range }, quote: text.slice(range[0], range[1]) };
+      }
+    }
+    return mark ? { view: currentView(), quote: text.slice(mark[0], mark[1]) } : null;
+  }
+
   // ---------- view reporting ----------
   function currentView(): TxtView {
     return { v: 1, offset: topOffset(), ...(mark ? { range: [...mark] as [number, number] } : {}) };
@@ -254,7 +270,7 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
     const res = await fetch(options.url, { credentials: "include" });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     text = decodeText(new Uint8Array(await res.arrayBuffer()));
-    if (destroyed) return { destroy() {}, getView: () => ({ v: 1, offset: 0 }), getLabel: () => "", printJob: () => ({ choices: [], render: async () => undefined }) };
+    if (destroyed) return { destroy() {}, getView: () => ({ v: 1, offset: 0 }), getLabel: () => "", getPassage: () => null, printJob: () => ({ choices: [], render: async () => undefined }) };
     const initial = cleanView(options.view, text.length);
     mark = initial.range;
     render();
@@ -278,6 +294,7 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
       root.remove();
     },
     getView: currentView,
+    getPassage: passage,
     getLabel: () => progress.textContent ?? "",
     printJob: () => ({
       choices: [...(mark ? [{ id: "mark", label: t("print.mark") }] : []), { id: "all", label: t("print.text") }],
