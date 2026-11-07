@@ -239,6 +239,19 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .bookmark-list h3 { margin: 16px 0 6px; font-size: 13px; color: var(--muted); }
 .bookmark-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .bookmark-go { text-align: left; font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
+.project-row, .project-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.project-go { text-align: left; font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
+.project-head { display: flex; align-items: flex-start; gap: 8px; }
+.project-title { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.project-about { white-space: pre-wrap; overflow-wrap: anywhere; }
+.project-quote { margin: 6px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--border); color: var(--muted); font-style: italic; overflow-wrap: anywhere; }
+.project-comment { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.project-missing { margin-top: 2px; font-size: 12px; color: #c0392b; }
+.project-edit, .project-add { display: flex; flex-direction: column; gap: 8px; }
+.project-edit textarea, .project-add textarea { width: 100%; resize: vertical; font: inherit; }
+.project-add h3 { margin: 0; font-size: 13px; color: var(--muted); }
+.project-buttons { justify-content: flex-start; }
+.project-back { align-self: flex-start; }
 .muted.small { font-size: 12px; }
 .icon-btn.small { width: 28px; height: 28px; font-size: 14px; flex: none; }
 

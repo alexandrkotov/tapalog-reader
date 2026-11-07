@@ -3,6 +3,7 @@ import { examplePath, pickFolder } from "./folderPicker";
 import { authScreen, openAuthDialog, setupScreen, signOut, type Me } from "./account";
 import { openAdmin } from "./admin";
 import { openBookmarks } from "./bookmarks";
+import { openProjects } from "./projects";
 import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
@@ -756,6 +757,7 @@ function tourSteps(forReader = true): TourStep[] {
     { target: "#search", text: fullTextOn ? "tour.searchText" : "tour.search" },
     { target: "[data-tour=signin]", text: "tour.signin" },
     { target: "[data-tour=bookmarks]", text: "tour.bookmarks" },
+    { target: "[data-tour=projects]", text: "tour.projects" },
     { target: "[data-tour=links]", text: "tour.links" },
     { target: "[data-tour=edit]", text: "tour.edit" },
     { target: "[data-tour=link]", text: "tour.link" },
@@ -777,6 +779,7 @@ function renderAccount(): void {
   if (me?.user) {
     buttons.push(el("span", { class: "who", textContent: me.user.name }));
     buttons.push(button(t("account.bookmarks"), () => openBookmarks({ me: me!, book: null, reader: () => null, onSignedIn: () => void boot() }), "bookmarks"));
+    buttons.push(button(t("account.projects"), () => openProjects({ me: me!, onSignedIn: () => void boot() }), "projects"));
     buttons.push(button(t("account.links"), () => void openMyLinks(), "links"));
     if (me.user.role === "admin") {
       const edit = button(editing ? `✓ ${t("edit.done")}` : `✎ ${t("edit.start")}`, () => setEditing(!editing), "edit");

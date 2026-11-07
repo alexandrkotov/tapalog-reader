@@ -110,7 +110,7 @@ e2e("the quick tour is offered once, lights up each button in turn and can be st
     expect(card.y).toBeGreaterThanOrEqual(0);
     await page.click(".tour-card .btn.primary");
   }
-  expect(seen).toEqual(["panel-toggle", "panel", "search", "bookmarks", "links", "edit", "link", "settings", "theme", "lang"]);
+  expect(seen).toEqual(["panel-toggle", "panel", "search", "bookmarks", "projects", "links", "edit", "link", "settings", "theme", "lang"]);
   expect(await page.locator(".tour-card").count()).toBe(0); // the last step's button is "Done"
 
   await page.click("#tour");

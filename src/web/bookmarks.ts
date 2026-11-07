@@ -21,7 +21,9 @@ export interface BookmarkContext {
   onSignedIn(): void;
 }
 
-const hashFor = (b: Bookmark) => `#book=${b.bookId}&view=${encodeURIComponent(JSON.stringify(b.view))}`;
+/** The address that opens a book at a saved place (without a view, just the book). */
+export const bookHash = (bookId: string, view: unknown): string => (view === null || view === undefined ? `#book=${bookId}` : `#book=${bookId}&view=${encodeURIComponent(JSON.stringify(view))}`);
+const hashFor = (b: Bookmark) => bookHash(b.bookId, b.view);
 
 /**
  * A reader's bookmarks. Anonymous visitors are offered an account first: bookmarks live on the
