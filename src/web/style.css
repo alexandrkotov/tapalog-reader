@@ -243,7 +243,13 @@ input[type="text"], input[type="password"], select { padding: 6px 9px; border: 1
 .project-go { text-align: left; font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
 .project-thumb { display: block; margin-top: 6px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: #fff; max-width: 100%; line-height: 0; cursor: pointer; overflow: hidden; }
 .project-thumb canvas { max-width: 100%; height: auto !important; }
-.project-head { display: flex; align-items: flex-start; gap: 8px; }
+.project-head { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+.project-head .grow { min-width: 140px; }
+.project-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.project-action { height: 28px; padding: 0 10px; font-size: 13px; }
+.project-tools { display: flex; gap: 8px; flex: none; }
+.project-hint { margin: 6px 0 0; }
+.project-note-hint { margin: 0; }
 .project-title { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
 .project-about { white-space: pre-wrap; overflow-wrap: anywhere; }
 .project-quote { margin: 6px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--border); color: var(--muted); font-style: italic; overflow-wrap: anywhere; }
@@ -327,6 +333,25 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .tour-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
 .tour-skip { border: 0; background: none; padding: 2px 4px; color: var(--muted); font: inherit; cursor: pointer; text-decoration: underline; }
 .tour-skip:hover { color: var(--text); }
+.tour-toggle { margin-right: auto; border: 0; background: none; padding: 2px 4px; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+.tour-more { max-height: 55vh; overflow-y: auto; margin-bottom: 10px; font-size: 13px; }
+.tour-more p { margin: 0 0 8px; }
+.tour-pic { display: block; width: 100%; height: auto; margin: 0 0 10px; }
+.tp-box { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
+.tp-hot { stroke: var(--accent); stroke-width: 2; }
+.tp-item { fill: var(--hover); stroke: none; }
+.tp-primary { fill: var(--accent); stroke: none; }
+.tp-text { fill: var(--text); font: 11px system-ui, sans-serif; }
+.tp-bold { font-weight: 700; }
+.tp-muted { fill: var(--muted); }
+.tp-hot-text { fill: var(--accent); font-weight: 700; }
+.tp-primary-text { fill: #fff; font-weight: 700; }
+.tp-arrow { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.tp-badge { fill: #fff; font: 700 8px system-ui, sans-serif; }
+.tp-ink { fill: var(--text); }
+.tp-ink-text { fill: #222; }
+.tp-mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px; }
+.tp-region { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 4 2; }
 .tour-offer { right: 16px; bottom: 16px; width: min(320px, calc(100vw - 32px)); z-index: 40; }
 
 /* duplicates */

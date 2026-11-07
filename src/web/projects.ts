@@ -4,6 +4,7 @@ import { lang, t } from "./i18n";
 import { markdownFileName, projectMarkdown } from "./projectMarkdown";
 import { createPictures, type Pictures } from "./projectPictures";
 import { printProject } from "./projectPrint";
+import { startTour, type TourStep } from "./tour";
 import { api, ApiError, badge, el, openModal, store, type Modal } from "./ui";
 
 interface ProjectSummary {
@@ -166,6 +167,18 @@ async function attempt(error: HTMLElement, run: () => Promise<unknown>): Promise
   }
 }
 
+/** The tour of the project screen: it points at the real buttons, so a step whose element is not there (no items yet) is skipped. */
+const SCREEN_TOUR: TourStep[] = [
+  { target: ".project-hint", text: "tour.project.how", more: "tour.project.howMore", picture: "flow" },
+  { target: ".project-item", text: "tour.project.item", more: "tour.project.itemMore", picture: "item" },
+  { target: ".project-thumb", text: "tour.project.picture", more: "tour.project.pictureMore", picture: "thumb" },
+  { target: ".project-tools", text: "tour.project.tools", more: "tour.project.toolsMore", picture: "tools" },
+  { target: ".project-rename", text: "tour.project.rename", more: "tour.project.renameMore", picture: "rename" },
+  { target: ".project-export", text: "tour.project.export", more: "tour.project.exportMore", picture: "export" },
+  { target: ".project-print", text: "tour.project.print", more: "tour.project.printMore", picture: "printProject" },
+  { target: ".project-add", text: "tour.project.note", more: "tour.project.noteMore", picture: "note" },
+];
+
 const field = (props: { value?: string; placeholder?: string; max: number; label?: string }) => el("input", { type: "text", maxLength: props.max, value: props.value ?? "", placeholder: props.placeholder ?? "", autocomplete: "off", ariaLabel: props.label ?? props.placeholder ?? "" });
 const area = (props: { value?: string; placeholder?: string; max: number }) => el("textarea", { rows: 3, maxLength: props.max, value: props.value ?? "", placeholder: props.placeholder ?? "", ariaLabel: props.placeholder ?? "" });
 
@@ -267,13 +280,20 @@ async function showProject(modal: Modal, id: number, pictures: Pictures): Promis
       queueMicrotask(() => title.select());
       return form;
     }
-    const edit = el("button", { type: "button", class: "icon-btn small", title: t("projects.edit"), textContent: "✎" });
+    const edit = el("button", { type: "button", class: "btn project-action project-rename", title: t("projects.edit"), textContent: `✎ ${t("projects.edit")}` });
     edit.addEventListener("click", () => ((editingHead = true), (editingItem = null), draw()));
-    const save = el("button", { type: "button", class: "icon-btn small project-export", title: t("projects.export"), ariaLabel: t("projects.export"), textContent: "⤓" });
+    const save = el("button", { type: "button", class: "btn project-action project-export", title: t("projects.export"), textContent: `⤓ ${t("projects.exportButton")}` });
     save.addEventListener("click", () => exportMarkdown(p));
-    const print = el("button", { type: "button", class: "icon-btn small project-print", title: t("print.title"), ariaLabel: t("print.title"), textContent: "🖶" });
+    const print = el("button", { type: "button", class: "btn project-action project-print", title: t("print.title"), textContent: `🖶 ${t("projects.printButton")}` });
     print.addEventListener("click", () => printProject(p, items));
-    return el("div", { class: "project-head" }, el("div", { class: "grow" }, el("h3", { class: "project-title", textContent: p.title }), ...(p.description ? [el("div", { class: "muted project-about", textContent: p.description })] : [])), print, save, edit);
+    const help = el("button", { type: "button", class: "icon-btn small project-help", title: t("projects.help"), ariaLabel: t("projects.help"), textContent: "?" });
+    help.addEventListener("click", () => startTour(SCREEN_TOUR));
+    return el(
+      "div",
+      { class: "project-head" },
+      el("div", { class: "grow" }, el("h3", { class: "project-title", textContent: p.title }), ...(p.description ? [el("div", { class: "muted project-about", textContent: p.description })] : [])),
+      el("div", { class: "project-actions" }, print, save, edit, help),
+    );
   }
 
   function row(item: Item, index: number): HTMLElement {
@@ -302,7 +322,7 @@ async function showProject(modal: Modal, id: number, pictures: Pictures): Promis
       pictures.show(picture, item, go);
     } else name = el("span", { class: "project-go", textContent: item.title });
 
-    const source = item.missing ? el("div", { class: "project-missing", textContent: t("projects.missing") }) : item.book ? el("div", { class: "muted small project-source" }, `${item.book.name} `, badge(item.book.ext)) : el("div", { class: "muted small project-source", textContent: t("projects.note") });
+    const source = item.missing ? el("div", { class: "project-missing", textContent: t("projects.missing") }) : item.book ? el("div", { class: "muted small project-source" }, `${item.book.name} `, badge(item.book.ext)) : el("div", { class: "muted small project-source", textContent: t("projects.ownNote") });
     const small = (label: string, text: string, onClick: () => void, disabled = false) => {
       const b = el("button", { type: "button", class: "icon-btn small", title: label, ariaLabel: label, textContent: text, disabled });
       b.addEventListener("click", onClick);
@@ -325,12 +345,16 @@ async function showProject(modal: Modal, id: number, pictures: Pictures): Promis
         ...(item.quote ? [el("blockquote", { class: "project-quote", textContent: item.quote })] : []),
         ...(item.comment ? [el("p", { class: "project-comment", textContent: item.comment })] : []),
       ),
-      small(t("projects.up"), "↑", () => move(-1), index === 0),
-      small(t("projects.down"), "↓", () => move(1), index === items.length - 1),
-      small(t("projects.edit"), "✎", () => ((editingItem = item.id), (editingHead = false), draw())),
-      small(t("common.delete"), "×", () => {
-        if (confirm(t("projects.itemDeleteConfirm", { title: item.title }))) void change(() => api(`/api/projects/${id}/items/${item.id}`, undefined, "DELETE"));
-      }),
+      el(
+        "div",
+        { class: "project-tools" },
+        small(t("projects.up"), "↑", () => move(-1), index === 0),
+        small(t("projects.down"), "↓", () => move(1), index === items.length - 1),
+        small(t("projects.edit"), "✎", () => ((editingItem = item.id), (editingHead = false), draw())),
+        small(t("common.delete"), "×", () => {
+          if (confirm(t("projects.itemDeleteConfirm", { title: item.title }))) void change(() => api(`/api/projects/${id}/items/${item.id}`, undefined, "DELETE"));
+        }),
+      ),
     );
   }
 
@@ -341,14 +365,15 @@ async function showProject(modal: Modal, id: number, pictures: Pictures): Promis
 
     const title = field({ max: 200, placeholder: t("projects.itemTitle") });
     const comment = area({ max: 5000, placeholder: t("projects.comment") });
-    const add = el("form", { class: "project-add" }, el("h3", { textContent: t("projects.addNote") }), title, comment, buttons(el("button", { type: "submit", class: "btn", textContent: t("projects.addNote") })));
+    const add = el("form", { class: "project-add" }, el("h3", { textContent: t("projects.noteTitle") }), el("p", { class: "muted small project-note-hint", textContent: t("projects.noteHint") }), title, comment, buttons(el("button", { type: "submit", class: "btn", textContent: t("projects.addNote") })));
     add.addEventListener("submit", (event) => {
       event.preventDefault();
       if (!title.value.trim()) return;
       void change(() => api(`/api/projects/${id}/items`, { title: title.value, comment: comment.value }));
     });
 
-    modal.body.replaceChildren(back, header(project), el("div", { class: "project-items" }, ...(items.length ? items.map(row) : [el("p", { class: "muted", textContent: t("projects.empty") })])), add, error);
+    const hint = el("p", { class: "muted small project-hint", textContent: items.length ? t("projects.hint") : t("projects.emptyHint") });
+    modal.body.replaceChildren(back, header(project), ...(editingHead ? [] : [hint]), el("div", { class: "project-items" }, ...items.map(row)), add, error);
   }
 
   await load();

@@ -63,6 +63,13 @@ e2e("a project is built, ordered and edited on its screen, opens books where the
   await page.waitForSelector(".project-item");
   expect(await titles(page)).toEqual(["Schematic", "Coil table", "Check the values", "From the lost book"]);
   expect(await page.textContent(".project-title")).toBe("My amplifier");
+  // the screen says how it is used: where places come from, what the buttons are, what a note is
+  expect(await page.textContent(".project-hint")).toContain("“＋ To project” button in the reader");
+  expect(await page.textContent(".project-print")).toContain("Print / PDF");
+  expect(await page.textContent(".project-export")).toContain("Markdown");
+  expect(await page.textContent(".project-rename")).toContain("Edit");
+  expect(await page.$$eval(".project-source", (els) => els.map((e) => e.textContent?.trim()))).toContain("Own note, no book");
+  expect(await page.textContent(".project-add h3")).toBe("Your own note (not tied to a book)");
   expect(await page.textContent(".project-quote")).toBe("turns per layer");
   expect(await page.textContent(".project-comment")).toBe("second stage");
   expect(await page.textContent(".project-missing")).toContain("no longer in the library");
@@ -280,6 +287,67 @@ e2e("a project is printed with its sources, quotes and comments, and with pictur
   expect(plain.ratios).toEqual([]);
   expect(plain.headings).toEqual(withPictures.headings);
   expect(plain.quotes).toEqual(["turns per layer"]);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+e2e("the ? button of a project walks through the real buttons of the screen, explains the first step with a picture, and Esc closes only the tour", async () => {
+  const made = await api(ctx, inst, "/api/projects", { title: "Tour me" });
+  const id = made.project.id;
+  const add = (body: unknown) => api(ctx, inst, `/api/projects/${id}/items`, body);
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(inst.url + "/");
+  await page.click("button:has-text('My projects')");
+  await page.click(".project-row:has-text('Tour me') .project-go");
+  await page.waitForSelector(".project-hint");
+
+  // an empty project says what to do first, and the tour has only the steps that have something to point at
+  expect(await page.textContent(".project-hint")).toContain("Nothing in this project yet");
+  await page.click(".project-help");
+  expect(await page.textContent(".tour-count")).toBe("1 of 5"); // the hint, the name, the file, the printout, the note
+  await page.click(".tour-toggle");
+  await page.waitForSelector(".tour-more .tour-pic");
+  expect(await page.textContent(".tour-more")).toContain("Nothing is moved or copied");
+  await page.keyboard.press("Escape");
+  expect(await page.$(".tour-card")).toBeNull();
+  expect(await page.$(".modal")).not.toBeNull(); // Esc closed the tour, not the screen behind it
+
+  // with a PDF item and a note every step is there
+  await add({ bookId: pdfId, view: { v: 1, page: 5 }, title: "Page five" });
+  await add({ title: "A note" });
+  await page.click(".modal button:has-text('← Projects')");
+  await page.click(".project-row:has-text('Tour me') .project-go");
+  await page.waitForSelector(".project-thumb canvas");
+  await page.click(".project-help");
+  const total = Number((await page.textContent(".tour-count"))!.split(" of ")[1]);
+  expect(total).toBe(8);
+  const seen: (string | null)[] = [];
+  for (let i = 0; i < total; i++) {
+    await page.waitForTimeout(300);
+    const hole = (await page.locator(".tour-hole").boundingBox())!;
+    seen.push(
+      await page.evaluate((h) => {
+        const near = (a: number, b: number) => Math.abs(a - b) <= 6;
+        const classes = [".project-hint", ".project-item", ".project-thumb", ".project-tools", ".project-rename", ".project-export", ".project-print", ".project-add"];
+        return (
+          classes.find((c) => {
+            const n = document.querySelector(c);
+            if (!n) return false;
+            const r = n.getBoundingClientRect();
+            return near(r.left, h.x) && near(r.top, h.y) && near(r.width + 8, h.width) && near(r.height + 8, h.height);
+          }) ?? null
+        );
+      }, hole),
+    );
+    expect((await page.textContent(".tour-text"))!.length).toBeGreaterThan(10);
+    const card = (await page.locator(".tour-card").boundingBox())!;
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    await page.click(".tour-card .btn.primary");
+  }
+  expect(seen).toEqual([".project-hint", ".project-item", ".project-thumb", ".project-tools", ".project-rename", ".project-export", ".project-print", ".project-add"]);
+  expect(await page.$(".tour-card")).toBeNull();
   expect(errors).toEqual([]);
   await page.close();
 });

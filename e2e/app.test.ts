@@ -157,6 +157,45 @@ e2e("with a book open the tour is about reading it: the title, print, bookmarks,
   await ctx.close();
 });
 
+e2e("a tour step can open a longer explanation with a picture, and the card stays on screen", async () => {
+  const ctx = await signedIn(browser, inst);
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(inst.url + "/");
+  await page.waitForSelector(".shelf");
+  await page.click("#tour");
+  const total = Number((await page.textContent(".tour-count"))!.split(" of ")[1]);
+  for (let i = 0; i < total; i++) {
+    if ((await page.textContent(".tour-text"))!.startsWith("Your projects")) break;
+    await page.click(".tour-card .btn.primary");
+  }
+  expect(await page.textContent(".tour-text")).toContain("Your projects");
+  expect(await page.$(".tour-pic")).toBeNull(); // closed until asked for
+  await page.click(".tour-toggle");
+  await page.waitForSelector(".tour-more .tour-pic");
+  expect(await page.textContent(".tour-toggle")).toBe("Less");
+  expect(await page.textContent(".tour-more")).toContain("Books (PDF, EPUB, TXT…)");
+  expect(await page.textContent(".tour-more")).toContain("Projects are created and opened here");
+  const card = (await page.locator(".tour-card").boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(card.x).toBeGreaterThanOrEqual(0);
+  expect(card.y).toBeGreaterThanOrEqual(0);
+  expect(card.x + card.width).toBeLessThanOrEqual(view.width);
+  expect(card.y + card.height).toBeLessThanOrEqual(view.height);
+  const picture = (await page.locator(".tour-more .tour-pic").boundingBox())!;
+  expect(picture.width).toBeGreaterThan(200); // the picture is drawn, not collapsed
+  expect(picture.height).toBeGreaterThan(100);
+  await page.click(".tour-toggle"); // the details close again
+  expect(await page.$(".tour-more .tour-pic")).toBeNull();
+  expect(await page.textContent(".tour-toggle")).toBe("More");
+  await page.click(".tour-card .btn.primary"); // every step has details, and the next one starts closed again
+  await page.waitForSelector(".tour-toggle:not([hidden])");
+  expect(await page.$(".tour-more .tour-pic")).toBeNull();
+  expect(await page.textContent(".tour-toggle")).toBe("More");
+  expect(errors).toEqual([]);
+  await ctx.close();
+});
+
 e2e("the administrator can stop the server from the settings, on the computer it runs on", async () => {
   const own = await startServer(library());
   await setup(own);

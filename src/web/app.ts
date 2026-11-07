@@ -746,28 +746,28 @@ langEl.addEventListener("change", () => {
 function tourSteps(forReader = true): TourStep[] {
   if (forReader && mainEl.querySelector(".reader-bar") && !document.body.classList.contains("share-mode")) {
     return [
-      { target: ".reader-bar .title", text: "tour.reader.title" },
-      { target: "[data-tour=print]", text: "tour.reader.print" },
-      { target: "[data-tour=marks]", text: "tour.reader.bookmarks" },
-      { target: "[data-tour=project]", text: "tour.reader.project" },
-      { target: "[data-tour=share]", text: "tour.reader.share" },
-      { target: ".reader-host .pdf-toolbar", text: "tour.reader.toolbar" },
-      { target: "#tour", text: "tour.reader.more" },
+      { target: ".reader-bar .title", text: "tour.reader.title", more: "tour.reader.titleMore", picture: "title" },
+      { target: "[data-tour=print]", text: "tour.reader.print", more: "tour.reader.printMore", picture: "print" },
+      { target: "[data-tour=marks]", text: "tour.reader.bookmarks", more: "tour.reader.bookmarksMore", picture: "mark" },
+      { target: "[data-tour=project]", text: "tour.reader.project", more: "tour.reader.projectMore", picture: "reader" },
+      { target: "[data-tour=share]", text: "tour.reader.share", more: "tour.reader.shareMore", picture: "share" },
+      { target: ".reader-host .pdf-toolbar", text: "tour.reader.toolbar", more: "tour.reader.toolbarMore", picture: "toolbar" },
+      { target: "#tour", text: "tour.reader.more", more: "tour.reader.helpMore", picture: "help" },
     ];
   }
   return [
-    { target: "#panel-toggle", text: "tour.panel" },
-    { target: "#panel", text: "tour.tree" },
-    { target: "#search", text: fullTextOn ? "tour.searchText" : "tour.search" },
-    { target: "[data-tour=signin]", text: "tour.signin" },
-    { target: "[data-tour=bookmarks]", text: "tour.bookmarks" },
-    { target: "[data-tour=projects]", text: "tour.projects" },
-    { target: "[data-tour=links]", text: "tour.links" },
-    { target: "[data-tour=edit]", text: "tour.edit" },
-    { target: "[data-tour=link]", text: "tour.link" },
-    { target: "[data-tour=settings]", text: "tour.settings" },
-    { target: "#theme", text: "tour.theme" },
-    { target: "#lang", text: "tour.lang" },
+    { target: "#panel-toggle", text: "tour.panel", more: "tour.panelMore", picture: "panel" },
+    { target: "#panel", text: "tour.tree", more: "tour.treeMore", picture: "tree" },
+    { target: "#search", text: fullTextOn ? "tour.searchText" : "tour.search", more: "tour.searchMore", picture: "search" },
+    { target: "[data-tour=signin]", text: "tour.signin", more: "tour.signinMore", picture: "signin" },
+    { target: "[data-tour=bookmarks]", text: "tour.bookmarks", more: "tour.bookmarksMore", picture: "bookmarks" },
+    { target: "[data-tour=projects]", text: "tour.projects", more: "tour.projectsMore", picture: "flow" },
+    { target: "[data-tour=links]", text: "tour.links", more: "tour.linksMore", picture: "links" },
+    { target: "[data-tour=edit]", text: "tour.edit", more: "tour.editMore", picture: "edit" },
+    { target: "[data-tour=link]", text: "tour.link", more: "tour.linkMore", picture: "link" },
+    { target: "[data-tour=settings]", text: "tour.settings", more: "tour.settingsMore", picture: "settings" },
+    { target: "#theme", text: "tour.theme", more: "tour.themeMore", picture: "theme" },
+    { target: "#lang", text: "tour.lang", more: "tour.langMore", picture: "lang" },
   ];
 }
 tourEl.addEventListener("click", () => startTour(tourSteps()));

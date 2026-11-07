@@ -1,10 +1,15 @@
 import { el, store } from "./ui";
 import { t, type Key } from "./i18n";
+import { tourPicture, type TourPicture } from "./tourPictures";
 
 export interface TourStep {
   /** CSS selector of the element to point at; a step whose element isn't on screen is skipped. */
   target: string;
   text: Key;
+  /** A longer explanation, opened by "More"; its paragraphs are separated by a line break. */
+  more?: Key;
+  /** A small picture shown with the longer explanation. */
+  picture?: TourPicture;
 }
 
 const GAP = 10;
@@ -24,7 +29,7 @@ export function startTour(steps: TourStep[]): void {
   stopTour?.();
   const items = steps.flatMap((step) => {
     const node = document.querySelector<HTMLElement>(step.target);
-    return onScreen(node) ? [{ node, text: step.text }] : [];
+    return onScreen(node) ? [{ node, text: step.text, more: step.more, picture: step.picture }] : [];
   });
   if (!items.length) return;
   store.set(DONE_KEY, "1");
@@ -32,11 +37,14 @@ export function startTour(steps: TourStep[]): void {
   const blocker = el("div", { class: "tour-blocker" }); // nothing behind the tour can be clicked
   const hole = el("div", { class: "tour-hole" });
   const text = el("p", { class: "tour-text" });
+  const detail = el("div", { class: "tour-more", hidden: true });
+  const more = el("button", { type: "button", class: "tour-toggle" });
+  let expanded = false; // once a reader asked for the details, the next steps open with them too
   const counter = el("span", { class: "tour-count" });
   const skip = el("button", { type: "button", class: "tour-skip", textContent: t("tour.skip") });
   const back = el("button", { type: "button", class: "btn", textContent: t("tour.back") });
   const next = el("button", { type: "button", class: "btn primary" });
-  const card = el("div", { class: "tour-card", role: "dialog" }, el("div", { class: "tour-head" }, counter, skip), text, el("div", { class: "tour-actions" }, back, next));
+  const card = el("div", { class: "tour-card", role: "dialog" }, el("div", { class: "tour-head" }, counter, skip), text, detail, el("div", { class: "tour-actions" }, more, back, next));
   const before = document.activeElement as HTMLElement | null;
   let index = 0;
 
@@ -44,7 +52,7 @@ export function startTour(steps: TourStep[]): void {
     const r = items[index]!.node.getBoundingClientRect();
     const pad = 4;
     Object.assign(hole.style, { left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + 2 * pad}px`, height: `${r.height + 2 * pad}px` });
-    const width = Math.min(340, innerWidth - 2 * MARGIN);
+    const width = Math.min(expanded ? 400 : 340, innerWidth - 2 * MARGIN); // a picture and a longer text want more room
     card.style.width = `${width}px`;
     const height = card.offsetHeight;
     const clamp = (v: number, max: number) => Math.max(MARGIN, Math.min(v, max));
@@ -59,9 +67,15 @@ export function startTour(steps: TourStep[]): void {
   };
 
   const show = () => {
-    const { node, text: key } = items[index]!;
+    const { node, text: key, more: longer, picture } = items[index]!;
     node.scrollIntoView({ block: "nearest", inline: "nearest" });
     text.textContent = t(key);
+    const hasMore = !!(longer || picture);
+    more.hidden = !hasMore;
+    detail.hidden = !(hasMore && expanded);
+    detail.replaceChildren(...(expanded && picture ? [tourPicture(picture, text.textContent ?? "")] : []), ...(expanded && longer ? t(longer).split("\n").map((paragraph) => el("p", { textContent: paragraph })) : []));
+    more.textContent = expanded ? t("tour.less") : t("tour.more");
+    more.setAttribute("aria-expanded", String(expanded));
     counter.textContent = t("tour.step", { n: index + 1, total: items.length });
     back.hidden = index === 0;
     next.textContent = index === items.length - 1 ? t("tour.done") : t("tour.next");
@@ -82,12 +96,17 @@ export function startTour(steps: TourStep[]): void {
   const onKey = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation(); // the tour is closed, not the dialog it may be pointing into
       close();
     }
   };
   next.addEventListener("click", () => (index === items.length - 1 ? close() : (index++, show())));
   back.addEventListener("click", () => (index--, show()));
   skip.addEventListener("click", close);
+  more.addEventListener("click", () => {
+    expanded = !expanded;
+    show();
+  });
   addEventListener("resize", place);
   const follow = setInterval(place, 200); // the top bar can change while the tour is open (a scan note appears and shifts the buttons)
   document.addEventListener("keydown", onKey, true);
