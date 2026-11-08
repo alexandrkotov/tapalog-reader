@@ -25,7 +25,7 @@ interface Item {
   quote: string;
   createdAt: number;
   /** What the library knows about the book now; null for a note and for a book that left the library. */
-  book: { name: string; ext: string; path: string } | null;
+  book: { name: string; title: string; ext: string; path: string } | null;
   missing: boolean;
 }
 
@@ -60,7 +60,7 @@ export function openProjects(ctx: ProjectsContext): void {
 export interface AddToProjectContext {
   me: Me;
   /** The book being read. */
-  book: { id: string; name: string };
+  book: { id: string; title: string };
   /** The reader showing it: where it is, a suggested name, and the passage selected or marked in it (text formats). */
   reader: () => { getView?(): unknown; getLabel?(): string; getPassage?(): { view: unknown; quote: string } | null } | null;
   /** Called after the reader signed in or created an account. */
@@ -97,7 +97,7 @@ export function openAddToProject(ctx: AddToProjectContext): void {
 
   const projectSelect = el("select", { ariaLabel: t("projects.project") });
   const newName = field({ max: 200, placeholder: t("projects.new") });
-  const title = field({ value: reader?.getLabel?.() || ctx.book.name, max: 200, placeholder: t("projects.itemTitle") });
+  const title = field({ value: reader?.getLabel?.() || ctx.book.title, max: 200, placeholder: t("projects.itemTitle") });
   const comment = area({ max: 5000, placeholder: t("projects.comment") });
   const quoteText = passage ? oneLine(passage.quote).slice(0, MAX_QUOTE) : "";
   const quote = quoteText ? area({ value: quoteText, max: MAX_QUOTE, placeholder: t("projects.quote") }) : null;
@@ -138,7 +138,7 @@ export function openAddToProject(ctx: AddToProjectContext): void {
         }
         created = target = (await api<{ project: ProjectSummary }>("/api/projects", { title: newName.value })).project;
       }
-      await api(`/api/projects/${target.id}/items`, { bookId: ctx.book.id, ...(view ? { view } : {}), title: title.value.trim() || ctx.book.name, comment: comment.value, ...(quote ? { quote: quote.value } : {}) });
+      await api(`/api/projects/${target.id}/items`, { bookId: ctx.book.id, ...(view ? { view } : {}), title: title.value.trim() || ctx.book.title, comment: comment.value, ...(quote ? { quote: quote.value } : {}) });
       store.set(LAST_PROJECT, String(target.id));
       const chosen = target;
       const open = el("button", { type: "button", class: "btn primary", textContent: t("projects.open") });
@@ -322,7 +322,7 @@ async function showProject(modal: Modal, id: number, pictures: Pictures): Promis
       pictures.show(picture, item, go);
     } else name = el("span", { class: "project-go", textContent: item.title });
 
-    const source = item.missing ? el("div", { class: "project-missing", textContent: t("projects.missing") }) : item.book ? el("div", { class: "muted small project-source" }, `${item.book.name} `, badge(item.book.ext)) : el("div", { class: "muted small project-source", textContent: t("projects.ownNote") });
+    const source = item.missing ? el("div", { class: "project-missing", textContent: t("projects.missing") }) : item.book ? el("div", { class: "muted small project-source" }, `${item.book.title} `, badge(item.book.ext)) : el("div", { class: "muted small project-source", textContent: t("projects.ownNote") });
     const small = (label: string, text: string, onClick: () => void, disabled = false) => {
       const b = el("button", { type: "button", class: "icon-btn small", title: label, ariaLabel: label, textContent: text, disabled });
       b.addEventListener("click", onClick);

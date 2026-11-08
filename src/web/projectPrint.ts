@@ -10,7 +10,7 @@ export interface PrintItem {
   title: string;
   comment: string;
   quote: string;
-  book: { name: string; ext: string } | null;
+  book: { name: string; title: string; ext: string } | null;
   missing: boolean;
 }
 
@@ -68,7 +68,7 @@ export function printProject(project: PrintProject, items: PrintItem[]): void {
           if (ctx.signal.aborted) return;
           const place = placeOf(item.view);
           const source =
-            item.bookId === null ? t("projects.note") : item.missing || !item.book ? t("projects.printGone") : [`${item.book.name} (${item.book.ext.toUpperCase()})`, place].filter(Boolean).join(", ");
+            item.bookId === null ? t("projects.note") : item.missing || !item.book ? t("projects.printGone") : [`${item.book.title} (${item.book.ext.toUpperCase()})`, place].filter(Boolean).join(", ");
           const entry = el("div", { class: "entry" }, el("h2", { textContent: `${i + 1}. ${item.title}` }), el("div", { class: "source", textContent: source }));
           if (choice === "pictures" && canBePictured(item)) {
             const image = await pictureOf(item, sources, ctx);

@@ -194,10 +194,12 @@ function buildRoutes(app: App, origin: Origin) {
   const bad = (message = "bad request") => json({ error: message }, 400);
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const wholeNumber = (v: string) => (/^\d{1,15}$/.test(v) ? Number(v) : -1); // -1 names nothing
+  /** What a list shows for a book: the title of its card, or the file's name when it has none. */
+  const titleOf = (book: { id: string; name: string }) => shelfFields(app.library.meta.row(book.id) ?? undefined, book.name).title;
   /** A project item with what the page needs to show its book; a book that left the library is marked, and the item keeps its notes and quote. */
   const withBook = (item: ProjectItem) => {
     const info = item.bookId ? app.library.byId(item.bookId) : null;
-    return { ...item, book: info ? { name: info.name, ext: info.ext, path: info.path } : null, missing: item.bookId !== null && !info };
+    return { ...item, book: info ? { name: info.name, title: titleOf(info), ext: info.ext, path: info.path } : null, missing: item.bookId !== null && !info };
   };
 
   /** Runs one library edit; a refused edit answers with a short code the page turns into words. */
@@ -441,7 +443,7 @@ function buildRoutes(app: App, origin: Origin) {
         const book = new URL(req.url).searchParams.get("book");
         const list = app.bookmarks.list(me.id, book ?? undefined).flatMap((b) => {
           const info = app.library.byId(b.bookId);
-          return info ? [{ ...b, book: { name: info.name, ext: info.ext, path: info.path } }] : []; // bookmarks of a book that left the library are kept, just not shown
+          return info ? [{ ...b, book: { name: info.name, title: titleOf(info), ext: info.ext, path: info.path } }] : []; // bookmarks of a book that left the library are kept, just not shown
         });
         return json({ bookmarks: list });
       },
@@ -624,7 +626,7 @@ function buildRoutes(app: App, origin: Origin) {
       GET: browse((req) => {
         const me = user(req);
         if (!me) return json({ shares: [] });
-        return json({ shares: app.shares.list(me.role === "admin" ? "all" : me.id) });
+        return json({ shares: app.shares.list(me.role === "admin" ? "all" : me.id).map((s) => { const info = app.library.byId(s.bookId); return { ...s, title: info ? titleOf(info) : s.name }; }) });
       }),
       POST: browse(async (req) => {
         const data = await body(req);
@@ -648,7 +650,7 @@ function buildRoutes(app: App, origin: Origin) {
     "/api/share/:token": (req: Bun.BunRequest) => {
       const share = app.shares.get(param(req, "token"));
       const book = share ? app.library.byId(share.bookId) : null;
-      return share && book ? json({ name: book.name, ext: book.ext, view: share.view }) : notFound();
+      return share && book ? json({ name: book.name, title: titleOf(book), ext: book.ext, view: share.view }) : notFound();
     },
     "/api/share/:token/file": (req: Bun.BunRequest) => {
       const share = app.shares.get(param(req, "token"));

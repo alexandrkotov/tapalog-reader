@@ -155,3 +155,37 @@ e2e("the administrator changes a book's details in its window, takes a typed val
   await readerCtx.close();
   await page.close();
 });
+
+e2e("bookmarks, project items and the list of links name a book by its title, not by its file", async () => {
+  const id = await titleRead();
+  const title = "Как сделать детекторный приёмник";
+  await ctx.request.put(`${inst.url}/api/admin/books/${id}/meta`, { data: { reset: ["title"] }, headers: { Origin: inst.url } });
+  await api(ctx, inst, "/api/bookmarks", { bookId: id, label: "Первая страница", view: { v: 1, section: 0 } });
+  const made = await api(ctx, inst, "/api/projects", { title: "Приёмник" });
+  await api(ctx, inst, `/api/projects/${made.project.id}/items`, { bookId: id, view: { v: 1, section: 0 }, title: "Схема" });
+  await api(ctx, inst, "/api/shares", { bookId: id });
+
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(`${inst.url}/#folder=Scans`);
+  await page.waitForSelector(".card:not(.folder)");
+  await page.click("[data-tour=bookmarks]");
+  await page.waitForSelector(".bookmark-row");
+  expect(await page.textContent(".bookmark-list")).toContain(title);
+  expect(await page.textContent(".bookmark-list")).not.toContain("scan0042");
+  await page.keyboard.press("Escape");
+
+  await page.click("[data-tour=projects]");
+  await page.click(".project-row:has-text('Приёмник') .project-go");
+  await page.waitForSelector(".project-source");
+  expect(await page.textContent(".project-source")).toContain(title);
+  expect(await page.textContent(".project-source")).not.toContain("scan0042");
+  await page.keyboard.press("Escape");
+
+  await page.click("[data-tour=links]");
+  await page.waitForSelector(".share-row");
+  expect(await page.textContent(".share-row")).toContain(title);
+  expect(await page.textContent(".share-row")).not.toContain("scan0042");
+  expect(errors).toEqual([]);
+  await page.close();
+});

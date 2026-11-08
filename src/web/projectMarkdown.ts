@@ -11,7 +11,7 @@ export interface MarkdownItem {
   comment: string;
   quote: string;
   /** The book as the library knows it now; null for a note and for a book that left the library. */
-  book: { name: string; ext: string } | null;
+  book: { name: string; title: string; ext: string } | null;
   missing: boolean;
 }
 
@@ -55,7 +55,7 @@ export function projectMarkdown(project: MarkdownProject, items: MarkdownItem[],
     out.push(`## ${i + 1}. ${escapeText(item.title)}`);
     if (item.bookId === null) out.push(`_${labels.note}_`);
     else if (item.missing || !item.book) out.push(`_${labels.missing}_`);
-    else out.push(`**${escapeText(item.book.name)}** (${item.book.ext.toUpperCase()}) — [${labels.open}](${safeUrl(link(item.bookId, item.view))})`);
+    else out.push(`**${escapeText(item.book.title)}** (${item.book.ext.toUpperCase()}) — [${labels.open}](${safeUrl(link(item.bookId, item.view))})`);
     if (item.quote.trim()) out.push(quoted(item.quote));
     if (item.comment.trim()) out.push(item.comment.trim()); // the reader's own text, Markdown in it is theirs
   });

@@ -9,8 +9,8 @@ test("a project becomes a title, an intro and a numbered section for each item, 
   const md = projectMarkdown(
     { title: "My amplifier", description: "Two stages" },
     [
-      item({ bookId: "b1", view: { v: 1, page: 4 }, title: "Schematic", comment: "second stage", book: { name: "Radio.pdf", ext: "pdf" } }),
-      item({ bookId: "b2", view: { v: 1 }, title: "Coil table", quote: "turns per layer", book: { name: "Coils.txt", ext: "txt" } }),
+      item({ bookId: "b1", view: { v: 1, page: 4 }, title: "Schematic", comment: "second stage", book: { name: "radio-scan-01.pdf", title: "Radio.pdf", ext: "pdf" } }),
+      item({ bookId: "b2", view: { v: 1 }, title: "Coil table", quote: "turns per layer", book: { name: "Coils.txt", title: "Coils.txt", ext: "txt" } }),
       item({ title: "Check the values", comment: "line one\nline two" }),
     ],
     labels,
@@ -48,7 +48,7 @@ test("an empty project says so, and a description is left out when there is none
 });
 
 test("characters that mean something in Markdown do not change the title, and a quote of several lines stays a quote", () => {
-  const md = projectMarkdown({ title: "R&D [draft] *1*", description: "" }, [item({ bookId: "b4", title: "# not a heading_", quote: "first\n\nsecond", book: { name: "a_b*c.pdf", ext: "pdf" }, view: { note: "(a)" } })], labels, link);
+  const md = projectMarkdown({ title: "R&D [draft] *1*", description: "" }, [item({ bookId: "b4", title: "# not a heading_", quote: "first\n\nsecond", book: { name: "a_b*c.pdf", title: "a_b*c.pdf", ext: "pdf" }, view: { note: "(a)" } })], labels, link);
   expect(md).toContain("# R&D \\[draft\\] \\*1\\*");
   expect(md).toContain("## 1. \\# not a heading\\_");
   expect(md).toContain("**a\\_b\\*c.pdf**");

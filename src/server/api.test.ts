@@ -679,3 +679,27 @@ test("a book's card is read by anyone who can browse and changed by the administ
   expect(reset.edited).toEqual([]);
   expect((await call(lan, "/api/library", { cookie: readerCookie })).body.books.find((b: { id: string }) => b.id === one.id).title).toBe(one.name);
 });
+
+test("bookmarks, project items and share links show a book by its title, and the file's name when it has none", async () => {
+  const name = (await call(lan, "/api/library", { cookie: adminCookie })).body.books.find((b: { id: string }) => b.id === bookId).name as string; // earlier tests renamed the file
+  const meta = (body: unknown) => call(lan, `/api/admin/books/${bookId}/meta`, { method: "PUT", body, cookie: adminCookie });
+  expect((await meta({ set: { title: "A title from the card" } })).status).toBe(200);
+
+  const bookmark = (await call(lan, "/api/bookmarks", { body: { bookId, label: "here", view: { v: 1, page: 1 } }, cookie: adminCookie })).body.bookmark;
+  expect((await call(lan, "/api/bookmarks", { cookie: adminCookie })).body.bookmarks[0].book).toMatchObject({ name, title: "A title from the card" });
+
+  const project = (await call(lan, "/api/projects", { body: { title: "P" }, cookie: adminCookie })).body.project;
+  const item = (await call(lan, `/api/projects/${project.id}/items`, { body: { bookId, title: "item", view: { v: 1, page: 1 } }, cookie: adminCookie })).body.item;
+  expect(item.book).toMatchObject({ name, title: "A title from the card" });
+  expect((await call(lan, `/api/projects/${project.id}`, { cookie: adminCookie })).body.items[0].book.title).toBe("A title from the card");
+
+  const token = (await call(lan, "/api/shares", { body: { bookId }, cookie: adminCookie })).body.token;
+  expect((await call(lan, "/api/shares", { cookie: adminCookie })).body.shares.find((s: { token: string }) => s.token === token)).toMatchObject({ name, title: "A title from the card" });
+  expect((await call(tunnelSide, `/api/share/${token}`)).body).toMatchObject({ name, title: "A title from the card" }); // what a visitor with the link sees
+
+  expect((await meta({ reset: ["title"] })).status).toBe(200);
+  expect((await call(lan, `/api/projects/${project.id}`, { cookie: adminCookie })).body.items[0].book.title).toBe(name); // no title typed: the file's name
+  await call(lan, `/api/bookmarks/${bookmark.id}`, { method: "DELETE", cookie: adminCookie });
+  await call(lan, `/api/projects/${project.id}`, { method: "DELETE", cookie: adminCookie });
+  await call(lan, `/api/shares/${token}`, { method: "DELETE", cookie: adminCookie });
+});

@@ -8,13 +8,13 @@ interface Bookmark {
   label: string;
   view: unknown;
   createdAt: number;
-  book: { name: string; ext: string; path: string };
+  book: { name: string; title: string; ext: string; path: string };
 }
 
 export interface BookmarkContext {
   me: Me;
   /** The book being read, when there is one: its place can be added and its bookmarks come first. */
-  book: { id: string; name: string } | null;
+  book: { id: string; title: string } | null;
   /** The reader showing it, for the current view and a suggested name. */
   reader: () => { getView?(): unknown; getLabel?(): string } | null;
   /** Called after the reader signed in or created an account. */
@@ -68,7 +68,7 @@ export function openBookmarks(ctx: BookmarkContext): void {
     return el(
       "div",
       { class: "bookmark-row" },
-      el("div", { class: "grow" }, go, el("div", { class: "muted small", textContent: (here ? "" : `${b.book.name} · `) + new Date(b.createdAt).toLocaleDateString(lang()) })),
+      el("div", { class: "grow" }, go, el("div", { class: "muted small", textContent: (here ? "" : `${b.book.title} · `) + new Date(b.createdAt).toLocaleDateString(lang()) })),
       here ? el("span") : badge(b.book.ext),
       rename,
       del,
@@ -80,7 +80,7 @@ export function openBookmarks(ctx: BookmarkContext): void {
     const mine = bookmarks.filter((b) => b.bookId === ctx.book?.id);
     const others = bookmarks.filter((b) => b.bookId !== ctx.book?.id);
     list.replaceChildren(
-      ...(ctx.book ? [el("h3", { textContent: ctx.book.name }), ...(mine.length ? mine.map((b) => row(b, true)) : [el("p", { class: "muted", textContent: t("bookmark.none") })])] : []),
+      ...(ctx.book ? [el("h3", { textContent: ctx.book.title }), ...(mine.length ? mine.map((b) => row(b, true)) : [el("p", { class: "muted", textContent: t("bookmark.none") })])] : []),
       ...(others.length ? [...(ctx.book ? [el("h3", { textContent: t("bookmark.others") })] : []), ...others.map((b) => row(b, false))] : ctx.book ? [] : [el("p", { class: "muted", textContent: t("bookmark.none") })]),
     );
   }
@@ -100,7 +100,7 @@ export function openBookmarks(ctx: BookmarkContext): void {
         return;
       }
       try {
-        await api("/api/bookmarks", { bookId: book.id, label: label.value.trim() || book.name, view });
+        await api("/api/bookmarks", { bookId: book.id, label: label.value.trim() || book.title, view });
         label.value = "";
         void load();
       } catch {

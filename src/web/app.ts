@@ -1171,8 +1171,8 @@ async function bootShare(token: string): Promise<void> {
   applyStaticText();
   await loadPlugins();
   try {
-    const info = await api<{ name: string; ext: string; view: unknown }>(`/api/share/${encodeURIComponent(token)}`);
-    showReader({ name: info.name, ext: info.ext, fileUrl: `/api/share/${encodeURIComponent(token)}/file`, view: info.view });
+    const info = await api<{ name: string; title: string; ext: string; view: unknown }>(`/api/share/${encodeURIComponent(token)}`);
+    showReader({ name: info.title, ext: info.ext, fileUrl: `/api/share/${encodeURIComponent(token)}/file`, view: info.view });
   } catch {
     message(t("shared.gone.title"), t("shared.gone.text"));
   }

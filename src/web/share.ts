@@ -18,6 +18,8 @@ interface Status {
 interface ShareRow {
   token: string;
   name: string | null;
+  /** The title of the book's card (the file's name when it has none). */
+  title: string | null;
   ext: string | null;
   expiresAt: number | null;
   createdAt: number;
@@ -119,7 +121,7 @@ export async function openMyLinks(): Promise<void> {
         const copy = el("button", { type: "button", class: "btn", textContent: t("common.copy") });
         copy.addEventListener("click", () => void copyText(url));
         const when = row.expiresAt ? t("share.expiresOn", { date: new Date(row.expiresAt).toLocaleDateString() }) : t("share.noLimit");
-        return el("div", { class: "share-row" }, row.ext ? badge(row.ext) : el("span"), el("span", { class: "grow", textContent: row.name ?? "?" }), el("span", { class: "muted", textContent: when }), copy, revoke);
+        return el("div", { class: "share-row" }, row.ext ? badge(row.ext) : el("span"), el("span", { class: "grow", textContent: row.title ?? row.name ?? "?" }), el("span", { class: "muted", textContent: when }), copy, revoke);
       }),
     );
   };
