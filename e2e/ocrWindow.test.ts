@@ -42,14 +42,14 @@ e2e("the administrator reads a scan from Settings, sees how far it has got, stop
   await page.waitForSelector(".modal .section");
 
   // the reading of scans is offered once search inside books is on
-  expect(await page.$("button:has-text('Read scanned pages')")).toBeNull();
+  expect(await page.$("button:has-text('Recognize scanned pages')")).toBeNull();
   await page.check(".section:has(h3:text-is('Search inside books')) input[type=checkbox]");
   await scansListed(); // the books are read in the background: the scans are known a moment later
-  await page.click("button:has-text('Read scanned pages')");
+  await page.click("button:has-text('Recognize scanned pages')");
   await page.waitForSelector(".ocr-list .ocr-row");
   await page.waitForFunction(() => document.querySelectorAll(".ocr-row").length === 2); // the two scans; the text file is not offered
   expect(await page.$$eval(".ocr-title", (n) => n.map((x) => x.textContent))).toEqual(["long", "short"]);
-  expect(await page.textContent(`${row("short")} .ocr-status`)).toBe("Not read");
+  expect(await page.textContent(`${row("short")} .ocr-status`)).toBe("Not recognized");
   expect(await page.isDisabled(".ocr-actions .btn.primary")).toBe(true); // nothing chosen yet
 
   // the short one is read to the end
@@ -57,8 +57,8 @@ e2e("the administrator reads a scan from Settings, sees how far it has got, stop
   await page.selectOption(".ocr-lang", "rus+eng");
   await page.click(".ocr-actions .btn.primary");
   await page.waitForFunction(() => document.querySelector(".ocr-message")?.textContent?.startsWith("Done"), undefined, { timeout: 80_000 });
-  expect(await page.textContent(".ocr-message")).toBe("Done: 2 pages read.");
-  expect(await page.textContent(`${row("short")} .ocr-status`)).toBe("Read, 2 pages");
+  expect(await page.textContent(".ocr-message")).toBe("Done: 2 pages recognized.");
+  expect(await page.textContent(`${row("short")} .ocr-status`)).toBe("Recognized, 2 pages");
   expect(await page.textContent(".ocr-kept")).toBe("Kept: the text of 2 pages of 1 books.");
   const shortId = await bookId(ctx, inst, "Scans/short.pdf");
   const found = (await api<{ books: { id: string }[] }>(ctx, inst, "/api/fulltext?q=" + encodeURIComponent("радиоприёмник"))).books;
@@ -70,12 +70,12 @@ e2e("the administrator reads a scan from Settings, sees how far it has got, stop
   await page.waitForFunction(() => /page 0 of 6/.test(document.querySelector(".ocr-progress")?.textContent ?? ""), undefined, { timeout: 60_000 });
   await page.click(".ocr-actions .btn:has-text('Stop')");
   await page.waitForFunction(() => document.querySelector(".ocr-message")?.textContent?.startsWith("Stopped"), undefined, { timeout: 60_000 });
-  expect(await page.textContent(".ocr-message")).toMatch(/^Stopped: \d pages read; the rest can be read later\.$/);
+  expect(await page.textContent(".ocr-message")).toMatch(/^Stopped: \d pages recognized; the rest can be done later\.$/);
   expect(await page.isChecked(`${row("long")} input`)).toBe(true); // still ticked: it was not finished
 
   // forgetting the text of the short one: search stops finding it
   await page.click(`${row("short")} .ocr-forget`);
-  await page.waitForSelector(`${row("short")} .ocr-status:text-is('Not read')`);
+  await page.waitForSelector(`${row("short")} .ocr-status:text-is('Not recognized')`);
   const left = (await api<{ books: { id: string }[] }>(ctx, inst, "/api/fulltext?q=" + encodeURIComponent("радиоприёмник"))).books;
   expect(left.some((b) => b.id === shortId)).toBe(false); // (the long one may have had a page or two read before the stop)
   expect(errors).toEqual([]);
