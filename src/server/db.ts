@@ -15,8 +15,14 @@ export function openDb(dataDir: string): Database {
     name  TEXT NOT NULL,      -- file name without extension
     ext   TEXT NOT NULL,      -- normalized format: pdf, epub, ecatm, ...
     size  INTEGER NOT NULL,
-    mtime INTEGER NOT NULL
+    mtime INTEGER NOT NULL,
+    added INTEGER NOT NULL DEFAULT 0 -- when the library first saw the file (ms); the file's own date for books found by the very first scan
   )`);
+  // a database made before the "added" column: the file's own date is the best guess of when a book came
+  if (!(db.query("PRAGMA table_info(books)").all() as { name: string }[]).some((c) => c.name === "added")) {
+    db.run("ALTER TABLE books ADD COLUMN added INTEGER NOT NULL DEFAULT 0");
+    db.run("UPDATE books SET added = mtime");
+  }
   db.run("CREATE INDEX IF NOT EXISTS books_id ON books(id)");
   db.run("CREATE TABLE IF NOT EXISTS folders (path TEXT PRIMARY KEY)");
   db.run("PRAGMA foreign_keys = ON");

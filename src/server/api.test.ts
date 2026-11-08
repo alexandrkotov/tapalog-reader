@@ -99,7 +99,9 @@ test("before setup the local network can browse, the internet side cannot, and s
   expect((await call(lan, "/api/me")).body).toMatchObject({ setupNeeded: true, setupPossible: true, canBrowse: true });
   const library = await call(lan, "/api/library");
   expect(library.status).toBe(200);
-  bookId = library.body.books.find((b: { name: string }) => b.name === "one").id;
+  const one = library.body.books.find((b: { name: string }) => b.name === "one");
+  bookId = one.id;
+  expect(one.added).toBeGreaterThan(0); // when the library first saw the file: what the shelf orders "date added" by
 
   expect((await call(tunnelSide, "/api/library")).status).toBe(401);
   expect((await call(tunnelSide, "/api/me")).body).toMatchObject({ origin: "tunnel", setupPossible: false, canBrowse: false });

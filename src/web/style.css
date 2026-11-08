@@ -413,3 +413,29 @@ textarea.card-input { resize: vertical; }
 .card-pick { padding: 1px 9px; font-size: 12px; border-radius: 999px; }
 .card-tag { display: inline-block; margin: 0 6px 4px 0; padding: 1px 9px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; text-decoration: none; color: var(--text); }
 .card-tag:hover { background: var(--hover); }
+
+/* the bar above a shelf (layout, order, filters) and the list layout */
+.shelf-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; margin: 0 0 14px; }
+.bar-group { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; }
+.bar-field { display: flex; flex-direction: column; gap: 2px; }
+.bar-view, .bar-direction { width: 34px; padding: 0; }
+.bar-view.on { border-color: var(--accent); color: var(--accent); }
+.shelf-bar select, .bar-author { height: 32px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; min-width: 0; box-sizing: border-box; }
+.bar-author { width: 150px; }
+.bar-reset[hidden], .bar-status[hidden] { display: none; }
+.bar-status { align-self: center; }
+.shelf.list { display: flex; flex-direction: column; gap: 0; }
+.shelf.list .card.row { flex-direction: row; align-items: center; gap: 12px; padding: 5px 8px; border-radius: 6px; font-size: 14px; }
+.shelf.list .row .name { display: flex; flex-direction: column; flex: 1 1 40%; -webkit-line-clamp: unset; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shelf.list .row .where { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.shelf.list .row .authors { flex: 1 1 25%; min-width: 0; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shelf.list .row .year { flex: none; width: 3.2em; text-align: right; color: var(--muted); font-size: 13px; }
+.shelf.list .row .added { flex: none; width: 6.5em; text-align: right; color: var(--muted); font-size: 12px; }
+.shelf.list .row .card-info { flex: none; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; }
+.shelf.list .row .card-info:hover, .shelf.list .row .card-info:focus-visible { background: var(--accent, #2563eb); color: #fff; }
+.shelf.list .row.folder .name { flex: 1 1 auto; flex-direction: row; }
+.shelf.list .row .badge { flex: none; width: 44px; text-align: center; box-sizing: border-box; }
+.shelf.list .row .folder-icon { flex: none; width: 44px; text-align: center; }
+@media (max-width: 640px) {
+  .shelf.list .row .authors, .shelf.list .row .added { display: none; }
+}

@@ -73,7 +73,7 @@ for (const lang of ["en", "ru", "uk"] as const) {
     // the whole interface
     await page.click("#tour");
     const library = await everyStepExplained(page, "library");
-    expect(library).toBe(12); // the panel, the tree, search, the tag bar, bookmarks, projects, links, edit, link, settings, theme and language
+    expect(library).toBe(13); // the panel, the tree, search, the tag bar, the shelf bar, bookmarks, projects, links, edit, link, settings, theme and language
 
     // a book: its own tour (a PDF has the toolbar too)
     await page.goto(`${inst.url}/#book=${pdfId}&view=${encodeURIComponent(JSON.stringify({ v: 1, page: 2 }))}`);

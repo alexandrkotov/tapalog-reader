@@ -9,6 +9,8 @@ import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
 import { countTags, parseTags, tagsHash, toggleTag, withAllTags } from "./tags";
+import { shelfBarEl } from "./shelfBar";
+import { filterBooks, formatsOf, isFiltering, NO_FILTERS, parsePrefs, sortBooks, type Filters, type Prefs } from "./shelfView";
 import { offerTour, startTour, type TourStep } from "./tour";
 import { openPrintDialog } from "./print";
 import { loadDisplay, saveDisplay, type Display } from "./display";
@@ -32,6 +34,8 @@ interface Book {
   year: number | null;
   series: string;
   tags: string[];
+  /** When the library first saw the file (ms). */
+  added: number;
 }
 interface Status {
   configured: boolean;
@@ -278,18 +282,13 @@ function showShelf(path: string): void {
     if (kind === "folder") card.dataset.drop = path;
     return card;
   };
-  const cards: HTMLElement[] = [
-    ...[...node.folders].sort(byName).map((f) =>
-      editable(el("a", { class: "card folder", href: `#folder=${encodeURIComponent(f.path)}`, title: f.path }, el("div", { class: "thumb folder-tile", textContent: "📁" }), el("div", { class: "cap" }, el("span", { class: "name", textContent: f.name }), el("span", { class: "count", textContent: String(f.total) }))), "folder", f.path),
-    ),
-    ...[...node.books].sort(byTitle).map((b) => editable(bookCardEl(b), "book", b.path)),
-  ];
-  const { grid, more } = paged(cards);
+  const prefix = node.path ? node.path + "/" : "";
+  const list = shelfList({ key: `folder:${node.path}`, folders: node.folders, books: node.books, all: books.filter((b) => b.path.startsWith(prefix)), flat: true, empty: t("shelf.empty"), editable });
   const recent = el("section", { class: "recent", hidden: true });
   const tagBar = node === root ? tagBarEl([]) : null;
   mainEl.replaceChildren(
     el("div", { class: "shelf-head" }, ...crumbs),
-    el("div", { class: "shelf-body" }, ...(node === root ? [recent] : []), ...(tagBar ? [tagBar] : []), cards.length ? grid : el("p", { class: "shelf-empty", textContent: t("shelf.empty") }), more),
+    el("div", { class: "shelf-body" }, ...(node === root ? [recent] : []), ...(tagBar ? [tagBar] : []), ...list),
   );
   if (node === root) void fillRecent(recent);
 }
@@ -297,9 +296,92 @@ function showShelf(path: string): void {
 /** A book's card on a shelf: its cover, its title and the ⓘ that opens its details. */
 const bookCardEl = (b: Book) => el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext), infoButton(b.id)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.title })));
 
-/** Cards in a grid that shows a page of them and a button for the rest. */
-function paged(cards: HTMLElement[]): { grid: HTMLElement; more: HTMLElement } {
-  const grid = el("div", { class: "shelf" });
+/** A book as one line of the list view: format, title, authors, year, the day it came, and the ⓘ. */
+const bookRowEl = (b: Book, where: boolean) => {
+  const dir = b.path.includes("/") ? b.path.slice(0, b.path.lastIndexOf("/")) : "";
+  return el(
+    "a",
+    { class: "card row", href: `#book=${b.id}`, title: b.path },
+    badge(b.ext),
+    el("span", { class: "name" }, b.title, ...(where && dir ? [el("span", { class: "where", textContent: dir })] : [])),
+    el("span", { class: "authors", textContent: b.authors.join(", ") }),
+    el("span", { class: "year", textContent: b.year === null ? "" : String(b.year) }),
+    el("span", { class: "added", textContent: new Date(b.added).toLocaleDateString() }),
+    infoButton(b.id),
+  );
+};
+
+/** A folder as one line of the list view. */
+const folderRowEl = (f: FolderNode) => el("a", { class: "card row folder", href: `#folder=${encodeURIComponent(f.path)}`, title: f.path }, el("span", { class: "folder-icon", textContent: "📁" }), el("span", { class: "name", textContent: f.name }), el("span", { class: "count", textContent: String(f.total) }));
+
+let shelfPrefs: Prefs = parsePrefs(store.get("tapalog.shelf"));
+let shelfFilters: Filters = { ...NO_FILTERS };
+let shelfKey = "";
+/** When this reader last opened each book: what "last opened" orders by. */
+let openedAt = new Map<string, number>();
+async function loadOpened(): Promise<void> {
+  openedAt = new Map((await recentPlaces(!!me?.user)).map((p) => [p.bookId, p.updatedAt]));
+}
+
+/**
+ * What a shelf shows under its crumbs: the bar (layout, order, filters) and the books and folders as the bar says.
+ * While a filter is on, the folders give way to the books that pass it, from this folder and every folder below it.
+ * Filters are forgotten when the reader goes to another shelf; the layout and the order stay.
+ */
+function shelfList(scope: { key: string; folders: FolderNode[]; books: Book[]; all: Book[]; flat: boolean; empty: string; editable?: <T extends HTMLElement>(card: T, kind: "book" | "folder", path: string) => T }): HTMLElement[] {
+  if (scope.key !== shelfKey) {
+    shelfKey = scope.key;
+    shelfFilters = { ...NO_FILTERS };
+  }
+  const formats = formatsOf(scope.all);
+  const tags = countTags(scope.all);
+  if (!formats.some((f) => f.ext === shelfFilters.format)) shelfFilters.format = "";
+  if (!tags.some((x) => x.key === shelfFilters.tag)) shelfFilters.tag = "";
+  const results = el("div", { class: "shelf-results" });
+  const mark = scope.editable ?? (<T extends HTMLElement>(card: T) => card);
+  const fill = () => {
+    const filtering = isFiltering(shelfFilters);
+    const found = sortBooks(filtering ? filterBooks(scope.all, shelfFilters) : scope.books, shelfPrefs.sort, shelfPrefs.desc, openedAt);
+    const rows = shelfPrefs.view === "list";
+    const folders = filtering ? [] : [...scope.folders].sort(byName);
+    const cards = [
+      ...folders.map((f) => mark(rows ? folderRowEl(f) : folderCardEl(f), "folder", f.path)),
+      ...found.map((b) => mark(rows ? bookRowEl(b, filtering && scope.flat) : bookCardEl(b), "book", b.path)),
+    ];
+    const { grid, more } = paged(cards, rows);
+    results.replaceChildren(...(cards.length ? [grid] : filtering ? [el("p", { class: "shelf-empty", textContent: t("shelf.nomatch") })] : scope.empty ? [el("p", { class: "shelf-empty", textContent: scope.empty })] : []), more);
+    bar?.status(filtering ? t(scope.flat ? "shelf.shownBelow" : "shelf.shown", { n: found.length, total: scope.all.length }) : "");
+  };
+  const bar =
+    scope.all.length > 1
+      ? shelfBarEl({
+          prefs: shelfPrefs,
+          filters: shelfFilters,
+          formats,
+          tags,
+          onPrefs: (next) => {
+            shelfPrefs = next;
+            store.set("tapalog.shelf", JSON.stringify(next));
+            if (next.sort === "opened") void loadOpened().then(() => results.isConnected && fill());
+            fill();
+          },
+          onFilters: (next) => {
+            shelfFilters = next;
+            fill();
+          },
+        })
+      : null;
+  fill();
+  if (shelfPrefs.sort === "opened") void loadOpened().then(() => results.isConnected && fill());
+  return [...(bar ? [bar.node] : []), results];
+}
+
+/** A folder as a card of the grid view. */
+const folderCardEl = (f: FolderNode) => el("a", { class: "card folder", href: `#folder=${encodeURIComponent(f.path)}`, title: f.path }, el("div", { class: "thumb folder-tile", textContent: "📁" }), el("div", { class: "cap" }, el("span", { class: "name", textContent: f.name }), el("span", { class: "count", textContent: String(f.total) })));
+
+/** Cards in a grid (or lines in a list) that shows a page of them and a button for the rest. */
+function paged(cards: HTMLElement[], list = false): { grid: HTMLElement; more: HTMLElement } {
+  const grid = el("div", { class: list ? "shelf list" : "shelf" });
   const more = el("button", { type: "button", class: "btn shelf-more" });
   let shown = 0;
   const renderMore = () => {
@@ -355,10 +437,15 @@ function showTagShelf(chosen: string[]): void {
   const found = withAllTags(books, chosen).sort(byTitle);
   document.title = `${chosen.join(", ")} — ${t("app.title")}`;
   const crumbs: Node[] = [el("a", { href: "#", textContent: t("shelf.root") }), el("span", { class: "sep", textContent: "/" }), el("span", { textContent: t("tags.title") })];
-  const { grid, more } = paged(found.map(bookCardEl));
   mainEl.replaceChildren(
     el("div", { class: "shelf-head" }, ...crumbs),
-    el("div", { class: "shelf-body" }, ...(bar ? [bar] : []), el("p", { class: "muted tag-found", textContent: found.length ? t("tags.found", { n: found.length }) : t("tags.none") }), found.length ? grid : "", more),
+    el(
+      "div",
+      { class: "shelf-body" },
+      ...(bar ? [bar] : []),
+      el("p", { class: "muted tag-found", textContent: found.length ? t("tags.found", { n: found.length }) : t("tags.none") }),
+      ...shelfList({ key: `tags:${chosen.join(",")}`, folders: [], books: found, all: found, flat: false, empty: "" }),
+    ),
   );
 }
 
@@ -860,6 +947,7 @@ function tourSteps(forReader = true): TourStep[] {
     { target: "#panel", text: "tour.tree", more: "tour.treeMore", picture: "tree" },
     { target: "#search", text: fullTextOn ? "tour.searchText" : "tour.search", more: "tour.searchMore", picture: "search" },
     { target: "[data-tour=tags]", text: "tour.tags", more: "tour.tagsMore", picture: "tags" },
+    { target: "[data-tour=shelfbar]", text: "tour.shelfbar", more: "tour.shelfbarMore", picture: "shelfbar" },
     { target: "[data-tour=signin]", text: "tour.signin", more: "tour.signinMore", picture: "signin" },
     { target: "[data-tour=bookmarks]", text: "tour.bookmarks", more: "tour.bookmarksMore", picture: "bookmarks" },
     { target: "[data-tour=projects]", text: "tour.projects", more: "tour.projectsMore", picture: "flow" },

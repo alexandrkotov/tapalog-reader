@@ -77,13 +77,15 @@ export async function scanLibrary(db: Database, root: string, skipDirs: string[]
   const started = performance.now();
   const { folders, files } = await walk(root, new Set(skipDirs));
 
-  const known = new Map<string, { size: number; mtime: number }>();
-  for (const row of db.query("SELECT path, size, mtime FROM books").all() as { path: string; size: number; mtime: number }[]) {
+  const known = new Map<string, { id: string; size: number; mtime: number; added: number }>();
+  for (const row of db.query("SELECT path, id, size, mtime, added FROM books").all() as { path: string; id: string; size: number; mtime: number; added: number }[]) {
     known.set(row.path, row);
   }
+  const firstScan = known.size === 0;
 
+  // "added" is not touched when a file changes; INSERT carries it for a new path
   const upsert = db.prepare(
-    "INSERT INTO books (path, id, name, ext, size, mtime) VALUES (?, ?, ?, ?, ?, ?) " +
+    "INSERT INTO books (path, id, name, ext, size, mtime, added) VALUES (?, ?, ?, ?, ?, ?, ?) " +
       "ON CONFLICT(path) DO UPDATE SET id = excluded.id, name = excluded.name, ext = excluded.ext, size = excluded.size, mtime = excluded.mtime",
   );
   let added = 0;
@@ -103,8 +105,15 @@ export async function scanLibrary(db: Database, root: string, skipDirs: string[]
   const gone = [...known.keys()].filter((p) => !seen.has(p));
 
   if (stale()) return null;
+  // a file moved or renamed outside the app is "gone" at one path and new at another: it keeps the date it came
+  const cameAt = new Map<string, number>();
+  for (const p of gone) {
+    const row = known.get(p)!;
+    cameAt.set(row.id, Math.min(row.added, cameAt.get(row.id) ?? row.added));
+  }
+  const now = Date.now();
   db.transaction(() => {
-    for (const f of changed) upsert.run(f.path, f.id, f.name, f.ext, f.size, f.mtime);
+    for (const f of changed) upsert.run(f.path, f.id, f.name, f.ext, f.size, f.mtime, known.get(f.path)?.added ?? cameAt.get(f.id) ?? (firstScan ? f.mtime : now));
     const del = db.prepare("DELETE FROM books WHERE path = ?");
     for (const p of gone) del.run(p);
     db.run("DELETE FROM folders");

@@ -10,6 +10,7 @@ export type TourPicture =
   | "tree"
   | "search"
   | "tags"
+  | "shelfbar"
   | "signin"
   | "bookmarks"
   | "flow"
@@ -161,6 +162,27 @@ function tags(alt: string): SVGElement {
     text(16, 74, t("tags.found", { n: 2 }), "tp-muted"),
     shelfCard(16, "pages"),
     shelfCard(112, "notes"),
+  );
+}
+
+function shelfbar(alt: string): SVGElement {
+  const line = (y: number, format: string, color: string, name: string, year: string) => [badge(16, y - 10, format, color), text(60, y + 1, name), text(300, y + 1, year, "tp-muted", "end")];
+  return svg(
+    160,
+    alt,
+    box(4, 4, 312, 152),
+    box(14, 12, 26, 22),
+    text(27, 28, "▦", "", "middle"),
+    box(44, 12, 26, 22, "tp-hot"),
+    text(57, 28, "☰", "", "middle"),
+    box(80, 12, 124, 22, "tp-hot"),
+    text(88, 27, `${t("shelf.sort")}: ${t("shelf.sort.year")} ↓`),
+    box(212, 12, 96, 22, "tp-hot"),
+    text(220, 27, `${t("shelf.format")}: PDF`),
+    line(62, "PDF", PDF, "Detector receiver", "1949"),
+    line(86, "PDF", PDF, "Radio circuits", "1930"),
+    line(110, "PDF", PDF, "Coils and cores", "1928"),
+    line(134, "TXT", TXT, "Notes", ""),
   );
 }
 
@@ -577,7 +599,7 @@ function flow(alt: string): SVGElement {
   );
 }
 
-const DRAW: Record<TourPicture, (alt: string) => SVGElement> = { panel, tree, search, tags, signin, bookmarks, flow, links, edit, link, settings, theme, lang, title, card, print, mark, reader, share, toolbar, help, item, thumb, tools, rename, export: exportFile, printProject, note };
+const DRAW: Record<TourPicture, (alt: string) => SVGElement> = { panel, tree, search, tags, shelfbar, signin, bookmarks, flow, links, edit, link, settings, theme, lang, title, card, print, mark, reader, share, toolbar, help, item, thumb, tools, rename, export: exportFile, printProject, note };
 
 /** `alt` says in words what the picture shows; the tour passes the text of the step. */
 export const tourPicture = (which: TourPicture, alt: string): SVGElement => DRAW[which](alt);

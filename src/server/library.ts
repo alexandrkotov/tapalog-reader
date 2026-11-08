@@ -16,6 +16,13 @@ export interface BookRow {
 
 export interface BookFile extends BookRow {
   mtime: number;
+  /** When the library first saw the file (ms since 1970). */
+  added: number;
+}
+
+/** A book as the shelf lists it. */
+export interface ShelfBook extends BookRow {
+  added: number;
 }
 
 /** Owns the scan state of the one configured library folder and keeps it fresh. */
@@ -109,13 +116,13 @@ export class Library {
     return (this.db.query("SELECT path FROM folders ORDER BY path").all() as { path: string }[]).map((r) => r.path);
   }
 
-  books(): BookRow[] {
-    return this.db.query("SELECT id, path, name, ext, size FROM books ORDER BY path").all() as BookRow[];
+  books(): ShelfBook[] {
+    return this.db.query("SELECT id, path, name, ext, size, added FROM books ORDER BY path").all() as ShelfBook[];
   }
 
   /** Every book with the time its file was last changed, for finding duplicates. */
   files(): BookFile[] {
-    return this.db.query("SELECT id, path, name, ext, size, mtime FROM books ORDER BY path").all() as BookFile[];
+    return this.db.query("SELECT id, path, name, ext, size, mtime, added FROM books ORDER BY path").all() as BookFile[];
   }
 
   /** The paths of all books with this content id: more than one means identical files. */
