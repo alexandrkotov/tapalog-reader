@@ -2,6 +2,7 @@ import { restoreFromFile } from "./backup";
 import { t } from "./i18n";
 import { openDuplicates } from "./duplicates";
 import { pickFolder } from "./folderPicker";
+import { openOcr } from "./ocrWindow";
 import { api, ApiError, el, formatBytes, openModal } from "./ui";
 
 interface Settings {
@@ -53,11 +54,18 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
       if (st.working) parts.push(el("p", { class: "muted", textContent: t("admin.fulltext.working", { name: st.working }) }));
     }
     parts.push(note(t("admin.fulltext.note")));
+    const buttons: HTMLElement[] = [];
+    if (st.enabled) {
+      const reading = el("button", { type: "button", class: "btn", textContent: t("ocr.open") });
+      reading.addEventListener("click", () => void openOcr({ changed: () => void api<FullTextStatus>("/api/admin/fulltext").then(drawIndex) }));
+      buttons.push(reading);
+    }
     if (st.indexed + st.skipped + st.failed > 0) {
       const clear = el("button", { type: "button", class: "btn", textContent: t("admin.fulltext.clear") });
       clear.addEventListener("click", async () => confirm(t("admin.fulltext.clear") + "?") && drawIndex(await api<FullTextStatus>("/api/admin/fulltext/clear", {})));
-      parts.push(clear);
+      buttons.push(clear);
     }
+    if (buttons.length) parts.push(el("div", { class: "row" }, ...buttons));
     indexBox.replaceChildren(...parts);
     if (st.enabled && (st.working || st.indexed + st.skipped + st.failed < st.total)) indexTimer = setTimeout(() => void api<FullTextStatus>("/api/admin/fulltext").then(drawIndex), 2000);
   }

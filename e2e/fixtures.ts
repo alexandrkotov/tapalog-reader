@@ -106,3 +106,57 @@ export function library(): Record<string, Uint8Array | string> {
     "Comics/strip.cbz": cbz(),
   };
 }
+
+export const PAGE_W = 1000;
+export const PAGE_H = 1300;
+
+/** A PDF whose pages are nothing but pictures (JPEG), the way a scanned book is. */
+export function scanPdf(pictures: Uint8Array[], w: number, h: number): Uint8Array {
+  const parts: (string | Uint8Array)[] = [];
+  const offsets: number[] = [];
+  let length = 0;
+  const add = (part: string | Uint8Array) => {
+    parts.push(part);
+    length += typeof part === "string" ? Buffer.byteLength(part, "latin1") : part.length;
+  };
+  const object = (n: number, body: string | (string | Uint8Array)[]) => {
+    offsets[n] = length;
+    add(`${n} 0 obj\n`);
+    for (const piece of Array.isArray(body) ? body : [body]) add(piece);
+    add("\nendobj\n");
+  };
+  add("%PDF-1.4\n");
+  const pageIds = pictures.map((_, i) => 3 + i * 3);
+  object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  object(2, `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pictures.length} >>`);
+  pictures.forEach((jpeg, i) => {
+    const page = 3 + i * 3;
+    const content = `q ${w} 0 0 ${h} 0 0 cm /Im0 Do Q`;
+    object(page, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Contents ${page + 1} 0 R /Resources << /XObject << /Im0 ${page + 2} 0 R >> >> >>`);
+    object(page + 1, `<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+    object(page + 2, [`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`, jpeg, "\nendstream"]);
+  });
+  const size = 3 + pictures.length * 3;
+  const xref = length;
+  add(`xref\n0 ${size}\n0000000000 65535 f \n${Array.from({ length: size - 1 }, (_, i) => `${String(offsets[i + 1]).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  const out = new Uint8Array(length);
+  let at = 0;
+  for (const part of parts) {
+    const bytes = typeof part === "string" ? Buffer.from(part, "latin1") : part;
+    out.set(bytes, at);
+    at += bytes.length;
+  }
+  return out;
+}
+
+/** The pictures of scanned pages: each page's lines of text in a big plain font, shot as a browser draws them. */
+export async function scanPictures(browser: import("playwright-core").Browser, pages: string[][]): Promise<Uint8Array[]> {
+  const shot = await browser.newPage({ viewport: { width: PAGE_W, height: PAGE_H } });
+  const pictures: Uint8Array[] = [];
+  for (const lines of pages) {
+    await shot.setContent(`<body style="margin:0;background:#fff"><div style="font:46px serif;color:#000;padding:120px 60px;line-height:1.6">${lines.map((l) => `<p>${l}</p>`).join("")}</div></body>`);
+    pictures.push(new Uint8Array(await shot.screenshot({ type: "jpeg", quality: 92 })));
+  }
+  await shot.close();
+  return pictures;
+}

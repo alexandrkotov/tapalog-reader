@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { etaSeconds, formatEta, runOcr, type OcrProgress, type OcrSteps } from "./ocrRun";
+import { etaSeconds, runOcr, splitEta, type OcrProgress, type OcrSteps } from "./ocrRun";
 
 /** Stand-ins: a page "draws" as its number, "reads" as `text <n>`, and every call is noted. */
 function steps(over: Partial<OcrSteps<number>> = {}, log: string[] = []): OcrSteps<number> & { log: string[]; uploaded: Map<number, string>; open: number; peak: number } {
@@ -110,8 +110,9 @@ test("all pages already held: nothing to do", async () => {
 test("the time left goes by the speed so far, and is told the way people say it", () => {
   expect(etaSeconds(0, 100, 5000)).toBeNull();
   expect(etaSeconds(10, 90, 20_000)).toBe(180); // 2 s a page, 90 left
-  expect(formatEta(40)).toBe("40 s");
-  expect(formatEta(14 * 60)).toBe("14 min");
-  expect(formatEta(2 * 3600 + 5 * 60)).toBe("2 h 5 min");
-  expect(formatEta(3 * 3600)).toBe("3 h");
+  expect(splitEta(40)).toEqual({ hours: 0, minutes: 0, seconds: 40 });
+  expect(splitEta(0.2)).toEqual({ hours: 0, minutes: 0, seconds: 1 });
+  expect(splitEta(14 * 60)).toEqual({ hours: 0, minutes: 14, seconds: 0 });
+  expect(splitEta(2 * 3600 + 5 * 60)).toEqual({ hours: 2, minutes: 5, seconds: 0 });
+  expect(splitEta(3 * 3600)).toEqual({ hours: 3, minutes: 0, seconds: 0 });
 });

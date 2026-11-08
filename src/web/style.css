@@ -70,6 +70,17 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .modal-body .about-parts { font-size: 14px; }
 .modal-body .about-links a, .modal-body .about-components a { color: var(--accent); }
 .about-actions { margin-top: 8px; }
+.ocr-langline { display: flex; align-items: center; gap: 8px; }
+.ocr-list { display: flex; flex-direction: column; max-height: 45vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.ocr-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.ocr-row:last-child { border-bottom: 0; }
+.ocr-row:hover { background: var(--hover); }
+.ocr-what { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ocr-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ocr-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ocr-bar { width: 100%; }
+.ocr-actions { flex-wrap: wrap; }
+.ocr-list > p { margin: 10px; }
 @media (max-width: 520px) { .about-components { columns: 1; } }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 

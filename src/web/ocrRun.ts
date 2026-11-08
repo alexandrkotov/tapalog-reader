@@ -54,14 +54,11 @@ export function etaSeconds(readNow: number, remaining: number, elapsedMs: number
   return Math.round((remaining * elapsedMs) / readNow / 1000);
 }
 
-/** A time left as people say it: "2 h 5 min", "14 min", "40 s". */
-export function formatEta(seconds: number): string {
-  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`;
+/** A time left in the parts people say it in: under a minute in seconds, under an hour in minutes, then hours and minutes. */
+export function splitEta(seconds: number): { hours: number; minutes: number; seconds: number } {
+  if (seconds < 60) return { hours: 0, minutes: 0, seconds: Math.max(1, Math.round(seconds)) };
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m ? `${h} h ${m} min` : `${h} h`;
+  return { hours: Math.floor(minutes / 60), minutes: minutes % 60, seconds: 0 };
 }
 
 export async function runOcr<Image>(options: OcrRunOptions<Image>): Promise<OcrOutcome> {
