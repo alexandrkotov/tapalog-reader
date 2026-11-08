@@ -112,6 +112,10 @@ e2e("the administrator changes a book's details in its window, takes a typed val
   expect(await page.inputValue(".card-form .card-field:nth-child(6) input")).toBe("радио, схемы"); // the repeated tag is gone
   expect(await page.textContent(".card-form .card-field:nth-child(1) .card-note")).toContain("Как сделать детекторный приёмник");
   expect(await page.locator(".card-reset").count()).toBe(2); // the title and the tags were typed here
+  // the button says what it does: take the file's words where the file has some, throw the typed text away where it has none
+  expect(await page.textContent(".card-form .card-field:nth-child(1) .card-reset")).toBe("↺ Use the file's value");
+  expect(await page.textContent(".card-form .card-field:nth-child(6) .card-reset")).toBe("↺ Clear my text");
+  expect(await page.getAttribute(".card-form .card-field:nth-child(6) .card-reset", "title")).toContain("the field becomes empty");
 
   // a value the server refuses is explained and nothing else is lost
   await page.fill(".card-form input[type=number]", "1949.5");

@@ -38,7 +38,7 @@ interface Row {
 
 function row(name: FieldName, label: Key, hint: Key | null, control: HTMLInputElement | HTMLTextAreaElement, toValue: () => unknown, toText: (value: unknown) => string, undo: (name: FieldName) => void): Row {
   const note = el("div", { class: "muted small card-note" });
-  const reset = el("button", { type: "button", class: "btn card-reset", textContent: `↺ ${t("card.reset")}`, title: t("card.resetHint") });
+  const reset = el("button", { type: "button", class: "btn card-reset" });
   reset.addEventListener("click", () => undo(name));
   const node = el("div", { class: "card-field" }, el("label", { class: "card-label" }, el("span", { textContent: t(label) }), control), ...(hint ? [el("div", { class: "muted small", textContent: t(hint) })] : []), note);
   return {
@@ -51,7 +51,13 @@ function row(name: FieldName, label: Key, hint: Key | null, control: HTMLInputEl
       const edited = card.edited.includes(name);
       note.replaceChildren();
       if (inFile !== undefined && text(inFile) !== text(card.fields[name])) note.append(`${t("card.inFile", { value: text(inFile) })} `);
-      if (edited) note.append(reset);
+      if (edited) {
+        // what the button does depends on whether the file says anything here: take its words, or just throw away what was typed
+        const fileSays = inFile !== undefined && text(inFile) !== "";
+        reset.textContent = `↺ ${t(fileSays ? "card.reset" : "card.clear")}`;
+        reset.title = t(fileSays ? "card.resetHint" : name === "title" ? "card.clearTitleHint" : "card.clearHint");
+        note.append(reset);
+      }
     },
   };
 }
