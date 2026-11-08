@@ -108,3 +108,63 @@ e2e("in a book's window the administrator picks tags already in use, and a reade
   await readerCtx.close();
   await page.close();
 });
+
+e2e("the administrator renames, merges and removes tags for all books from one window, and a reader has no such button", async () => {
+  // a library of its own tags: the tests above leave theirs on the books
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  page.on("dialog", (dialog) => void dialog.accept()); // the question before a merge and a removal
+  const set = (name: string, tags: string[]) => ctx.request.put(`${inst.url}/api/admin/books/${ids[name]}/meta`, { data: { set: { tags } }, headers: { Origin: inst.url } });
+  await set("a", ["Радио", "схемы"]);
+  await set("b", ["радио"]);
+  await set("c", ["Радио", "лампы"]);
+  await set("d", ["лампы"]);
+  await page.goto(inst.url + "/");
+  await page.waitForSelector(".tag-bar");
+  expect(await chips(page)).toEqual(["Радио:3", "лампы:2", "схемы:1"]);
+
+  await page.click(".tag-manage");
+  await page.waitForSelector(".tag-manage-row");
+  expect(await page.$$eval(".tag-manage-row .tag-manage-name", (n) => n.map((x) => x.textContent))).toEqual(["Радио", "лампы", "схемы"]);
+
+  // renamed: every book follows, the bar behind the window too
+  await page.click(".tag-manage-row:has-text('схемы') .tag-rename");
+  await page.fill(".tag-manage-input", "чертежи");
+  await page.click(".tag-manage-row .btn.primary");
+  await page.waitForFunction(() => document.querySelector(".tag-manage-status")?.textContent === "Changed in 1 books.");
+  await page.waitForFunction(() => [...document.querySelectorAll(".tag-bar .tag-chip")].some((c) => c.querySelector("span")?.textContent === "чертежи"));
+  expect(await chips(page)).toEqual(["Радио:3", "лампы:2", "чертежи:1"]);
+
+  // merged into a tag in use (a question is asked and answered yes): the books with both keep one
+  await page.click(".tag-manage-row:has-text('чертежи') .tag-rename");
+  await page.fill(".tag-manage-input", "РАДИО");
+  await page.click(".tag-manage-row .btn.primary");
+  await page.waitForFunction(() => [...document.querySelectorAll(".tag-bar .tag-chip")].every((c) => c.querySelector("span")?.textContent !== "чертежи"));
+  expect(await chips(page)).toEqual(["Радио:3", "лампы:2"]);
+  const tagsOfA = await ctx.request.get(`${inst.url}/api/books/${ids.a}/meta`).then((r) => r.json());
+  expect(tagsOfA.fields.tags).toEqual(["Радио"]); // had both: one is left
+
+  // removed from all books
+  await page.click(".tag-manage-row:has-text('лампы') .tag-remove");
+  await page.waitForFunction(() => document.querySelectorAll(".tag-manage-row").length === 1);
+  expect(await chips(page)).toEqual(["Радио:3"]);
+  await page.click(".tag-manage-row:has-text('Радио') .tag-rename");
+  await page.fill(".tag-manage-input", "  ");
+  await page.click(".tag-manage-row .btn.primary");
+  await page.waitForSelector(".modal .project-missing:not([hidden])");
+  expect(await page.textContent(".modal .project-missing")).toContain("cannot be used");
+  await page.keyboard.press("Escape"); // leaves the edit
+  await page.keyboard.press("Escape"); // and then the window
+  expect(await page.$(".modal")).toBeNull();
+
+  // a reader has no button
+  await api(ctx, inst, "/api/admin/users", { name: "Plain", password: "pin123", role: "user" }).catch(() => undefined);
+  const readerCtx = await signedIn(browser, inst, { name: "Plain", password: "pin123" });
+  const reader = await readerCtx.newPage();
+  await reader.goto(inst.url + "/");
+  await reader.waitForSelector(".tag-bar");
+  expect(await reader.$(".tag-manage")).toBeNull();
+  expect(errors).toEqual([]);
+  await readerCtx.close();
+  await page.close();
+});

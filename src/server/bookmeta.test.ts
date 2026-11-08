@@ -205,6 +205,51 @@ test("the tag list counts each book once per tag, ignoring letter case, most use
   expect(meta.tags()).toEqual([{ tag: "Радио", books: 2 }, { tag: "лампы", books: 1 }]);
 });
 
+test("a tag is renamed or taken away in every book at once, a rename to a tag in use merges the two, and nothing else changes", () => {
+  const { db } = install();
+  const meta = new BookMeta(db);
+  const [a, b, c, d] = ["a", "b", "c", "d"].map((x) => x.repeat(20));
+  meta.edit(a!, { title: "Keep me", tags: ["Радио", "лампы"] }, undefined);
+  meta.edit(b!, { tags: ["радио", "схемы"] }, undefined);
+  meta.edit(c!, { tags: ["схемы", "радиотехника"] }, undefined);
+  meta.edit(d!, { title: "No tags" }, undefined);
+  const tagsOf = (id: string) => meta.row(id)?.manual.tags;
+
+  // the letter case of the old name does not matter; the new name is written as given
+  expect(meta.renameTag("РАДИО", "Радио-дело")).toBe(2);
+  expect(tagsOf(a!)).toEqual(["Радио-дело", "лампы"]); // the order of the tags stays
+  expect(tagsOf(b!)).toEqual(["Радио-дело", "схемы"]);
+  expect(tagsOf(c!)).toEqual(["схемы", "радиотехника"]);
+  expect(meta.row(a!)?.manual.title).toBe("Keep me");
+
+  // a name already in use: the two become one, and a book that had both keeps one
+  meta.edit(a!, { tags: ["Радио-дело", "радиотехника", "лампы"] }, undefined);
+  expect(meta.renameTag("радиотехника", "радио-дело")).toBe(2);
+  expect(tagsOf(a!)).toEqual(["Радио-дело", "лампы"]);
+  expect(tagsOf(c!)).toEqual(["схемы", "радио-дело"]);
+
+  // only the spelling changes when the names differ by letter case alone
+  expect(meta.renameTag("радио-дело", "Радио-Дело")).toBe(3);
+  expect(meta.tags().map((t) => t.tag)).toEqual(["Радио-Дело", "схемы", "лампы"]);
+
+  // taken away: the last tag of a book leaves it with none, the other values stay
+  expect(meta.removeTag("ЛАМПЫ")).toBe(1);
+  expect(tagsOf(a!)).toEqual(["Радио-Дело"]);
+  expect(meta.removeTag("схемы")).toBe(2);
+  expect(meta.removeTag("нет такого")).toBe(0);
+  expect(meta.removeTag("Радио-Дело")).toBe(3);
+  expect(tagsOf(a!)).toBeUndefined();
+  expect(meta.row(a!)?.manual).toEqual({ title: "Keep me" });
+  expect(meta.tags()).toEqual([]);
+
+  // names that cannot be tags are refused and nothing is changed
+  meta.edit(a!, { tags: ["x"] }, undefined);
+  for (const bad of [() => meta.renameTag("x", "  "), () => meta.renameTag("x", "y".repeat(41)), () => meta.renameTag("x", 5), () => meta.renameTag("", "y"), () => meta.removeTag(" "), () => meta.removeTag(7)]) {
+    expect(bad).toThrow(MetaError);
+  }
+  expect(tagsOf(a!)).toEqual(["x"]);
+});
+
 test("a backup carries what was typed, not what the files say, and restoring puts it back; an older backup leaves the cards alone", async () => {
   const a = install();
   const meta = new BookMeta(a.db);

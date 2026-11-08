@@ -424,6 +424,31 @@ function buildRoutes(app: App, origin: Origin) {
       }),
     },
     "/api/tags": browse(() => json({ tags: app.library.meta.tags() })),
+    // Tags for the whole library at once (administrator): rename (a name already in use merges the two) and take away.
+    "/api/admin/tags/rename": {
+      POST: admin(async (req) => {
+        const data = await body(req);
+        if (!data) return bad();
+        try {
+          return json({ changed: app.library.meta.renameTag(data.from, data.to) });
+        } catch (err) {
+          if (err instanceof MetaError) return bad(err.message);
+          throw err;
+        }
+      }),
+    },
+    "/api/admin/tags/remove": {
+      POST: admin(async (req) => {
+        const data = await body(req);
+        if (!data) return bad();
+        try {
+          return json({ changed: app.library.meta.removeTag(data.tag) });
+        } catch (err) {
+          if (err instanceof MetaError) return bad(err.message);
+          throw err;
+        }
+      }),
+    },
     "/api/cover/:id": browse((req) => {
       const file = app.covers.file(param(req, "id"));
       // A cover never changes for a given id (the id is the book's content), so browsers may keep it.

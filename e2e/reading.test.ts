@@ -33,6 +33,7 @@ e2e("the first run asks for an administrator, then shows the library", async () 
   await page.click("form button[type=submit]");
   await page.waitForSelector(".account .who");
   expect(await page.textContent(".account .who")).toBe(ADMIN.name);
+  await page.waitForSelector(".tree .node"); // the name is drawn before the library has arrived
   expect(await page.$$eval(".tree .node", (n) => n.map((x) => (x as HTMLElement).dataset.folder))).toEqual(["Books", "Comics", "Docs"]);
   await fresh.close();
   ctx = await signedIn(browser, inst);

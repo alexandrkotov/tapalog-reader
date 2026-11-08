@@ -10,6 +10,7 @@ import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
 import { countTags, parseTags, tagsHash, toggleTag, withAllTags } from "./tags";
 import { shelfBarEl } from "./shelfBar";
+import { openTagManager } from "./tagManager";
 import { searchHash } from "./searchAddress";
 import { searchPageEl, type FoundBook } from "./searchPage";
 import { filterBooks, formatsOf, isFiltering, NO_FILTERS, parsePrefs, sortBooks, type Filters, type Prefs } from "./shelfView";
@@ -421,7 +422,18 @@ function tagBarEl(chosen: string[]): HTMLElement | null {
       button.addEventListener("click", () => ((allTagsShown = !allTagsShown), bar.replaceChildren(...draw())));
       toggle.push(button);
     }
-    return [el("span", { class: "tag-title", textContent: t("tags.title") }), ...chips, ...toggle, ...(chosen.length ? [el("a", { class: "tag-clear", href: "#", textContent: t("tags.clear") })] : [])];
+    const manage = el("button", { type: "button", class: "btn tag-manage", textContent: "⚙", title: t("tags.manage") });
+    manage.setAttribute("aria-label", t("tags.manage"));
+    manage.addEventListener("click", () =>
+      openTagManager({
+        read: () => countTags(books),
+        changed: async () => {
+          await loadLibrary();
+          if (!parseHash().book) route();
+        },
+      }),
+    );
+    return [el("span", { class: "tag-title", textContent: t("tags.title") }), ...chips, ...toggle, ...(me?.user?.role === "admin" ? [manage] : []), ...(chosen.length ? [el("a", { class: "tag-clear", href: "#", textContent: t("tags.clear") })] : [])];
   };
   const bar = el("nav", { class: "tag-bar" });
   bar.setAttribute("aria-label", t("tags.title"));

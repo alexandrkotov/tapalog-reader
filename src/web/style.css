@@ -461,3 +461,12 @@ textarea.card-input { resize: vertical; }
 .found-banner[hidden], .found-again[hidden] { display: none; }
 .found-indexing { margin: 0; font-size: 13px; }
 .found-again { height: 28px; font-size: 12px; }
+
+/* the administrator's window for the tags of the whole library */
+.tag-manage { padding: 2px 10px; height: auto; font-size: 13px; }
+.tag-manage-list { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow: auto; }
+.tag-manage-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.tag-manage-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-manage-input { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+.tag-manage-row .btn { height: 28px; font-size: 12px; }
+.tag-manage-status[hidden] { display: none; }

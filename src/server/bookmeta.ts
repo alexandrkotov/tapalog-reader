@@ -223,6 +223,46 @@ export class BookMeta {
     })();
   }
 
+  /**
+   * Writes `to` in place of the tag `from` (whatever its letter case) in every book that has it; a book that already has `to` keeps one,
+   * so renaming to a tag in use merges the two. Returns how many books changed. Throws a MetaError for a name that cannot be a tag.
+   */
+  renameTag(from: unknown, to: unknown): number {
+    const next = cleanTags([to])[0];
+    if (!next) throw new MetaError("tags");
+    return this.rewriteTag(from, next);
+  }
+
+  /** Takes the tag away from every book that has it; returns how many books changed. */
+  removeTag(tag: unknown): number {
+    return this.rewriteTag(tag, null);
+  }
+
+  private rewriteTag(from: unknown, next: string | null): number {
+    const key = typeof from === "string" ? from.trim().toLowerCase() : "";
+    if (!key) throw new MetaError("tags");
+    let changed = 0;
+    this.db.transaction(() => {
+      for (const [id, row] of this.all()) {
+        if (!row.manual.tags?.some((t) => t.toLowerCase() === key)) continue;
+        const seen = new Set<string>();
+        const tags: string[] = [];
+        for (const t of row.manual.tags) {
+          const value = t.toLowerCase() === key ? next : t;
+          if (value === null || seen.has(value.toLowerCase())) continue;
+          seen.add(value.toLowerCase());
+          tags.push(value);
+        }
+        const manual = { ...row.manual };
+        if (tags.length) manual.tags = tags;
+        else delete manual.tags;
+        this.setManual(id, manual);
+        changed++;
+      }
+    })();
+    return changed;
+  }
+
   /** Every tag in use with the number of distinct books carrying it, most used first. */
   tags(): { tag: string; books: number }[] {
     const counts = new Map<string, { tag: string; books: number }>();

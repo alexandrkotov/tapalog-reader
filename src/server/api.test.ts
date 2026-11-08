@@ -703,3 +703,26 @@ test("bookmarks, project items and share links show a book by its title, and the
   await call(lan, `/api/projects/${project.id}`, { method: "DELETE", cookie: adminCookie });
   await call(lan, `/api/shares/${token}`, { method: "DELETE", cookie: adminCookie });
 });
+
+test("tags are renamed and taken away for the whole library by the administrator only", async () => {
+  // a reader of its own: earlier tests changed or restored the accounts that were there
+  expect((await call(lan, "/api/admin/users", { body: { name: "Tagger", password: "tag123", role: "user" }, cookie: adminCookie })).status).toBe(200);
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Tagger", password: "tag123" } })).cookie!;
+  const meta = (body: unknown) => call(lan, `/api/admin/books/${bookId}/meta`, { method: "PUT", body, cookie: adminCookie });
+  const tagList = async () => (await call(lan, "/api/tags", { cookie: adminCookie })).body.tags.map((t: { tag: string }) => t.tag);
+  await meta({ set: { tags: ["Old tag", "keep"] } });
+
+  expect((await call(lan, "/api/admin/tags/rename", { body: { from: "old tag", to: "new" }, cookie: "" })).status).toBe(401);
+  expect((await call(lan, "/api/admin/tags/rename", { body: { from: "old tag", to: "new" }, cookie: readerCookie })).status).toBe(403);
+  expect((await call(lan, "/api/admin/tags/remove", { body: { tag: "keep" }, cookie: readerCookie })).status).toBe(403);
+  expect(await tagList()).toEqual(expect.arrayContaining(["Old tag", "keep"])); // nothing was changed
+
+  expect((await call(lan, "/api/admin/tags/rename", { body: { from: "OLD TAG", to: "New tag" }, cookie: adminCookie })).body).toEqual({ changed: 1 });
+  expect(await tagList()).toEqual(expect.arrayContaining(["New tag", "keep"]));
+  expect((await call(lan, "/api/admin/tags/rename", { body: { from: "new tag", to: "   " }, cookie: adminCookie })).status).toBe(400);
+  expect((await call(lan, "/api/admin/tags/rename", { body: { from: 5, to: "x" }, cookie: adminCookie })).status).toBe(400);
+  expect((await call(lan, "/api/admin/tags/remove", { body: { tag: "New tag" }, cookie: adminCookie })).body).toEqual({ changed: 1 });
+  expect((await call(lan, "/api/admin/tags/remove", { body: { tag: "keep" }, cookie: adminCookie })).body).toEqual({ changed: 1 });
+  expect(await tagList()).toEqual([]);
+  await meta({ reset: ["tags"] });
+});
