@@ -451,7 +451,8 @@ textarea.card-input { resize: vertical; }
 .found-places { list-style: none; margin: 6px 0 0; padding: 0; }
 .found-hit { display: flex; gap: 10px; align-items: baseline; padding: 4px 6px; border-radius: 6px; color: var(--text); text-decoration: none; }
 .found-hit:hover, .found-hit:focus-visible { background: var(--hover); }
-.found-where { flex: none; min-width: 6.5em; color: var(--muted); font-size: 12px; }
+.found-where { flex: none; min-width: 8.5em; color: var(--muted); font-size: 12px; white-space: nowrap; }
+@media (max-width: 520px) { .found-hit { flex-direction: column; gap: 2px; } }
 .found-hit .snip { color: var(--muted); font-size: 13px; line-height: 1.4; }
 .found-hit .snip mark { background: rgba(255, 179, 0, 0.4); color: var(--text); border-radius: 2px; }
 .found-more { margin-top: 6px; height: 28px; font-size: 12px; }

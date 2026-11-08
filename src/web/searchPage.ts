@@ -54,7 +54,7 @@ export function placeLabel(loc: Record<string, number>, share?: number): string 
   if (typeof loc.page === "number") return t("search.at.page", { n: loc.page });
   if (typeof loc.section === "number") return t("search.at.section", { n: loc.section + 1 });
   if (typeof loc.fraction === "number") return t("search.at.fraction", { n: Math.round(loc.fraction * 100) });
-  if (typeof share === "number") return t("search.at.fraction", { n: Math.round(share * 100) });
+  if (typeof share === "number") return t("search.at.fraction", { n: Math.floor(share * 100) });
   return "";
 }
 

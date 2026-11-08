@@ -5,7 +5,7 @@ export type Lang = keyof typeof LANGS;
 const en = {
   "app.title": "Tapalog Reader",
   "panel.toggle": "Show or hide the library panel",
-  "search.placeholder": "Search by file name…",
+  "search.placeholder": "Search the library…",
   "search.none": "Nothing found for “{q}”",
   "scan.running": "Scanning…",
   "pick.title": "Pick a book",
@@ -547,7 +547,7 @@ type Dict = Partial<Record<Key, string>>;
 
 const ru: Dict = {
   "panel.toggle": "Показать или скрыть панель библиотеки",
-  "search.placeholder": "Поиск по названию файла…",
+  "search.placeholder": "Поиск по библиотеке…",
   "search.none": "По запросу «{q}» ничего не найдено",
   "scan.running": "Сканирование…",
   "pick.title": "Выберите книгу",
@@ -1082,7 +1082,7 @@ const ru: Dict = {
 
 const uk: Dict = {
   "panel.toggle": "Показати або сховати панель бібліотеки",
-  "search.placeholder": "Пошук за назвою файлу…",
+  "search.placeholder": "Пошук по бібліотеці…",
   "search.none": "За запитом «{q}» нічого не знайдено",
   "scan.running": "Сканування…",
   "pick.title": "Оберіть книгу",
