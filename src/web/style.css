@@ -439,3 +439,21 @@ textarea.card-input { resize: vertical; }
 @media (max-width: 640px) {
   .shelf.list .row .authors, .shelf.list .row .added { display: none; }
 }
+
+/* the page of search results */
+.search-page { max-width: 960px; }
+.found-title { margin: 8px 0 6px; font-size: 14px; color: var(--muted); font-weight: 600; }
+.found-book { margin: 0 0 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.found-head { display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; font-weight: 600; }
+.found-head:hover .found-name { text-decoration: underline; }
+.found-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.found-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.found-places { list-style: none; margin: 6px 0 0; padding: 0; }
+.found-hit { display: flex; gap: 10px; align-items: baseline; padding: 4px 6px; border-radius: 6px; color: var(--text); text-decoration: none; }
+.found-hit:hover, .found-hit:focus-visible { background: var(--hover); }
+.found-where { flex: none; min-width: 6.5em; color: var(--muted); font-size: 12px; }
+.found-hit .snip { color: var(--muted); font-size: 13px; line-height: 1.4; }
+.found-hit .snip mark { background: rgba(255, 179, 0, 0.4); color: var(--text); border-radius: 2px; }
+.found-more { margin-top: 6px; height: 28px; font-size: 12px; }
+.found-more[hidden] { display: none; }
+.search-results li.all-results { color: var(--muted); font-size: 12px; justify-content: center; }

@@ -13,6 +13,8 @@ export interface BarSpec {
   onPrefs(prefs: Prefs): void;
   /** The reader changed what the shelf keeps. */
   onFilters(filters: Filters): void;
+  /** Only the filters: no layout, no order (the page of search results has its own order). */
+  filtersOnly?: boolean;
 }
 
 export interface Bar {
@@ -107,8 +109,7 @@ export function shelfBarEl(spec: BarSpec): Bar {
   const node = el(
     "div",
     { class: "shelf-bar" },
-    el("div", { class: "bar-group" }, ...viewButtons),
-    el("div", { class: "bar-group" }, field("shelf.sort", sort), direction),
+    ...(spec.filtersOnly ? [] : [el("div", { class: "bar-group" }, ...viewButtons), el("div", { class: "bar-group" }, field("shelf.sort", sort), direction)]),
     el("div", { class: "bar-group bar-filters" }, field("shelf.format", format), ...(spec.tags.length ? [field("shelf.tag", tag)] : []), field("shelf.author", author), reset),
     status,
   );

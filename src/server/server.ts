@@ -140,6 +140,23 @@ function buildRoutes(app: App, origin: Origin) {
       edited: Object.keys(row?.manual ?? {}),
     };
   };
+  /** A whole number from the address, kept between 1 and `max`, or `fallback`. */
+  const count = (url: URL, name: string, fallback: number, max: number) => {
+    const n = Number(url.searchParams.get(name));
+    return Number.isInteger(n) && n >= 1 ? Math.min(n, max) : fallback;
+  };
+  /** The filters of the page of search results (format, tag, part of an author's name), as a test of a book; none when none was asked. */
+  const filterOf = (url: URL): ((book: BookRow) => boolean) | undefined => {
+    const format = url.searchParams.get("format") ?? "";
+    const tag = (url.searchParams.get("tag") ?? "").toLowerCase();
+    const author = (url.searchParams.get("author") ?? "").trim().toLowerCase();
+    if (!format && !tag && !author) return undefined;
+    const meta = app.library.meta.all();
+    return (book) => {
+      const fields = shelfFields(meta.get(book.id), book.name);
+      return (!format || book.ext === format) && (!tag || fields.tags.some((x) => x.toLowerCase() === tag)) && (!author || fields.authors.some((a) => a.toLowerCase().includes(author)));
+    };
+  };
   const secureCookie = origin === "tunnel"; // the tunnel always speaks https to the visitor
   const user = (req: Request): User | null => app.auth.userFor(req);
   const canBrowse = (req: Request) => user(req) !== null || (origin === "lan" && app.config.get().lanAccess === "open");
@@ -361,13 +378,24 @@ function buildRoutes(app: App, origin: Origin) {
       }),
     ),
     "/api/library": browse(() => json({ folders: app.library.folders(), books: shelf(app.library.books()) })),
-    "/api/search": browse((req) => json({ books: shelf(app.library.searchNames(new URL(req.url).searchParams.get("q") ?? "")) })),
-    // Search inside books (only when the administrator turned the index on).
+    // Search by file name, title, author, series or tag. `limit` asks for more than the dropdown's few; format, tag and author narrow it.
+    "/api/search": browse((req) => {
+      const url = new URL(req.url);
+      return json({ books: shelf(app.library.searchNames(url.searchParams.get("q") ?? "", count(url, "limit", 50, 300), filterOf(url))) });
+    }),
+    // Search inside books (only when the administrator turned the index on). `per` places per book, `limit` books, `book` all places of one book.
     "/api/fulltext": browse((req) => {
-      const found = app.fullText.search(new URL(req.url).searchParams.get("q") ?? "");
+      const url = new URL(req.url);
+      const accept = filterOf(url);
+      const found = app.fullText.search(url.searchParams.get("q") ?? "", {
+        perBook: count(url, "per", 3, 100),
+        books: count(url, "limit", 40, 100),
+        book: url.searchParams.get("book") || undefined,
+        accept: accept && ((id) => { const book = app.library.byId(id); return !!book && accept(book); }),
+      });
       const books = found.flatMap((f) => {
         const book = app.library.byId(f.id);
-        return book ? [{ ...shelf([book])[0]!, hits: f.hits }] : [];
+        return book ? [{ ...shelf([book])[0]!, hits: f.hits, more: f.more }] : [];
       });
       return json({ enabled: app.fullText.enabled, books });
     }),

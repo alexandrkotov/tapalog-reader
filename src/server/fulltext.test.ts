@@ -129,6 +129,26 @@ test("accents and case do not matter", () => {
   expect(fullText.search("résumé")[0]!.id).toBe(ids.cafe!);
 });
 
+test("a hit says where it is, a few places are shown per book, and one book can show all of its places", () => {
+  expect(fullText.search("compasses")[0]!.hits[0]!.loc).toEqual({ page: 2 });
+  const few = fullText.search("lorem")[0]!;
+  expect(few.id).toBe(ids.river!);
+  expect(few.hits.length).toBe(3); // the usual few
+  expect(few.more).toBe(true); // and the book has more
+  expect(fullText.search("lorem", { perBook: 1 })[0]!.hits.length).toBe(1);
+  const all = fullText.search("lorem", { book: ids.river!, perBook: 100 })[0]!;
+  expect(all.hits.length).toBeGreaterThan(3);
+  expect(all.more).toBe(false);
+  expect(fullText.search("lorem", { book: ids.cafe!, perBook: 100 })).toEqual([]); // only that book is looked in
+  expect(fullText.search("compasses")[0]!.more).toBe(false);
+});
+
+test("the books the filters let through are the only ones returned", () => {
+  expect(fullText.search("lorem", { accept: () => false })).toEqual([]);
+  expect(fullText.search("lorem", { accept: (id) => id === ids.river! }).map((b) => b.id)).toEqual([ids.river!]);
+  expect(fullText.search("page", { accept: (id) => id !== ids.pages! }).map((b) => b.id)).not.toContain(ids.pages!);
+});
+
 test("books that are not in the library are never returned, and junk queries are harmless", () => {
   expect(fullText.search("zzzzzz")).toEqual([]);
   expect(fullText.search("   ")).toEqual([]);

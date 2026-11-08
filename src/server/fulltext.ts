@@ -22,6 +22,8 @@ export interface FullTextStatus {
 
 export interface FullTextHit {
   snippet: string;
+  /** Where in the book, in the terms of its format (a page, a section, a share of the book), for the label next to the snippet. */
+  loc: Loc;
   /** The reader's own view object, ready for `#book=…&view=…`. */
   view: Record<string, unknown>;
 }
@@ -29,12 +31,27 @@ export interface FullTextHit {
 export interface FullTextBook {
   id: string;
   hits: FullTextHit[];
+  /** The book has more places with the words than `hits` holds. */
+  more: boolean;
+}
+
+export interface SearchOptions {
+  /** Places shown per book (default 3). */
+  perBook?: number;
+  /** Books shown (default 40). */
+  books?: number;
+  /** Only this book: the way to see all of its places. */
+  book?: string;
+  /** Books the reader's filters let through. */
+  accept?: (id: string) => boolean;
 }
 
 const MARK_OPEN = "\u0001";
 const MARK_CLOSE = "\u0002";
 const MAX_BOOKS = 40;
 const PER_BOOK = 3;
+const MAX_PER_BOOK = 100;
+const MAX_BOOKS_ASKED = 100;
 
 /** The reader's view of a place in a book, by format. */
 export function viewFor(ext: string, loc: Loc, hit?: { start: number; end: number }): Record<string, unknown> {
@@ -218,25 +235,29 @@ export class FullText {
     return { enabled: this.enabled, total: ids.size, indexed: counts.done, skipped: counts.skipped, failed: counts.failed, working: this.working, bytes };
   }
 
-  /** Books whose text contains every word, best first; at most a few places per book. */
-  search(q: string): FullTextBook[] {
+  /** Books whose text contains every word, best first; a few places per book (or all of them for one book). */
+  search(q: string, options: SearchOptions = {}): FullTextBook[] {
     const query = matchQuery(q);
     if (!query || !this.enabled) return [];
-    const rows = this.db
-      .query(`SELECT rowid, id, loc, snippet(chunks, 0, '${MARK_OPEN}', '${MARK_CLOSE}', '…', 16) AS snip FROM chunks WHERE chunks MATCH ? ORDER BY rank LIMIT 600`)
-      .all(query.match) as { rowid: number; id: string; loc: string; snip: string }[];
+    const perBook = Math.max(1, Math.min(options.perBook ?? PER_BOOK, MAX_PER_BOOK));
+    const maxBooks = Math.max(1, Math.min(options.books ?? MAX_BOOKS, MAX_BOOKS_ASKED));
+    const sql = `SELECT rowid, id, loc, snippet(chunks, 0, '${MARK_OPEN}', '${MARK_CLOSE}', '…', 16) AS snip FROM chunks WHERE chunks MATCH ?${options.book ? " AND id = ?" : ""} ORDER BY rank LIMIT ${options.book ? 400 : 600}`;
+    const rows = this.db.query(sql).all(...(options.book ? [query.match, options.book] : [query.match])) as { rowid: number; id: string; loc: string; snip: string }[];
     const byBook = new Map<string, FullTextBook>();
     for (const row of rows) {
       const book = this.library.byId(row.id);
-      if (!book) continue;
+      if (!book || (options.accept && !options.accept(row.id))) continue;
       let entry = byBook.get(row.id);
       if (!entry) {
-        if (byBook.size >= MAX_BOOKS) continue;
-        byBook.set(row.id, (entry = { id: row.id, hits: [] }));
+        if (byBook.size >= maxBooks) continue;
+        byBook.set(row.id, (entry = { id: row.id, hits: [], more: false }));
       }
-      if (entry.hits.length >= PER_BOOK) continue;
+      if (entry.hits.length >= perBook) {
+        entry.more = true;
+        continue;
+      }
       const loc = JSON.parse(row.loc) as Loc;
-      entry.hits.push({ snippet: row.snip.replace(/\s+/g, " ").trim(), view: viewFor(book.ext, loc, "offset" in loc ? this.matchRange(row.rowid, loc.offset, query.words[0]!) : undefined) });
+      entry.hits.push({ snippet: row.snip.replace(/\s+/g, " ").trim(), loc, view: viewFor(book.ext, loc, "offset" in loc ? this.matchRange(row.rowid, loc.offset, query.words[0]!) : undefined) });
     }
     return [...byBook.values()];
   }

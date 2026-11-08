@@ -10,6 +10,8 @@ import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
 import { countTags, parseTags, tagsHash, toggleTag, withAllTags } from "./tags";
 import { shelfBarEl } from "./shelfBar";
+import { searchHash } from "./searchAddress";
+import { searchPageEl, type FoundBook } from "./searchPage";
 import { filterBooks, formatsOf, isFiltering, NO_FILTERS, parsePrefs, sortBooks, type Filters, type Prefs } from "./shelfView";
 import { offerTour, startTour, type TourStep } from "./tour";
 import { openPrintDialog } from "./print";
@@ -449,6 +451,39 @@ function showTagShelf(chosen: string[]): void {
   );
 }
 
+/** The page of search results (the quick list under the search box stays for a jump to one book). */
+function showSearchPage(query: string, filters: Filters): void {
+  stopReader();
+  currentId = null;
+  renderTree();
+  resultsEl.hidden = true;
+  searchEl.value = query;
+  document.title = `${query} — ${t("app.title")}`;
+  const formats = formatsOf(books);
+  const tags = countTags(books);
+  const clean: Filters = { format: formats.some((f) => f.ext === filters.format) ? filters.format : "", tag: tags.some((x) => x.key === filters.tag) ? filters.tag : "", author: filters.author };
+  const crumbs: Node[] = [el("a", { href: "#", textContent: t("shelf.root") }), el("span", { class: "sep", textContent: "/" }), el("span", { textContent: `${t("search.page.title")}: «${query}»` })];
+  mainEl.replaceChildren(
+    el("div", { class: "shelf-head" }, ...crumbs),
+    el(
+      "div",
+      { class: "shelf-body" },
+      searchPageEl({
+        query,
+        filters: clean,
+        formats,
+        tags,
+        // the server's list entries carry everything a book of the shelf has
+        nameRow: (b: FoundBook) => bookRowEl(b as unknown as Book, true),
+        snippet: snippetNode,
+        remember: (q, f) => history.replaceState(null, "", searchHash(q, f)),
+        fullText: fullTextOn,
+        isAdmin: me?.user?.role === "admin",
+      }),
+    ),
+  );
+}
+
 const RECENT_SHOWN = 12;
 
 /** "Continue reading": the books this reader opened last, each with the place it will open at. Only on the top shelf. */
@@ -672,6 +707,8 @@ let searchAbort: AbortController | undefined;
 /** What Enter and the arrow keys walk through: file-name hits, then places inside books. */
 let entries: { book: Book; view?: unknown }[] = [];
 let activeHit = -1;
+/** An arrow key chose a hit of the quick list: Enter then jumps to it; without that Enter opens the page of results. */
+let arrowed = false;
 let fullTextOn = false;
 interface ContentBook extends Book {
   hits: { snippet: string; view: unknown }[];
@@ -704,7 +741,17 @@ function showHits(names: Book[], content: ContentBook[] | null, query: string): 
   }
   activeHit = entries.length ? 0 : -1;
   if (!entries.length && content !== null) resultsEl.append(el("li", { class: "empty", textContent: t("search.none", { q: query }) }));
+  resultsEl.append(el("li", { class: "all-results", textContent: `${t("search.allResults", { q: query })} ⏎` }));
   resultsEl.hidden = false;
+}
+
+/** Opens the page of results for what is typed in the search box. */
+function openResultsPage(): void {
+  const q = searchEl.value.trim();
+  if (!q) return;
+  resultsEl.hidden = true;
+  searchEl.blur();
+  location.hash = searchHash(q, NO_FILTERS);
 }
 
 function pickHit(entry: { book: Book; view?: unknown }): void {
@@ -717,6 +764,7 @@ function pickHit(entry: { book: Book; view?: unknown }): void {
 
 searchEl.addEventListener("input", () => {
   clearTimeout(searchTimer);
+  arrowed = false;
   const q = searchEl.value.trim();
   if (!q) {
     resultsEl.hidden = true;
@@ -744,9 +792,15 @@ searchEl.addEventListener("keydown", (event) => {
     resultsEl.hidden = true;
     return;
   }
+  if (event.key === "Enter" && (resultsEl.hidden || !entries.length || !arrowed)) {
+    event.preventDefault();
+    openResultsPage();
+    return;
+  }
   if (resultsEl.hidden || !entries.length) return;
   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
+    arrowed = true;
     activeHit = (activeHit + (event.key === "ArrowDown" ? 1 : -1) + entries.length) % entries.length;
     const rows = resultsEl.querySelectorAll("li[data-index]");
     rows.forEach((row, i) => row.classList.toggle("active", i === activeHit));
@@ -756,7 +810,9 @@ searchEl.addEventListener("keydown", (event) => {
   }
 });
 resultsEl.addEventListener("mousedown", (event) => {
-  const row = (event.target as HTMLElement).closest<HTMLElement>("li[data-index]");
+  const target = event.target as HTMLElement;
+  if (target.closest("li.all-results")) return openResultsPage();
+  const row = target.closest<HTMLElement>("li[data-index]");
   if (row) pickHit(entries[Number(row.dataset.index)]!);
 });
 searchEl.addEventListener("blur", () => setTimeout(() => (resultsEl.hidden = true), 120));
@@ -786,7 +842,7 @@ function message(title: string, text: string, ...extra: Node[]): void {
 }
 
 /** The shape of a view depends on the book's format: EcatmView for catalogs, PageView for paged documents. */
-function parseHash(): { book: string | null; folder: string | null; view: unknown; tags: string[] | null } {
+function parseHash(): { book: string | null; folder: string | null; view: unknown; tags: string[] | null; search: string | null; filters: Filters } {
   const params = new URLSearchParams(location.hash.slice(1));
   let view: unknown = null;
   try {
@@ -795,7 +851,9 @@ function parseHash(): { book: string | null; folder: string | null; view: unknow
   } catch {
     /* a broken link opens the book at its start */
   }
-  return { book: params.get("book"), folder: params.get("folder"), view, tags: params.has("tags") ? parseTags(params.get("tags")) : null };
+  const search = params.get("search")?.trim() || null;
+  const filters: Filters = { format: params.get("format") ?? "", tag: (params.get("tag") ?? "").toLowerCase(), author: params.get("author") ?? "" };
+  return { book: params.get("book"), folder: params.get("folder"), view, tags: params.has("tags") ? parseTags(params.get("tags")) : null, search, filters };
 }
 
 const writeView = (book: Book, view: unknown) => history.replaceState(null, "", `#book=${book.id}&view=${encodeURIComponent(JSON.stringify(view))}`);
@@ -873,7 +931,7 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
 
 function route(): void {
   const seq = ++routeSeq;
-  const { book, folder, view, tags } = parseHash();
+  const { book, folder, view, tags, search, filters } = parseHash();
   if (!book) {
     if (!books.length) {
       currentId = null;
@@ -881,6 +939,7 @@ function route(): void {
       renderTree();
       return message(t("pick.title"), t("pick.empty"));
     }
+    if (search) return showSearchPage(search, filters);
     if (tags?.length) return showTagShelf(tags);
     return showShelf(folder ?? "");
   }

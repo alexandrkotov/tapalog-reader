@@ -222,13 +222,13 @@ export class Library {
   }
 
   /** Any occurrence of the query in a file name, its folder path, or the book's title, authors, series or tags, case-insensitively. */
-  searchNames(query: string, limit = 50): BookRow[] {
+  searchNames(query: string, limit = 50, accept?: (book: BookRow) => boolean): ShelfBook[] {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     const meta = this.meta.all();
-    const found: BookRow[] = [];
-    for (const book of this.db.query("SELECT id, path, name, ext, size FROM books ORDER BY name").all() as BookRow[]) {
-      if (book.path.toLowerCase().includes(q) || searchText(meta.get(book.id)).includes(q)) found.push(book);
+    const found: ShelfBook[] = [];
+    for (const book of this.db.query("SELECT id, path, name, ext, size, added FROM books ORDER BY name").all() as ShelfBook[]) {
+      if ((book.path.toLowerCase().includes(q) || searchText(meta.get(book.id)).includes(q)) && (!accept || accept(book))) found.push(book);
       if (found.length >= limit) break;
     }
     return found;
