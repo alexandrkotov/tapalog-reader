@@ -24,6 +24,8 @@ export interface FullTextHit {
   snippet: string;
   /** Where in the book, in the terms of its format (a page, a section, a share of the book), for the label next to the snippet. */
   loc: Loc;
+  /** For a plain text file, how far into the text the words are (0 to 1): a file has no pages to name. */
+  share?: number;
   /** The reader's own view object, ready for `#book=…&view=…`. */
   view: Record<string, unknown>;
 }
@@ -263,9 +265,20 @@ export class FullText {
         continue;
       }
       const loc = JSON.parse(row.loc) as Loc;
-      entry.hits.push({ snippet: row.snip.replace(/\s+/g, " ").trim(), loc, view: viewFor(book.ext, loc, "offset" in loc ? this.matchRange(row.rowid, loc.offset, query.words[0]!) : undefined) });
+      const view = viewFor(book.ext, loc, "offset" in loc ? this.matchRange(row.rowid, loc.offset, query.words[0]!) : undefined);
+      const share = "offset" in loc ? this.shareOf(row.id, Number(view.offset)) : undefined;
+      entry.hits.push({ snippet: row.snip.replace(/\s+/g, " ").trim(), loc, ...(share === undefined ? {} : { share }), view });
     }
     return [...byBook.values()];
+  }
+
+  /** How far into a text file a character offset lies, from where its last piece ends; nothing when the text is unknown or empty. */
+  private shareOf(id: string, offset: number): number | undefined {
+    const last = this.db.query("SELECT loc, length(text) AS n FROM chunks WHERE rowid = (SELECT last FROM docs WHERE id = ?)").get(id) as { loc: string; n: number } | null;
+    const at = last ? (JSON.parse(last.loc) as Loc) : null;
+    if (!last || !at || !("offset" in at)) return undefined;
+    const total = at.offset + last.n;
+    return total > 0 ? Math.round(Math.min(1, offset / total) * 1000) / 1000 : undefined;
   }
 
   /** Where in a plain-text file the first word occurs, so the reader can mark it. */

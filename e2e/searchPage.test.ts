@@ -66,6 +66,11 @@ e2e("the page of results lists books by name and by what is inside them, with pl
   await page.waitForFunction(() => [...document.querySelectorAll(".found-book")].some((b) => b.querySelector(".found-name")?.textContent === "valves" && b.querySelectorAll(".found-hit").length > 5));
   expect(await valves.locator(".found-more").isHidden()).toBe(true);
   expect(await valves.locator(".found-hit mark").first().textContent()).toBe("pentode");
+  // a text file has no pages: the place is how far into the text the words are (the hits go by relevance, not by position)
+  const shares = (await valves.locator(".found-where").allTextContents()).map((x) => Number(/^(\d+)% of the book$/.exec(x)![1]));
+  expect(shares.length).toBeGreaterThan(5);
+  expect(shares.every((n) => n >= 0 && n <= 100)).toBe(true);
+  expect(new Set(shares).size).toBeGreaterThan(3); // each hit has its own place
 
   // an EPUB's place is its section, and the link opens the book there
   const tubes = page.locator(".found-book:has(.found-name:text-is('tubes'))");

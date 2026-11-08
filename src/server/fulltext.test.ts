@@ -115,6 +115,16 @@ test("a plain-text hit opens the file at the word, marked", () => {
   });
 });
 
+test("a plain-text hit says how far into the text it lies, and other formats have no such share", () => {
+  const share = fullText.search("harbor lantern")[0]!.hits[0]!.share!; // the sentence stands between two equal fillers
+  expect(share).toBeGreaterThan(0.45);
+  expect(share).toBeLessThan(0.55);
+  const early = fullText.search("café")[0]!.hits[0]!.share!;
+  expect(early).toBeGreaterThanOrEqual(0);
+  expect(early).toBeLessThanOrEqual(1);
+  expect(fullText.search("compasses")[0]!.hits[0]!.share).toBeUndefined(); // a PDF names its page instead
+});
+
 test("a PDF hit names the page, an EPUB hit its spine item (counted from 0)", () => {
   expect(fullText.search("compasses")[0]).toMatchObject({ id: ids.pages!, hits: [{ view: { v: 1, page: 2 } }] });
   expect(fullText.search("silver bridge")[0]).toMatchObject({ id: ids.book!, hits: [{ view: { v: 1, section: 1 } }] });

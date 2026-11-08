@@ -18,6 +18,8 @@ interface Place {
   snippet: string;
   view: unknown;
   loc: Record<string, number>;
+  /** How far into a text file the words are (0 to 1). */
+  share?: number;
 }
 interface Progress {
   enabled: boolean;
@@ -48,10 +50,11 @@ export interface SearchPageSpec {
 }
 
 /** "Page 12", "Section 3", "40% of the book": where in the book the words are, or "" when the format has no such notion. */
-export function placeLabel(loc: Record<string, number>): string {
+export function placeLabel(loc: Record<string, number>, share?: number): string {
   if (typeof loc.page === "number") return t("search.at.page", { n: loc.page });
   if (typeof loc.section === "number") return t("search.at.section", { n: loc.section + 1 });
   if (typeof loc.fraction === "number") return t("search.at.fraction", { n: Math.round(loc.fraction * 100) });
+  if (typeof share === "number") return t("search.at.fraction", { n: Math.round(share * 100) });
   return "";
 }
 
@@ -113,7 +116,7 @@ export function searchPageEl(spec: SearchPageSpec): HTMLElement {
     const fill = (list: Place[]) =>
       places.replaceChildren(
         ...list.map((hit) => {
-          const label = placeLabel(hit.loc);
+          const label = placeLabel(hit.loc, hit.share);
           return el("li", {}, el("a", { class: "found-hit", href: placeHash(book.id, hit.view) }, ...(label ? [el("span", { class: "found-where", textContent: label })] : []), spec.snippet(hit.snippet)));
         }),
       );
