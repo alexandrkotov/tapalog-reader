@@ -78,7 +78,7 @@ for (const lang of ["en", "ru", "uk"] as const) {
     await page.waitForSelector(".pdf-scroll .page canvas");
     await page.waitForSelector("[data-tour=print]:not([hidden])");
     await page.click("#tour");
-    expect(await everyStepExplained(page, "reader")).toBe(7);
+    expect(await everyStepExplained(page, "reader")).toBe(8);
 
     // a project
     await page.goto(inst.url + "/");

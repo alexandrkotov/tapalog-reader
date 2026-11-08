@@ -19,6 +19,7 @@ export type TourPicture =
   | "theme"
   | "lang"
   | "title"
+  | "card"
   | "print"
   | "mark"
   | "reader"
@@ -288,6 +289,25 @@ function title(alt: string): SVGElement {
   );
 }
 
+function card(alt: string): SVGElement {
+  const reset = `↺ ${t("card.reset")}`;
+  const resetWidth = Math.round(reset.length * 6.9 + 18);
+  const field = (y: number, x: number, w: number, label: string, value: string) => [text(x, y, label, "tp-muted"), box(x, y + 4, w, 18), text(x + 6, y + 17, value)];
+  return svg(
+    196,
+    alt,
+    box(4, 4, 312, 188),
+    text(16, 24, t("card.title"), "tp-bold"),
+    field(42, 16, 288, t("card.titleField"), "Detector radio"),
+    field(76, 16, 288, t("card.authors"), "I. G. Belyaev"),
+    field(110, 16, 64, t("card.year"), "1949"),
+    field(110, 96, 208, t("card.tags"), "radio, circuits"),
+    text(16, 156, t("card.inFile", { value: "Radio" }), "tp-muted"),
+    chip(304 - resetWidth, 142, reset, true).parts,
+    chip(16, 164, t("common.save")).parts,
+  );
+}
+
 function print(alt: string): SVGElement {
   return svg(
     200,
@@ -541,7 +561,7 @@ function flow(alt: string): SVGElement {
   );
 }
 
-const DRAW: Record<TourPicture, (alt: string) => SVGElement> = { panel, tree, search, signin, bookmarks, flow, links, edit, link, settings, theme, lang, title, print, mark, reader, share, toolbar, help, item, thumb, tools, rename, export: exportFile, printProject, note };
+const DRAW: Record<TourPicture, (alt: string) => SVGElement> = { panel, tree, search, signin, bookmarks, flow, links, edit, link, settings, theme, lang, title, card, print, mark, reader, share, toolbar, help, item, thumb, tools, rename, export: exportFile, printProject, note };
 
 /** `alt` says in words what the picture shows; the tour passes the text of the step. */
 export const tourPicture = (which: TourPicture, alt: string): SVGElement => DRAW[which](alt);

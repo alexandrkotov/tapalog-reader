@@ -132,7 +132,7 @@ e2e("with a book open the tour is about reading it: the title, print, bookmarks,
   await page.waitForSelector("[data-tour=print]:not([hidden])"); // shown when the reader says it can print
   await page.click("#tour");
   const total = Number((await page.textContent(".tour-count"))!.split(" of ")[1]);
-  expect(total).toBe(7);
+  expect(total).toBe(8);
   const seen: (string | null)[] = [];
   for (let i = 0; i < total; i++) {
     await page.waitForTimeout(300);
@@ -152,7 +152,7 @@ e2e("with a book open the tour is about reading it: the title, print, bookmarks,
     expect(card.y).toBeGreaterThanOrEqual(0);
     await page.click(".tour-card .btn.primary");
   }
-  expect(seen).toEqual(["title", "print", "marks", "project", "share", "pdf-toolbar", "tour"]);
+  expect(seen).toEqual(["title", "card", "print", "marks", "project", "share", "pdf-toolbar", "tour"]);
   expect(errors).toEqual([]);
   await ctx.close();
 });

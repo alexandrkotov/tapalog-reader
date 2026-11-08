@@ -377,3 +377,23 @@ ul.plain {
   margin: 0.25rem 0 0.5rem;
   padding-left: 1.2rem;
 }
+
+/* the card of a book: the window "About the book" and the ⓘ on a shelf card */
+.card .thumbwrap .card-info { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 15px; line-height: 1; cursor: pointer; }
+.card .thumbwrap .card-info:hover, .card .thumbwrap .card-info:focus-visible { background: var(--accent, #2563eb); }
+.card-form { display: flex; flex-direction: column; gap: 10px; }
+.card-field { display: flex; flex-direction: column; gap: 3px; }
+.card-label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.card-input { width: 100%; box-sizing: border-box; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+textarea.card-input { resize: vertical; }
+.card-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.card-note:empty { display: none; }
+.card-reset { padding: 1px 8px; font-size: 12px; }
+.card-saved { align-self: center; }
+.card-heading { overflow-wrap: anywhere; }
+.card-file { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 13px; }
+.card-file dt { color: var(--muted); }
+.card-file dd { margin: 0; overflow-wrap: anywhere; }
+.card-path { font-family: ui-monospace, monospace; font-size: 12px; }
+.card-description { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .card-file { grid-template-columns: 1fr; } }

@@ -3,6 +3,7 @@ import { examplePath, pickFolder } from "./folderPicker";
 import { authScreen, openAuthDialog, setupScreen, signOut, type Me } from "./account";
 import { openAdmin } from "./admin";
 import { openBookmarks } from "./bookmarks";
+import { openBookCard, type Card } from "./bookCard";
 import { openAddToProject, openProjects } from "./projects";
 import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
@@ -226,6 +227,32 @@ function thumb(book: Book, extra = ""): HTMLElement {
   return box;
 }
 
+/** A card was saved: the lists, the shelf and the reader's bar show the new title at once (every copy of the book carries it). */
+function cardChanged(card: Card): void {
+  const same = books.filter((b) => b.id === card.id);
+  if (!same.length) return;
+  for (const book of same) Object.assign(book, { title: card.fields.title || book.name, authors: card.fields.authors, year: card.fields.year, series: card.fields.series, tags: card.fields.tags });
+  renderTree();
+  if (currentId === card.id) {
+    const shown = same[0]!.title;
+    const bar = document.querySelector(".reader-bar .title");
+    if (bar) bar.textContent = shown;
+    document.title = `${shown} — ${t("app.title")}`;
+  } else if (!parseHash().book) route();
+}
+
+/** The "ⓘ" on a book's card on the shelf: opens the book's details without opening the book. */
+function infoButton(id: string): HTMLButtonElement {
+  const button = el("button", { type: "button", class: "card-info", title: t("card.buttonHint"), textContent: "ⓘ" });
+  button.setAttribute("aria-label", t("card.button"));
+  button.addEventListener("click", (event) => {
+    event.preventDefault(); // the card is a link to the book
+    event.stopPropagation();
+    void openBookCard(id, me?.user?.role === "admin", cardChanged);
+  });
+  return button;
+}
+
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { numeric: true });
 const byTitle = (a: { title: string }, b: { title: string }) => a.title.localeCompare(b.title, undefined, { numeric: true });
 const SHELF_PAGE = 240;
@@ -254,7 +281,7 @@ function showShelf(path: string): void {
     ...[...node.folders].sort(byName).map((f) =>
       editable(el("a", { class: "card folder", href: `#folder=${encodeURIComponent(f.path)}`, title: f.path }, el("div", { class: "thumb folder-tile", textContent: "📁" }), el("div", { class: "cap" }, el("span", { class: "name", textContent: f.name }), el("span", { class: "count", textContent: String(f.total) }))), "folder", f.path),
     ),
-    ...[...node.books].sort(byTitle).map((b) => editable(el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.title }))), "book", b.path)),
+    ...[...node.books].sort(byTitle).map((b) => editable(el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext), infoButton(b.id)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.title }))), "book", b.path)),
   ];
   const grid = el("div", { class: "shelf" });
   const more = el("button", { type: "button", class: "btn shelf-more" });
@@ -673,6 +700,9 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
   const share = el("button", { type: "button", class: "btn", textContent: t("share.button") });
   const marks = el("button", { type: "button", class: "btn", textContent: `★ ${t("bookmark.title")}` });
   const toProject = el("button", { type: "button", class: "btn", textContent: `＋ ${t("projects.add")}`, title: t("projects.addHint") });
+  const about = el("button", { type: "button", class: "btn", textContent: `ⓘ ${t("card.button")}`, title: t("card.buttonHint") });
+  about.dataset.tour = "card";
+  about.addEventListener("click", () => void openBookCard(book.id, me?.user?.role === "admin", cardChanged));
   share.dataset.tour = "share";
   marks.dataset.tour = "marks";
   toProject.dataset.tour = "project";
@@ -689,7 +719,7 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
       share.addEventListener("click", () => void openShareDialog({ id: book.id, name: book.title, ext: book.ext, view: hasShareableView(book.ext) ? (current()?.getView?.() ?? null) : null }));
       marks.addEventListener("click", () => me && openBookmarks({ me, book, reader: current, onSignedIn: () => void boot() }));
       toProject.addEventListener("click", () => me && openAddToProject({ me, book, reader: current, onSignedIn: () => void boot() }));
-      return [marks, toProject, share];
+      return [about, marks, toProject, share];
     },
   });
 }
@@ -755,6 +785,7 @@ function tourSteps(forReader = true): TourStep[] {
   if (forReader && mainEl.querySelector(".reader-bar") && !document.body.classList.contains("share-mode")) {
     return [
       { target: ".reader-bar .title", text: "tour.reader.title", more: "tour.reader.titleMore", picture: "title" },
+      { target: "[data-tour=card]", text: "tour.reader.card", more: "tour.reader.cardMore", picture: "card" },
       { target: "[data-tour=print]", text: "tour.reader.print", more: "tour.reader.printMore", picture: "print" },
       { target: "[data-tour=marks]", text: "tour.reader.bookmarks", more: "tour.reader.bookmarksMore", picture: "mark" },
       { target: "[data-tour=project]", text: "tour.reader.project", more: "tour.reader.projectMore", picture: "reader" },
