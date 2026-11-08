@@ -182,6 +182,49 @@ test("turning it off stops searching but keeps the index for later", async () =>
   expect(fullText.search("orchards")).toHaveLength(1);
 });
 
+test("a scan is offered for reading, its pages are found beside the index's own text, and emptying the index keeps them", async () => {
+  const scans = fullText.scans();
+  expect(scans.map((x) => x.book.name)).toEqual(["pages", "scan"]); // no text at all, or two short lines (under 2000 characters in the whole book)
+  expect(scans.every((x) => x.ocr === null)).toBe(true);
+
+  expect(fullText.ocr.start(ids["scan"]!, 3, "rus")).toEqual([]);
+  expect(fullText.ocr.put(ids["scan"]!, 1, "Тихий радиоприёмник и кон-\nденсатор на столе.")).toEqual({ done: 1, pages: 3 });
+  expect(fullText.ocr.put(ids["scan"]!, 2, "   ")).toEqual({ done: 2, pages: 3 }); // an empty page is read too, and says nothing
+  expect(fullText.ocr.put(ids["scan"]!, 4, "out of the book")).toBeNull();
+  expect(fullText.ocr.put("no-such-book", 1, "x")).toBeNull();
+
+  const found = fullText.search("конденсатор");
+  expect(found).toHaveLength(1);
+  expect(found[0]!.id).toBe(ids["scan"]!);
+  expect(found[0]!.hits[0]).toMatchObject({ loc: { page: 1 }, view: { v: 1, page: 1 } });
+  expect(found[0]!.hits[0]!.snippet).toContain("\u0001конденсатор\u0002"); // the word joined across the line's end, marked
+  expect(fullText.search("orchards")).toHaveLength(1); // the books with text are still found
+  expect(fullText.scans().find((x) => x.book.name === "scan")!.ocr).toMatchObject({ pages: 3, done: 2, lang: "rus" });
+  expect(fullText.status()).toMatchObject({ recognizedBooks: 1, recognizedPages: 2 });
+
+  // a page read again replaces what was read before
+  fullText.ocr.put(ids["scan"]!, 1, "Теперь здесь совсем другой текст.");
+  expect(fullText.search("конденсатор")).toEqual([]);
+  expect(fullText.search("другой")).toHaveLength(1);
+
+  // going on: the pages already read are told; another page count means another file, read from the start
+  expect(fullText.ocr.start(ids["scan"]!, 3, "rus+eng")).toEqual([1, 2]);
+  expect(fullText.ocr.progress(ids["scan"]!)).toMatchObject({ lang: "rus+eng" });
+  expect(fullText.ocr.start(ids["scan"]!, 5, "rus")).toEqual([]);
+  expect(fullText.search("другой")).toEqual([]);
+  fullText.ocr.put(ids["scan"]!, 5, "Последняя страница и штурвал.");
+
+  await fullText.clear(); // hours of reading must outlive the index
+  await settled();
+  expect(fullText.search("штурвал")).toHaveLength(1);
+  expect(fullText.search("штурвал", { book: ids["scan"]! })[0]!.hits).toHaveLength(1);
+
+  expect(fullText.ocr.remove(ids["scan"]!)).toBe(1);
+  expect(fullText.search("штурвал")).toEqual([]);
+  expect(fullText.status()).toMatchObject({ recognizedBooks: 0, recognizedPages: 0 });
+  expect(fullText.scans().find((x) => x.book.name === "scan")!.ocr).toBeNull(); // still a scan, now unread
+}, 30_000);
+
 test("query building and views", () => {
   expect(matchQuery("Hello, wörld! x")).toEqual({ match: '"hello" "wörld" "x"*', words: ["hello", "wörld", "x"] });
   expect(matchQuery("!!!")).toBeNull();

@@ -741,3 +741,45 @@ test("the About information names the version and the parts, and only the admini
   expect(asReader.version).toBe(pkg.version);
   expect(asReader.dataFolder).toBeNull();
 });
+
+test("the administrator's browser reads a scan page by page and the server keeps the text, where search finds it", async () => {
+  const books = (await call(lan, "/api/library", { cookie: adminCookie })).body.books as { id: string; path: string }[];
+  const pdf = books.find((b) => b.path === "sub/three.pdf")!.id; // not a real PDF: the browser would draw it, the server never opens it
+  const txt = books.find((b) => b.path.endsWith(".txt"))!.id; // earlier tests renamed "one": any text file will do
+  expect((await call(lan, "/api/admin/users", { body: { name: "Scanner", password: "scan123", role: "user" }, cookie: adminCookie })).status).toBe(200);
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Scanner", password: "scan123" } })).cookie!;
+  const start = (id: string, body: unknown, cookie = adminCookie) => call(lan, `/api/admin/ocr/${id}/start`, { body, cookie });
+  const put = (id: string, page: number | string, text: unknown, cookie = adminCookie) => call(lan, `/api/admin/ocr/${id}/pages/${page}`, { method: "PUT", body: { text }, cookie });
+
+  // only the administrator, and only a PDF with a sensible page count and a language the engine has
+  expect((await call(lan, "/api/admin/ocr")).status).toBe(401);
+  expect((await call(lan, "/api/admin/ocr", { cookie: readerCookie })).status).toBe(403);
+  expect((await start(pdf, { pages: 2, lang: "rus" }, readerCookie)).status).toBe(403);
+  expect((await start(pdf, { pages: 0, lang: "rus" })).status).toBe(400);
+  expect((await start(pdf, { pages: 2.5, lang: "rus" })).status).toBe(400);
+  expect((await start(pdf, { pages: 2, lang: "deu" })).status).toBe(400);
+  expect((await start(txt, { pages: 2, lang: "rus" })).status).toBe(400); // a text file has nothing to read
+  expect((await start("nope", { pages: 2, lang: "rus" })).status).toBe(404);
+
+  expect((await start(pdf, { pages: 2, lang: "rus" })).body).toEqual({ done: [] });
+  expect((await put(pdf, 1, "Старый ламповый осциллограф с экраном")).body).toEqual({ done: 1, pages: 2 });
+  expect((await put(pdf, 3, "beyond")).status).toBe(404);
+  expect((await put(pdf, "x", "beyond")).status).toBe(404);
+  expect((await put(pdf, 1, 5)).status).toBe(400);
+  expect((await put(pdf, 2, "text", readerCookie)).status).toBe(403);
+
+  const list = (await call(lan, "/api/admin/ocr", { cookie: adminCookie })).body;
+  expect(list.books.find((b: { id: string }) => b.id === pdf)).toMatchObject({ pages: 2, done: 1, lang: "rus", path: "sub/three.pdf" });
+  expect(list).toMatchObject({ recognizedBooks: 1, recognizedPages: 1 });
+
+  await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: adminCookie }); // an earlier test may have turned the search off
+  const found = (await call(lan, "/api/fulltext?q=осциллограф")).body.books;
+  expect(found).toHaveLength(1);
+  expect(found[0].hits[0]).toMatchObject({ loc: { page: 1 }, view: { v: 1, page: 1 } });
+
+  expect((await start(pdf, { pages: 2, lang: "rus+eng" })).body).toEqual({ done: [1] }); // going on after a stop
+  expect((await call(lan, `/api/admin/ocr/${pdf}`, { method: "DELETE", cookie: readerCookie })).status).toBe(403);
+  expect((await call(lan, `/api/admin/ocr/${pdf}`, { method: "DELETE", cookie: adminCookie })).body).toEqual({ removed: 1 });
+  expect((await call(lan, "/api/fulltext?q=осциллограф")).body.books).toEqual([]);
+  await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie }); // as it was: nothing left running when the library closes
+});

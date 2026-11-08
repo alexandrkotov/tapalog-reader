@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { join } from "node:path";
 import type { ConfigStore } from "./config";
 import type { BookRow, Library } from "./library";
+import { OcrText, type OcrProgress } from "./ocr";
 import { EXTRACTORS, NoText, type Loc } from "./text/extract";
 
 /** Bump when an extractor improves, so books indexed by the old one are read again. */
@@ -18,6 +19,16 @@ export interface FullTextStatus {
   failed: number;
   working: string | null;
   bytes: number;
+  /** Scanned books whose pages the administrator's browser has read (or begun to read), and the pages read. */
+  recognizedBooks: number;
+  recognizedPages: number;
+}
+
+/** A PDF that has (almost) no text of its own, so its pictures could be read. */
+export interface ScanBook {
+  book: BookRow;
+  /** How far the reading has got; null when it has not begun. */
+  ocr: OcrProgress | null;
 }
 
 export interface FullTextHit {
@@ -78,6 +89,8 @@ export function matchQuery(q: string): { match: string; words: string[] } | null
  */
 export class FullText {
   private db: Database;
+  /** Text read from scanned pages: kept when the index is emptied. */
+  ocr: OcrText;
   private loop: Promise<void> | null = null;
   private working: string | null = null;
   private stopping = false;
@@ -89,6 +102,7 @@ export class FullText {
     private readonly startDelayMs = 1500,
   ) {
     this.db = this.open();
+    this.ocr = new OcrText(this.db);
   }
 
   private open(): Database {
@@ -148,6 +162,7 @@ export class FullText {
 
   private async run(): Promise<void> {
     await Bun.sleep(this.startDelayMs); // after start-up and the first scan, not during
+    if (this.stopping || !this.enabled) return; // turned off, or the program is closing, while it waited
     const done = new Map((this.db.query("SELECT id, ver FROM docs").all() as { id: string; ver: number }[]).map((r) => [r.id, r.ver]));
     const todo = this.indexable().filter((b) => (done.get(b.id) ?? 0) < EXTRACTOR_VERSION);
     const touch = this.db.prepare("UPDATE docs SET seen = ? WHERE id = ?");
@@ -234,7 +249,8 @@ export class FullText {
       if (ids.has(row.id) && row.state in counts) counts[row.state as keyof typeof counts]++;
     }
     const bytes = (this.db.query("SELECT page_count * page_size AS b FROM pragma_page_count(), pragma_page_size()").get() as { b: number }).b;
-    return { enabled: this.enabled, total: ids.size, indexed: counts.done, skipped: counts.skipped, failed: counts.failed, working: this.working, bytes };
+    const read = this.ocr.totals();
+    return { enabled: this.enabled, total: ids.size, indexed: counts.done, skipped: counts.skipped, failed: counts.failed, working: this.working, bytes, recognizedBooks: read.books, recognizedPages: read.pages };
   }
 
   /** How far the background reading has got, for everybody who searches: books settled (read, or with nothing to read) of all that could have text. */
@@ -243,14 +259,34 @@ export class FullText {
     return { enabled: st.enabled, done: st.indexed + st.skipped + st.failed, total: st.total };
   }
 
+  /** PDFs with nothing or next to nothing to read in them (no text at all, or under 2000 characters in the whole book), and how far their pictures have been read. */
+  scans(): ScanBook[] {
+    const ocr = this.ocr.all();
+    const state = new Map((this.db.query("SELECT id, state, note, first, last FROM docs").all() as { id: string; state: string; note: string | null; first: number; last: number }[]).map((r) => [r.id, r]));
+    const chars = this.db.prepare("SELECT COALESCE(SUM(length(text)), 0) AS n FROM chunks WHERE rowid BETWEEN ? AND ?");
+    const out: ScanBook[] = [];
+    for (const book of this.indexable()) {
+      if (book.ext !== "pdf") continue;
+      const doc = state.get(book.id);
+      const progress = ocr.get(book.id) ?? null;
+      const bare = doc?.state === "skipped" && doc.note === "no text";
+      const sparse = doc?.state === "done" && (chars.get(doc.first, doc.last) as { n: number }).n < 2000;
+      if (bare || sparse || progress) out.push({ book, ocr: progress });
+    }
+    return out;
+  }
+
   /** Books whose text contains every word, best first; a few places per book (or all of them for one book). */
   search(q: string, options: SearchOptions = {}): FullTextBook[] {
     const query = matchQuery(q);
     if (!query || !this.enabled) return [];
     const perBook = Math.max(1, Math.min(options.perBook ?? PER_BOOK, MAX_PER_BOOK));
     const maxBooks = Math.max(1, Math.min(options.books ?? MAX_BOOKS, MAX_BOOKS_ASKED));
-    const sql = `SELECT rowid, id, loc, snippet(chunks, 0, '${MARK_OPEN}', '${MARK_CLOSE}', '…', 16) AS snip FROM chunks WHERE chunks MATCH ?${options.book ? " AND id = ?" : ""} ORDER BY rank LIMIT ${options.book ? 400 : 600}`;
-    const rows = this.db.query(sql).all(...(options.book ? [query.match, options.book] : [query.match])) as { rowid: number; id: string; loc: string; snip: string }[];
+    const limit = options.book ? 400 : 600;
+    const sql = `SELECT rowid, id, loc, snippet(chunks, 0, '${MARK_OPEN}', '${MARK_CLOSE}', '…', 16) AS snip, rank FROM chunks WHERE chunks MATCH ?${options.book ? " AND id = ?" : ""} ORDER BY rank LIMIT ${limit}`;
+    const own = this.db.query(sql).all(...(options.book ? [query.match, options.book] : [query.match])) as { rowid: number; id: string; loc: string; snip: string; rank: number }[];
+    // the pages read from pictures count beside the book's own text, the best first
+    const rows = [...own.map((r) => ({ ...r, read: false })), ...this.ocr.rows(query.match, MARK_OPEN, MARK_CLOSE, options.book, limit).map((r) => ({ ...r, read: true }))].sort((a, b) => a.rank - b.rank).slice(0, limit);
     const byBook = new Map<string, FullTextBook>();
     for (const row of rows) {
       const book = this.library.byId(row.id);
@@ -265,8 +301,8 @@ export class FullText {
         continue;
       }
       const loc = JSON.parse(row.loc) as Loc;
-      const view = viewFor(book.ext, loc, "offset" in loc ? this.matchRange(row.rowid, loc.offset, query.words[0]!) : undefined);
-      const share = "offset" in loc ? this.shareOf(row.id, Number(view.offset)) : undefined;
+      const view = viewFor(book.ext, loc, "offset" in loc && !row.read ? this.matchRange(row.rowid, loc.offset, query.words[0]!) : undefined);
+      const share = "offset" in loc && !row.read ? this.shareOf(row.id, Number(view.offset)) : undefined;
       entry.hits.push({ snippet: row.snip.replace(/\s+/g, " ").trim(), loc, ...(share === undefined ? {} : { share }), view });
     }
     return [...byBook.values()];

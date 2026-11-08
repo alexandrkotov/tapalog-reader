@@ -27,6 +27,7 @@ import type { Shares } from "./shares";
 import type { TunnelController } from "./tunnelController";
 import index from "../web/index.html";
 import { COMPONENTS, REPO_URL, SITE_URL, VERSION } from "./about";
+import { MAX_PAGES, validLang } from "./ocr";
 
 export interface App {
   library: Library;
@@ -797,6 +798,45 @@ function buildRoutes(app: App, origin: Origin) {
         await app.fullText.clear();
         return json(app.fullText.status());
       }),
+    },
+    // ----- reading the pictures of scanned pages: the administrator's browser does the reading, the server keeps the text -----
+    "/api/admin/ocr": {
+      GET: admin(() => {
+        const books = app.fullText.scans().map(({ book, ocr }) => ({
+          id: book.id,
+          name: book.name,
+          title: titleOf(book),
+          path: book.path,
+          pages: ocr?.pages ?? null,
+          done: ocr?.done ?? 0,
+          lang: ocr?.lang ?? null,
+        }));
+        const status = app.fullText.status();
+        return json({ enabled: status.enabled, books, recognizedBooks: status.recognizedBooks, recognizedPages: status.recognizedPages });
+      }),
+    },
+    // begins (or goes on with) the reading of a book; answers with the pages already read
+    "/api/admin/ocr/:id/start": {
+      POST: admin(async (req) => {
+        const data = await body(req);
+        const book = app.library.byId(param(req, "id"));
+        if (!book) return notFound();
+        if (book.ext !== "pdf") return bad("only a PDF can be read");
+        const pages = data?.pages;
+        if (typeof pages !== "number" || !Number.isInteger(pages) || pages < 1 || pages > MAX_PAGES || !validLang(data?.lang)) return bad();
+        return json({ done: app.fullText.ocr.start(book.id, pages, data.lang) });
+      }),
+    },
+    "/api/admin/ocr/:id/pages/:page": {
+      PUT: admin(async (req) => {
+        const data = await body(req);
+        if (typeof data?.text !== "string") return bad();
+        const progress = app.fullText.ocr.put(param(req, "id"), Number(param(req, "page")), data.text);
+        return progress ? json(progress) : notFound();
+      }),
+    },
+    "/api/admin/ocr/:id": {
+      DELETE: admin((req) => (sameOrigin(req) ? json({ removed: app.fullText.ocr.remove(param(req, "id")) }) : forbidden())),
     },
     // ----- editing the library: real changes to the files on disk -----
     // ----- books fetched from a shared Google Drive link -----
