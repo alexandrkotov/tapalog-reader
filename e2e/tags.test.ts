@@ -59,9 +59,9 @@ e2e("the tags in use are buttons above the shelf; choosing them keeps the books 
   expect(await shown(page)).toEqual(["c"]); // лампы alone
 
   await page.click(".tag-clear");
-  await page.waitForSelector(".recent, .shelf .card");
+  await page.waitForFunction(() => !document.querySelector(".tag-found")); // the tag view is gone (a list of selectors would pick the hidden, empty "Continue reading" block)
+  await page.waitForSelector(".shelf .card");
   expect(await page.evaluate(() => location.hash)).toBe("");
-  expect(await page.$(".tag-found")).toBeNull();
   expect(await chips(page)).toEqual(["Радио:3", "лампы:1", "схемы:1"]);
   expect(await page.$$eval(".shelf .card .name", (spans) => spans.map((s) => s.textContent))).toContain("Books"); // the top shelf again
   expect(errors).toEqual([]);
