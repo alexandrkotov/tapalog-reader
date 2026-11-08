@@ -290,7 +290,7 @@ test("search inside books is off until the administrator turns it on, and only t
 
   expect((await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: adminCookie })).body.enabled).toBe(true);
   expect((await call(lan, "/api/status")).body.fullText).toBe(true);
-  let found: { books: { name: string; hits: { snippet: string; view: unknown }[] }[] } = { books: [] };
+  let found: { books: { name: string; hits: { snippet: string; view: unknown; loc: unknown }[] }[] } = { books: [] };
   for (let i = 0; i < 200 && !found.books.length; i++) {
     await Bun.sleep(100); // indexing runs in the background; a slow runner needs seconds, not milliseconds
     found = (await call(lan, "/api/fulltext?q=second")).body;
