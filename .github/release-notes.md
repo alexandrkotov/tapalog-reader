@@ -1,10 +1,12 @@
 ## English
 
 What's new:
-- **Book cards.** Every book now has a card: title, authors, year, series, description, language and tags. The shelf, the tree, the search list and the reader's bar show the **title**; the file's name stays in the card. EPUB and FB2 are read for it automatically in the background. **ⓘ** on a shelf card and **ⓘ About** in the reader's bar open the window "About the book"; the administrator edits it (a typed value wins over the file's, **↺ As in the file** takes it back), everyone else reads it. The details are in the backup.
-- **Tags.** The administrator tags books in their window. The top shelf shows the tags as buttons with the number of books; a click shows the books with the tag from every folder, more clicks keep only the books that have all of them, and the address holds the choice.
-- **A bar above the shelf.** Covers or a list, an order by title, author, year, date added or last opened, and filters by format, tag and author (while a filter is on, books are taken from the folder and everything below it). Your layout and order are remembered.
-- **A page of search results.** Press **Enter** in the search box: books found by name, title, author or tag, and books that contain the words, each with the page or section, the text around the words and **More places in this book**; filters by format, tag and author; the address holds the search. The drop-down stays for a quick jump. While the books are still being read the page says how far it has got and offers **Search again**.
+- **About the program.** **About** at the foot of the left panel opens a window with the version, the licence, links to the site, the source and the issues page, the parts the program is built from, and a button that copies the version for a report of a problem; the administrator also sees where the program keeps its files.
+- **Titles everywhere.** Bookmarks, project items, the list of links and the page of a share link now show a book by its **title**, not its file name.
+- **Tags of the library.** The administrator's **⚙** button after the tags on the top shelf opens a window with every tag and its number of books: **Rename** (to a name already in use it merges the two tags) and **Remove**, each for all books at once.
+- **Search in a text file.** A hit in a TXT file says how far into the text it lies ("44% of the book"), since such a file has no pages.
+- **Clearer card buttons.** The button that takes a typed value back says what it does: **↺ Use the file's value**, or **↺ Clear my text** where the file says nothing.
+- **Tidier search.** The search box says it searches the library, not only file names; the places of a book line up, and on a phone they stand over the text.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -18,10 +20,12 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **Карточки книг.** У каждой книги теперь есть карточка: название, авторы, год, серия, описание, язык и теги. На полке, в дереве, в списке поиска и в строке читалки показывается **название**, имя файла остаётся в карточке. Для EPUB и FB2 оно читается автоматически в фоне. **ⓘ** на карточке полки и **ⓘ О книге** в строке читалки открывают окно «О книге»; администратор правит его (введённое значение главнее значения из файла, **↺ Как в файле** возвращает его), остальные только читают. Данные входят в резервную копию.
-- **Теги.** Администратор ставит книгам теги в этом окне. Верхняя полка показывает теги кнопками с числом книг; щелчок показывает книги с тегом из всех папок, следующие щелчки оставляют только книги, у которых есть все выбранные теги, а адрес хранит выбор.
-- **Панель над полкой.** Обложки или список, порядок по названию, автору, году, дате добавления или последнему открытию, фильтры по формату, тегу и автору (пока фильтр включён, книги берутся из папки и всех папок внутри неё). Ваш вид и порядок запоминаются.
-- **Страница результатов поиска.** Нажмите **Enter** в строке поиска: книги, найденные по названию, автору или тегу, и книги, где встречаются слова, с номером страницы или раздела, текстом вокруг слов и кнопкой **Ещё места в этой книге**; фильтры по формату, тегу и автору; адрес хранит поиск. Выпадающий список остался для быстрого перехода. Пока книги ещё читаются, страница говорит, как далеко дошло чтение, и предлагает **Искать снова**.
+- **О программе.** **О программе** внизу левой панели открывает окно с версией, лицензией, ссылками на сайт, исходный код и страницу проблем, списком того, из чего собрана программа, и кнопкой, которая копирует версию для сообщения о проблеме; администратор видит ещё, где программа хранит свои файлы.
+- **Названия везде.** Закладки, элементы проектов, список ссылок и страница общей ссылки показывают книгу по **названию**, а не по имени файла.
+- **Теги библиотеки.** Кнопка администратора **⚙** после тегов на верхней полке открывает окно со всеми тегами и числом книг: **Переименовать** (в уже занятое имя — два тега сливаются) и **Удалить**, сразу для всех книг.
+- **Поиск в текстовом файле.** Находка в TXT-файле говорит, как далеко от начала она лежит («44% книги»), ведь страниц у такого файла нет.
+- **Понятнее кнопки карточки.** Кнопка, возвращающая введённое значение, говорит, что делает: **↺ Взять из файла**, а где файл ничего не говорит — **↺ Стереть мой текст**.
+- **Аккуратнее поиск.** Строка поиска говорит, что ищет по библиотеке, а не только по именам файлов; места в книге выровнены, а на телефоне стоят над текстом.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -35,10 +39,12 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **Картки книг.** У кожної книги тепер є картка: назва, автори, рік, серія, опис, мова й теги. На полиці, в дереві, у списку пошуку та в рядку читалки показується **назва**, ім’я файлу лишається в картці. Для EPUB і FB2 вона читається автоматично у фоні. **ⓘ** на картці полиці та **ⓘ Про книгу** в рядку читалки відкривають вікно «Про книгу»; адміністратор редагує його (введене значення головніше за значення з файлу, **↺ Як у файлі** повертає його), інші лише читають. Дані входять до резервної копії.
-- **Теги.** Адміністратор ставить книгам теги в цьому вікні. Верхня полиця показує теги кнопками з кількістю книг; клацання показує книги з тегом з усіх тек, наступні клацання залишають лише книги, у яких є всі вибрані теги, а адреса зберігає вибір.
-- **Панель над полицею.** Обкладинки або список, порядок за назвою, автором, роком, датою додавання або останнім відкриттям, фільтри за форматом, тегом і автором (поки фільтр увімкнено, книги беруться з теки та всіх тек усередині неї). Ваш вигляд і порядок запам’ятовуються.
-- **Сторінка результатів пошуку.** Натисніть **Enter** у рядку пошуку: книги, знайдені за назвою, автором або тегом, і книги, де трапляються слова, з номером сторінки чи розділу, текстом навколо слів і кнопкою **Ще місця в цій книзі**; фільтри за форматом, тегом і автором; адреса зберігає пошук. Випадний список лишився для швидкого переходу. Поки книги ще читаються, сторінка каже, як далеко дійшло читання, і пропонує **Шукати знову**.
+- **Про програму.** **Про програму** внизу лівої панелі відкриває вікно з версією, ліцензією, посиланнями на сайт, вихідний код і сторінку проблем, переліком того, з чого зібрана програма, і кнопкою, що копіює версію для повідомлення про проблему; адміністратор бачить ще, де програма зберігає свої файли.
+- **Назви скрізь.** Закладки, елементи проєктів, список посилань і сторінка спільного посилання показують книгу за **назвою**, а не за іменем файлу.
+- **Теги бібліотеки.** Кнопка адміністратора **⚙** після тегів на верхній полиці відкриває вікно з усіма тегами й кількістю книг: **Перейменувати** (на вже зайняте ім’я — два теги зливаються) і **Видалити**, одразу для всіх книг.
+- **Пошук у текстовому файлі.** Знахідка в TXT-файлі каже, як далеко від початку вона лежить («44% книги»), адже сторінок у такого файлу немає.
+- **Зрозуміліші кнопки картки.** Кнопка, що повертає введене значення, каже, що робить: **↺ Узяти з файлу**, а де файл нічого не каже — **↺ Стерти мій текст**.
+- **Охайніший пошук.** Рядок пошуку каже, що шукає по бібліотеці, а не лише за іменами файлів; місця в книзі вирівняні, а на телефоні стоять над текстом.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 

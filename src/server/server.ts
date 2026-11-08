@@ -26,6 +26,7 @@ import { RESET_FILE, type Recovery } from "./recovery";
 import type { Shares } from "./shares";
 import type { TunnelController } from "./tunnelController";
 import index from "../web/index.html";
+import { COMPONENTS, REPO_URL, SITE_URL, VERSION } from "./about";
 
 export interface App {
   library: Library;
@@ -367,6 +368,10 @@ function buildRoutes(app: App, origin: Origin) {
     // ----- the library -----
     // lets a second start of the program find this one (see instance.ts)
     [PING]: () => json({ app: APP_NAME }),
+    // what the "About" window shows; the folder with the program's own files only for the administrator
+    "/api/about": browse((req) =>
+      json({ name: "Tapalog Reader", version: VERSION, license: "MIT", repo: REPO_URL, site: SITE_URL, components: COMPONENTS, dataFolder: user(req)?.role === "admin" ? app.library.dataFolder : null }),
+    ),
     "/api/status": browse(() =>
       json({
         configured: app.library.root !== null,

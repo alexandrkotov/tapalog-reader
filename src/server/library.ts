@@ -53,6 +53,11 @@ export class Library {
     return this.config.get().libraryPath;
   }
 
+  /** The folder with this program's own files (the database, covers, settings): not the books. */
+  get dataFolder(): string {
+    return this.dataDir;
+  }
+
   /** Validates and stores a new library folder, then scans it. */
   async setRoot(path: string): Promise<void> {
     const abs = resolve(path);

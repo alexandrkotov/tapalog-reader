@@ -15,6 +15,7 @@ import { searchHash } from "./searchAddress";
 import { searchPageEl, type FoundBook } from "./searchPage";
 import { filterBooks, formatsOf, isFiltering, NO_FILTERS, parsePrefs, sortBooks, type Filters, type Prefs } from "./shelfView";
 import { offerTour, startTour, type TourStep } from "./tour";
+import { aboutInfo, openAbout } from "./aboutWindow";
 import { openPrintDialog } from "./print";
 import { loadDisplay, saveDisplay, type Display } from "./display";
 import { recentPlaces, savedPlace, trackPlace, type Tracker } from "./progress";
@@ -974,6 +975,7 @@ function applyStaticText(): void {
   searchEl.placeholder = t("search.placeholder");
   scanEl.textContent = t("scan.running");
   $("credit-text").textContent = t("credit");
+  $("about-open").textContent = t("about.link");
   tourEl.title = t("tour.button");
   tourEl.setAttribute("aria-label", t("tour.button"));
   drawThemeButton();
@@ -1031,6 +1033,7 @@ function tourSteps(forReader = true): TourStep[] {
   ];
 }
 tourEl.addEventListener("click", () => startTour(tourSteps()));
+$("about-open").addEventListener("click", () => void openAbout());
 
 function renderAccount(): void {
   const buttons: HTMLElement[] = [];
@@ -1170,6 +1173,7 @@ async function boot(): Promise<void> {
   }
   await loadLibrary();
   route();
+  void aboutInfo().then((about) => ($("about-open").title = t("about.version", { v: about.version }))).catch(() => undefined); // the version as a hint on the link
   offerTour(() => startTour(tourSteps(false)));
   pollTimer = setInterval(() => void pollStatus().catch((err: unknown) => err instanceof ApiError && err.status === 401 && void boot()), 4000);
 }

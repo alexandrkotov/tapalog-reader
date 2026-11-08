@@ -726,3 +726,18 @@ test("tags are renamed and taken away for the whole library by the administrator
   expect(await tagList()).toEqual([]);
   await meta({ reset: ["tags"] });
 });
+
+test("the About information names the version and the parts, and only the administrator is told where the program keeps its files", async () => {
+  const pkg = JSON.parse(readFileSync(join(import.meta.dir, "../../package.json"), "utf8")) as { version: string };
+  expect((await call(lan, "/api/about")).body.dataFolder).toBeNull(); // nobody signed in (the network is open to browsing here): no folder
+  const asAdmin = (await call(lan, "/api/about", { cookie: adminCookie })).body;
+  expect(asAdmin).toMatchObject({ name: "Tapalog Reader", version: pkg.version, license: "MIT" });
+  expect(asAdmin.components.map((c: { name: string }) => c.name)).toContain("pdf.js");
+  expect(asAdmin.components.every((c: { license: string; url: string }) => c.license && c.url.startsWith("https://"))).toBe(true);
+  expect(typeof asAdmin.dataFolder).toBe("string");
+  expect((await call(lan, "/api/admin/users", { body: { name: "Abouter", password: "about1", role: "user" }, cookie: adminCookie })).status).toBe(200);
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Abouter", password: "about1" } })).cookie!;
+  const asReader = (await call(lan, "/api/about", { cookie: readerCookie })).body;
+  expect(asReader.version).toBe(pkg.version);
+  expect(asReader.dataFolder).toBeNull();
+});

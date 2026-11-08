@@ -77,7 +77,7 @@ e2e("the quick tour is offered once, lights up each button in turn and can be st
   const errors = watchErrors(page);
   await page.goto(inst.url + "/");
   await page.waitForSelector(".tour-offer");
-  expect(await page.textContent(".credit")).toBe("Developed by Tapalog"); // the credit under the folders links to the project's site
+  expect(await page.textContent(".credit")).toBe("Developed by Tapalog · About"); // the credit under the folders links to the project's site, and to the window about the program
   expect(await page.getAttribute(".credit a", "href")).toBe("https://tapalog.com");
   expect(await page.getAttribute(".credit a", "rel")).toContain("noopener");
   await page.click(".tour-offer >> text=No, thanks");

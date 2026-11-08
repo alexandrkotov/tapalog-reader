@@ -58,6 +58,19 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .credit { position: sticky; bottom: 0; margin-top: auto; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--panel-bg); color: var(--muted); font-size: 12px; }
 .credit a { color: inherit; font-weight: 600; }
 .credit a:hover { color: var(--accent); }
+.credit-about { all: unset; cursor: pointer; font-weight: 600; text-decoration: underline; }
+.credit-about:hover, .credit-about:focus-visible { color: var(--accent); }
+.about-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.about-name { font-size: 18px; }
+.about-version { color: var(--muted); }
+.about-links { display: flex; flex-wrap: wrap; gap: 4px; }
+.about-components { padding-left: 18px; columns: 2; column-gap: 24px; }
+.about-components li { break-inside: avoid; padding: 1px 0; }
+.modal-body .about-what, .modal-body .about-links, .modal-body .about-data, .modal-body .about-offline, .modal-body .about-parts, .modal-body .about-components { margin: 0; }
+.modal-body .about-parts { font-size: 14px; }
+.modal-body .about-links a, .modal-body .about-components a { color: var(--accent); }
+.about-actions { margin-top: 8px; }
+@media (max-width: 520px) { .about-components { columns: 1; } }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 .tree { padding: 6px; }
