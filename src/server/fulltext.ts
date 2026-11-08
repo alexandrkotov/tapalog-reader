@@ -235,6 +235,12 @@ export class FullText {
     return { enabled: this.enabled, total: ids.size, indexed: counts.done, skipped: counts.skipped, failed: counts.failed, working: this.working, bytes };
   }
 
+  /** How far the background reading has got, for everybody who searches: books settled (read, or with nothing to read) of all that could have text. */
+  progress(): { enabled: boolean; done: number; total: number } {
+    const st = this.status();
+    return { enabled: st.enabled, done: st.indexed + st.skipped + st.failed, total: st.total };
+  }
+
   /** Books whose text contains every word, best first; a few places per book (or all of them for one book). */
   search(q: string, options: SearchOptions = {}): FullTextBook[] {
     const query = matchQuery(q);

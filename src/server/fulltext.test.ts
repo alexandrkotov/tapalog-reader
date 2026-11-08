@@ -94,12 +94,14 @@ test("nothing is indexed or searchable until the administrator turns it on", asy
   expect(fullText.enabled).toBe(false);
   expect(fullText.search("harbor")).toEqual([]);
   expect(fullText.status()).toMatchObject({ enabled: false, indexed: 0, total: 7 }); // the comic has nothing to index
+  expect(fullText.progress()).toEqual({ enabled: false, done: 0, total: 7 });
 });
 
 test("every format is read, scans and broken files are set aside, not retried", async () => {
   fullText.setEnabled(true);
   await settled();
   expect(fullText.status()).toMatchObject({ enabled: true, total: 7, indexed: 5, skipped: 1, failed: 1, working: null });
+  expect(fullText.progress()).toEqual({ enabled: true, done: 7, total: 7 }); // settled books: read, set aside or failed
 }, 30_000);
 
 test("a plain-text hit opens the file at the word, marked", () => {

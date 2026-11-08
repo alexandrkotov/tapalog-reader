@@ -284,7 +284,8 @@ test("search inside books is off until the administrator turns it on, and only t
   expect((await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: readerCookie })).status).toBe(403);
   expect((await call(lan, "/api/admin/fulltext", { body: { enabled: "yes" }, cookie: adminCookie })).status).toBe(400);
 
-  expect((await call(lan, "/api/fulltext?q=first")).body).toEqual({ enabled: false, books: [] });
+  expect((await call(lan, "/api/fulltext?q=first")).body).toEqual({ enabled: false, books: [], progress: { enabled: false, done: 0, total: 4 } });
+  expect((await call(lan, "/api/fulltext/state")).body).toEqual({ enabled: false, done: 0, total: 4 }); // a reader can see how far the reading of the books has got
   expect((await call(lan, "/api/status")).body.fullText).toBe(false);
 
   expect((await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: adminCookie })).body.enabled).toBe(true);
@@ -296,6 +297,7 @@ test("search inside books is off until the administrator turns it on, and only t
   }
   expect(found.books[0]).toMatchObject({ name: "two", hits: [{ view: { v: 1, offset: 0, range: [0, 6] } }] });
   expect(found.books[0]!.hits[0]!.snippet).toBe("\u0001second\u0002 book");
+  expect(found.books[0]!.hits[0]!.loc).toEqual({ offset: 0 }); // where in the book: the page's label next to the text
   expect((await call(tunnelSide, "/api/fulltext?q=second")).status).toBe(401); // the internet side still needs a sign-in
 
   await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie });

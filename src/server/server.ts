@@ -397,8 +397,10 @@ function buildRoutes(app: App, origin: Origin) {
         const book = app.library.byId(f.id);
         return book ? [{ ...shelf([book])[0]!, hits: f.hits, more: f.more }] : [];
       });
-      return json({ enabled: app.fullText.enabled, books });
+      return json({ enabled: app.fullText.enabled, books, progress: app.fullText.progress() });
     }),
+    // How far the index has got: what the page of results tells a reader who may be searching a library that is still being read.
+    "/api/fulltext/state": browse(() => json(app.fullText.progress())),
     // The card of a book: title, authors, year, series, description, language and tags. Reading it is browsing; changing it is the administrator's.
     "/api/books/:id/meta": browse((req) => {
       const book = app.library.byId(param(req, "id"));

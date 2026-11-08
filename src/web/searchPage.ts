@@ -19,6 +19,12 @@ interface Place {
   view: unknown;
   loc: Record<string, number>;
 }
+interface Progress {
+  enabled: boolean;
+  /** Books settled: read, or with nothing to read. */
+  done: number;
+  total: number;
+}
 interface ContentBook extends FoundBook {
   hits: Place[];
   more: boolean;
@@ -53,6 +59,7 @@ const NAME_LIMIT = 300;
 const PLACES_PER_BOOK = 5;
 const ALL_PLACES = 100;
 const BOOKS_SHOWN = 60;
+const STATE_EVERY = 4000;
 
 /**
  * The page of search results: books found by name, title, author or tag, and, when the index is on, the books that
@@ -65,6 +72,25 @@ export function searchPageEl(spec: SearchPageSpec): HTMLElement {
   const names = el("section", { class: "found-names" });
   const content = el("section", { class: "found-content" });
   const nothing = el("p", { class: "shelf-empty", hidden: true, textContent: t("search.none", { q: spec.query }) });
+  // while the books are still being read the results may lack some of them: say so, and offer to ask again once more are read
+  const indexing = el("p", { class: "found-indexing", hidden: true });
+  const again = el("button", { type: "button", class: "btn found-again", hidden: true, textContent: t("search.again") });
+  const banner = el("div", { class: "found-banner", hidden: true }, indexing, again);
+  let askedAt = 0; // how many books were read when the question was last asked
+  const showState = (p: Progress) => {
+    const working = p.enabled && p.done < p.total;
+    const fresher = p.enabled && p.done > askedAt; // books were read since the question was asked: asking again may find more
+    banner.hidden = !working && !fresher;
+    indexing.textContent = working ? t("search.indexing", { done: p.done, total: p.total }) : t("search.indexed");
+    again.hidden = !fresher;
+  };
+  again.addEventListener("click", () => void run());
+  const watch = setInterval(async () => {
+    if (!root.isConnected) return clearInterval(watch);
+    if (!spec.fullText || banner.hidden) return;
+    const p = await get<Progress>("/api/fulltext/state", turn);
+    if (p) showState(p);
+  }, STATE_EVERY);
 
   const get = async <T>(path: string, mine: number): Promise<T | null> => {
     try {
@@ -126,8 +152,10 @@ export function searchPageEl(spec: SearchPageSpec): HTMLElement {
       nothing.hidden = byName.books.length > 0;
       return;
     }
-    const inside = await get<{ enabled: boolean; books: ContentBook[] }>(`/api/fulltext?q=${q}&per=${PLACES_PER_BOOK}&limit=${BOOKS_SHOWN}${extra}`, mine);
+    const inside = await get<{ enabled: boolean; books: ContentBook[]; progress: Progress }>(`/api/fulltext?q=${q}&per=${PLACES_PER_BOOK}&limit=${BOOKS_SHOWN}${extra}`, mine);
     if (!inside) return;
+    askedAt = inside.progress.done;
+    showState(inside.progress);
     content.replaceChildren(
       ...(inside.books.length ? [el("h3", { class: "found-title", textContent: t("search.inBooks", { n: inside.books.length }) }), ...inside.books.map(drawBook)] : []),
     );
@@ -148,5 +176,6 @@ export function searchPageEl(spec: SearchPageSpec): HTMLElement {
     },
   });
   void run();
-  return el("div", { class: "search-page" }, bar.node, names, content, nothing);
+  const root = el("div", { class: "search-page" }, bar.node, banner, names, content, nothing);
+  return root;
 }

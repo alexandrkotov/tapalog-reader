@@ -122,3 +122,30 @@ e2e("Enter in the search box opens the page of results, an arrow and Enter jump 
   expect(errors).toEqual([]);
   await page.close();
 });
+
+e2e("while the books are still being read the page says so, and offers to search again when more are read", async () => {
+  await indexed();
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  // the index is complete here, so the half-done state is staged: the first answer says 1 of 3 are read, later ones 3 of 3
+  let reading = true;
+  await page.route("**/api/fulltext?*", async (route) => {
+    const res = await route.fetch();
+    const json = await res.json();
+    await route.fulfill({ response: res, json: reading ? { ...json, progress: { enabled: true, done: 1, total: 3 } } : json });
+  });
+  await page.route("**/api/fulltext/state", async (route) => route.fulfill({ json: reading ? { enabled: true, done: 1, total: 3 } : { enabled: true, done: 3, total: 3 } }));
+  await page.goto(`${inst.url}/#search=pentode`);
+  await page.waitForSelector(".found-banner:not([hidden])");
+  expect(await page.textContent(".found-indexing")).toBe("The books are still being read for this search: 1 of 3 so far. Words from the books not read yet cannot be found, so the results may be incomplete.");
+  expect(await page.isHidden(".found-again")).toBe(true); // nothing new has been read yet
+
+  reading = false; // the reading went on and finished: the next look at the state says so and offers a new search
+  await page.waitForSelector(".found-again:not([hidden])", { timeout: 15_000 });
+  expect(await page.textContent(".found-indexing")).toBe("All the books have been read now. Search again to include all of them.");
+  await page.click(".found-again");
+  await page.waitForSelector(".found-banner", { state: "hidden" }); // all read: the banner goes
+  expect(await page.locator(".found-book").count()).toBe(3);
+  expect(errors).toEqual([]);
+  await page.close();
+});

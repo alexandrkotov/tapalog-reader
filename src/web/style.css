@@ -457,3 +457,7 @@ textarea.card-input { resize: vertical; }
 .found-more { margin-top: 6px; height: 28px; font-size: 12px; }
 .found-more[hidden] { display: none; }
 .search-results li.all-results { color: var(--muted); font-size: 12px; justify-content: center; }
+.found-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: 8px; }
+.found-banner[hidden], .found-again[hidden] { display: none; }
+.found-indexing { margin: 0; font-size: 13px; }
+.found-again { height: 28px; font-size: 12px; }
