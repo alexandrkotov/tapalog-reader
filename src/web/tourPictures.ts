@@ -9,6 +9,7 @@ export type TourPicture =
   | "panel"
   | "tree"
   | "search"
+  | "tags"
   | "signin"
   | "bookmarks"
   | "flow"
@@ -145,6 +146,21 @@ function search(alt: string): SVGElement {
     text(20, 100, t("search.inContents"), "tp-bold"),
     text(20, 118, "…a detector with a crystal and a coil…", "tp-muted"),
     text(20, 136, "…the detector stage needs no power…", "tp-muted"),
+  );
+}
+
+function tags(alt: string): SVGElement {
+  const chips = row(16, 28, ["radio 3", "circuits 2", "lamps 1"], [0, 1]);
+  const shelfCard = (x: number, name: string) => [box(x, 84, 84, 66), box(x + 8, 92, 68, 36, "tp-item"), text(x + 8, 144, name, "tp-bold")];
+  return svg(
+    160,
+    alt,
+    box(4, 4, 312, 152),
+    text(16, 22, t("tags.title"), "tp-muted"),
+    chips.parts,
+    text(16, 74, t("tags.found", { n: 2 }), "tp-muted"),
+    shelfCard(16, "pages"),
+    shelfCard(112, "notes"),
   );
 }
 
@@ -561,7 +577,7 @@ function flow(alt: string): SVGElement {
   );
 }
 
-const DRAW: Record<TourPicture, (alt: string) => SVGElement> = { panel, tree, search, signin, bookmarks, flow, links, edit, link, settings, theme, lang, title, card, print, mark, reader, share, toolbar, help, item, thumb, tools, rename, export: exportFile, printProject, note };
+const DRAW: Record<TourPicture, (alt: string) => SVGElement> = { panel, tree, search, tags, signin, bookmarks, flow, links, edit, link, settings, theme, lang, title, card, print, mark, reader, share, toolbar, help, item, thumb, tools, rename, export: exportFile, printProject, note };
 
 /** `alt` says in words what the picture shows; the tour passes the text of the step. */
 export const tourPicture = (which: TourPicture, alt: string): SVGElement => DRAW[which](alt);

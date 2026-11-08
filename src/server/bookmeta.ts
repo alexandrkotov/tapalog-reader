@@ -53,7 +53,7 @@ function cleanTags(value: unknown): string[] {
   const seen = new Set<string>();
   const tags: string[] = [];
   for (const raw of value) {
-    const tag = oneLine(raw, MAX_TAG, "tags");
+    const tag = oneLine(typeof raw === "string" ? raw.replace(/,/g, " ") : raw, MAX_TAG, "tags"); // a comma separates tags in the form and in addresses, so it is not part of one
     if (!tag || seen.has(tag.toLowerCase())) continue; // an empty or repeated tag is dropped, not an error
     seen.add(tag.toLowerCase());
     tags.push(tag);

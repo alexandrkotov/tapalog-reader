@@ -56,6 +56,8 @@ async function everyStepExplained(page: Page, what: string): Promise<number> {
 
 for (const lang of ["en", "ru", "uk"] as const) {
   e2e(`every step of the three tours has a longer explanation with a picture that fits (${lang})`, async () => {
+    // some books carry tags, so that the step about the tag bar is part of the tour
+    await ctx.request.put(`${inst.url}/api/admin/books/${pdfId}/meta`, { data: { set: { tags: ["radio", "circuits"] } }, headers: { Origin: inst.url } });
     const made = await api(ctx, inst, "/api/projects", { title: `Tour ${lang}` });
     const add = (body: unknown) => api(ctx, inst, `/api/projects/${made.project.id}/items`, body);
     await add({ bookId: pdfId, view: { v: 1, page: 5 }, title: "Page five" });
@@ -71,7 +73,7 @@ for (const lang of ["en", "ru", "uk"] as const) {
     // the whole interface
     await page.click("#tour");
     const library = await everyStepExplained(page, "library");
-    expect(library).toBeGreaterThanOrEqual(10);
+    expect(library).toBe(12); // the panel, the tree, search, the tag bar, bookmarks, projects, links, edit, link, settings, theme and language
 
     // a book: its own tour (a PDF has the toolbar too)
     await page.goto(`${inst.url}/#book=${pdfId}&view=${encodeURIComponent(JSON.stringify({ v: 1, page: 2 }))}`);

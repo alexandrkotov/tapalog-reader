@@ -1,4 +1,5 @@
 import { t, type Key } from "./i18n";
+import { tagsHash } from "./tags";
 import { api, ApiError, badge, el, formatBytes, openModal } from "./ui";
 
 interface Fields {
@@ -86,7 +87,15 @@ export async function openBookCard(id: string, canEdit: boolean, changed: (card:
     const line = (label: Key, value: string) => (value ? [el("dt", { textContent: t(label) }), el("dd", { textContent: value })] : []);
     modal.body.replaceChildren(
       head(),
-      el("dl", { class: "card-file card-read" }, ...line("card.authors", f.authors.join(", ")), ...line("card.year", f.year === null ? "" : String(f.year)), ...line("card.series", f.series), ...line("card.language", f.language), ...line("card.tags", f.tags.join(", "))),
+      el(
+        "dl",
+        { class: "card-file card-read" },
+        ...line("card.authors", f.authors.join(", ")),
+        ...line("card.year", f.year === null ? "" : String(f.year)),
+        ...line("card.series", f.series),
+        ...line("card.language", f.language),
+        ...(f.tags.length ? [el("dt", { textContent: t("card.tags") }), el("dd", {}, ...f.tags.flatMap((tag, i) => [...(i ? [" "] : []), el("a", { class: "card-tag", href: tagsHash([tag.toLowerCase()]), textContent: tag, onclick: () => modal.close() })]))] : []),
+      ),
       ...(f.description ? [el("p", { class: "card-description", textContent: f.description })] : []),
       file(),
       el("p", { class: "muted small", textContent: t("card.readOnly") }),
@@ -95,6 +104,7 @@ export async function openBookCard(id: string, canEdit: boolean, changed: (card:
     return;
   }
 
+  const known = await api<{ tags: { tag: string; books: number }[] }>("/api/tags").then((r) => r.tags, () => []);
   const error = el("p", { class: "project-missing", hidden: true });
   const saved = el("span", { class: "muted small card-saved", hidden: true, textContent: t("card.saved") });
   const put = async (body: { set?: Record<string, unknown>; reset?: string[] }): Promise<Card | null> => {
@@ -141,8 +151,29 @@ export async function openBookCard(id: string, canEdit: boolean, changed: (card:
     row("description", "card.description", null, descriptionInput, () => descriptionInput.value.trim(), text, undo),
   ];
   const heading = el("span", { class: "card-heading" });
+  // the tags already used by other books, to pick from: one spelling for one tag
+  const picks = el("div", { class: "card-picks" });
+  const typedTags = () => tagsInput.value.split(",").map((x) => x.trim()).filter(Boolean);
+  const renderPicks = () => {
+    const have = new Set(typedTags().map((x) => x.toLowerCase()));
+    const left = known.filter((k) => !have.has(k.tag.toLowerCase())).slice(0, 12);
+    picks.replaceChildren(
+      ...(left.length ? [el("span", { class: "muted small", textContent: t("card.tagPicks") })] : []),
+      ...left.map((k) => {
+        const pick = el("button", { type: "button", class: "btn card-pick", textContent: `+ ${k.tag}`, title: t("card.tagPick") });
+        pick.addEventListener("click", () => {
+          tagsInput.value = [...typedTags(), k.tag].join(", ");
+          tagsInput.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        return pick;
+      }),
+    );
+  };
+  tagsInput.addEventListener("input", renderPicks);
+  rows.find((r) => r.name === "tags")!.node.append(picks);
   const show = (c: Card) => {
     for (const r of rows) r.show(c);
+    renderPicks();
     heading.textContent = c.fields.title || c.name;
   };
   show(card);

@@ -481,6 +481,16 @@ const en = {
   "card.bad.language": "The language must be a code such as en, ru or uk.",
   "card.bad.tags": "There can be up to 30 tags of up to 40 characters each.",
   "card.bad.other": "The changes could not be saved.",
+  "tags.title": "Tags",
+  "tags.more": "More tags ({n})",
+  "tags.fewer": "Fewer tags",
+  "tags.clear": "All books",
+  "tags.found": "Books with all of these tags: {n}",
+  "tags.none": "No book has all of these tags.",
+  "card.tagPicks": "Tags already used:",
+  "card.tagPick": "Add this tag",
+  "tour.tags": "Tags of your books: choose one or several to see only the books that have them all.",
+  "tour.tagsMore": "Tags are words the administrator puts on books in their window “About the book”, for example “radio” or “schematics”. They group books without moving a file, whatever folders the books lie in. Click a tag to see the books that have it; click more tags to narrow the choice to the books that have all of them, and click a chosen tag again to let it go. The number beside a tag is how many books have it. The address of the page holds the choice, so you can keep it as a bookmark or send it.",
 } as const;
 
 export type Key = keyof typeof en;
@@ -960,6 +970,16 @@ const ru: Dict = {
   "card.bad.language": "Язык должен быть кодом вроде en, ru или uk.",
   "card.bad.tags": "Тегов может быть не больше 30, каждый не длиннее 40 знаков.",
   "card.bad.other": "Не удалось сохранить изменения.",
+  "tags.title": "Теги",
+  "tags.more": "Ещё теги ({n})",
+  "tags.fewer": "Меньше тегов",
+  "tags.clear": "Все книги",
+  "tags.found": "Книг со всеми этими тегами: {n}",
+  "tags.none": "Нет книги со всеми этими тегами.",
+  "card.tagPicks": "Уже используются:",
+  "card.tagPick": "Добавить этот тег",
+  "tour.tags": "Теги ваших книг: выберите один или несколько, и останутся только книги, у которых есть все они.",
+  "tour.tagsMore": "Теги — это слова, которые администратор ставит книгам в окне «О книге», например «радио» или «схемы». Они собирают книги в группы, не двигая файлы, в каких бы папках книги ни лежали. Нажмите на тег, чтобы увидеть книги с ним; нажмите ещё на теги, чтобы сузить выбор до книг, у которых есть все они, а повторное нажатие на выбранный тег его отпускает. Число рядом с тегом показывает, сколько книг его имеют. Адрес страницы хранит ваш выбор, так что его можно сохранить в закладках или отправить.",
 };
 
 const uk: Dict = {
@@ -1436,6 +1456,16 @@ const uk: Dict = {
   "card.bad.language": "Мова має бути кодом на кшталт en, ru або uk.",
   "card.bad.tags": "Тегів може бути не більше 30, кожен не довший за 40 знаків.",
   "card.bad.other": "Не вдалося зберегти зміни.",
+  "tags.title": "Теги",
+  "tags.more": "Ще теги ({n})",
+  "tags.fewer": "Менше тегів",
+  "tags.clear": "Усі книги",
+  "tags.found": "Книг з усіма цими тегами: {n}",
+  "tags.none": "Немає книги з усіма цими тегами.",
+  "card.tagPicks": "Уже використовуються:",
+  "card.tagPick": "Додати цей тег",
+  "tour.tags": "Теги ваших книг: виберіть один або кілька, і залишаться лише книги, у яких є всі вони.",
+  "tour.tagsMore": "Теги — це слова, які адміністратор ставить книгам у вікні «Про книгу», наприклад «радіо» або «схеми». Вони збирають книги в групи, не рухаючи файлів, у яких би теках книги не лежали. Натисніть на тег, щоб побачити книги з ним; натисніть ще на теги, щоб звузити вибір до книг, у яких є всі вони, а повторне натискання на вибраний тег його відпускає. Число поруч із тегом показує, скільки книг його мають. Адреса сторінки зберігає ваш вибір, тож його можна зберегти в закладках або надіслати.",
 };
 
 const dictionaries: Record<Lang, Dict> = { en, ru, uk };

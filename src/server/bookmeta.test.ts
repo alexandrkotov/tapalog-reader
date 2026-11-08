@@ -135,6 +135,7 @@ test("what is typed is trimmed and checked, a blank is a value, a reset brings t
   const reset = applyEdit(manual, { series: "Own" }, ["title", "year"]);
   expect(reset).toEqual({ authors: ["A", "B"], tags: ["Радио", "схемы"], language: "ru", series: "Own" });
 
+  expect(applyEdit({}, { tags: ["a,b", "c"] }, undefined)).toEqual({ tags: ["a b", "c"] }); // a comma separates tags in forms and addresses: it is not part of one
   expect(failure(() => applyEdit({}, { title: "x".repeat(MAX_TITLE + 1) }, undefined))).toBe("title");
   expect(failure(() => applyEdit({}, { year: 1949.5 }, undefined))).toBe("year");
   expect(failure(() => applyEdit({}, { year: "1949" }, undefined))).toBe("year");

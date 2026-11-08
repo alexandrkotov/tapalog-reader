@@ -8,6 +8,7 @@ import { openAddToProject, openProjects } from "./projects";
 import { makeCovers, stopCovers } from "./covers";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import { setTheme, themeMode, type ThemeMode } from "./theme";
+import { countTags, parseTags, tagsHash, toggleTag, withAllTags } from "./tags";
 import { offerTour, startTour, type TourStep } from "./tour";
 import { openPrintDialog } from "./print";
 import { loadDisplay, saveDisplay, type Display } from "./display";
@@ -281,8 +282,23 @@ function showShelf(path: string): void {
     ...[...node.folders].sort(byName).map((f) =>
       editable(el("a", { class: "card folder", href: `#folder=${encodeURIComponent(f.path)}`, title: f.path }, el("div", { class: "thumb folder-tile", textContent: "📁" }), el("div", { class: "cap" }, el("span", { class: "name", textContent: f.name }), el("span", { class: "count", textContent: String(f.total) }))), "folder", f.path),
     ),
-    ...[...node.books].sort(byTitle).map((b) => editable(el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext), infoButton(b.id)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.title }))), "book", b.path)),
+    ...[...node.books].sort(byTitle).map((b) => editable(bookCardEl(b), "book", b.path)),
   ];
+  const { grid, more } = paged(cards);
+  const recent = el("section", { class: "recent", hidden: true });
+  const tagBar = node === root ? tagBarEl([]) : null;
+  mainEl.replaceChildren(
+    el("div", { class: "shelf-head" }, ...crumbs),
+    el("div", { class: "shelf-body" }, ...(node === root ? [recent] : []), ...(tagBar ? [tagBar] : []), cards.length ? grid : el("p", { class: "shelf-empty", textContent: t("shelf.empty") }), more),
+  );
+  if (node === root) void fillRecent(recent);
+}
+
+/** A book's card on a shelf: its cover, its title and the ⓘ that opens its details. */
+const bookCardEl = (b: Book) => el("a", { class: "card", href: `#book=${b.id}`, title: b.path }, el("div", { class: "thumbwrap" }, thumb(b), badge(b.ext), infoButton(b.id)), el("div", { class: "cap" }, el("span", { class: "name", textContent: b.title })));
+
+/** Cards in a grid that shows a page of them and a button for the rest. */
+function paged(cards: HTMLElement[]): { grid: HTMLElement; more: HTMLElement } {
   const grid = el("div", { class: "shelf" });
   const more = el("button", { type: "button", class: "btn shelf-more" });
   let shown = 0;
@@ -294,12 +310,56 @@ function showShelf(path: string): void {
   };
   more.addEventListener("click", renderMore);
   renderMore();
-  const recent = el("section", { class: "recent", hidden: true });
+  return { grid, more };
+}
+
+const TAGS_SHOWN = 30;
+let allTagsShown = false;
+
+/**
+ * The tags in use as buttons with the number of books each has. Clicking one adds it to the choice (or takes it out);
+ * the books shown are those that have every chosen tag. Nothing is drawn while no book has a tag and none is chosen.
+ */
+function tagBarEl(chosen: string[]): HTMLElement | null {
+  const tags = countTags(books);
+  const missing = chosen.filter((key) => !tags.some((tag) => tag.key === key)); // an address names a tag that no book has now: it can still be taken out
+  if (!tags.length && !missing.length) return null;
+  const draw = () => {
+    const visible = allTagsShown ? tags : tags.filter((tag, i) => i < TAGS_SHOWN || chosen.includes(tag.key));
+    const chips = [
+      ...visible.map((tag) => el("a", { class: `tag-chip${chosen.includes(tag.key) ? " on" : ""}`, href: tagsHash(toggleTag(chosen, tag.key)), title: tag.label }, el("span", { textContent: tag.label }), el("span", { class: "tag-count", textContent: String(tag.count) }))),
+      ...missing.map((key) => el("a", { class: "tag-chip on", href: tagsHash(toggleTag(chosen, key)) }, el("span", { textContent: key }), el("span", { class: "tag-count", textContent: "0" }))),
+    ];
+    const rest = tags.length - visible.length;
+    const toggle: HTMLElement[] = [];
+    if (rest > 0 || allTagsShown) {
+      const button = el("button", { type: "button", class: "btn tag-more", textContent: allTagsShown ? t("tags.fewer") : t("tags.more", { n: rest }) });
+      button.addEventListener("click", () => ((allTagsShown = !allTagsShown), bar.replaceChildren(...draw())));
+      toggle.push(button);
+    }
+    return [el("span", { class: "tag-title", textContent: t("tags.title") }), ...chips, ...toggle, ...(chosen.length ? [el("a", { class: "tag-clear", href: "#", textContent: t("tags.clear") })] : [])];
+  };
+  const bar = el("nav", { class: "tag-bar" });
+  bar.setAttribute("aria-label", t("tags.title"));
+  bar.dataset.tour = "tags";
+  bar.replaceChildren(...draw());
+  return bar;
+}
+
+/** The books that have all of the chosen tags, wherever in the library they lie. */
+function showTagShelf(chosen: string[]): void {
+  stopReader();
+  currentId = null;
+  renderTree();
+  const bar = tagBarEl(chosen);
+  const found = withAllTags(books, chosen).sort(byTitle);
+  document.title = `${chosen.join(", ")} — ${t("app.title")}`;
+  const crumbs: Node[] = [el("a", { href: "#", textContent: t("shelf.root") }), el("span", { class: "sep", textContent: "/" }), el("span", { textContent: t("tags.title") })];
+  const { grid, more } = paged(found.map(bookCardEl));
   mainEl.replaceChildren(
     el("div", { class: "shelf-head" }, ...crumbs),
-    el("div", { class: "shelf-body" }, ...(node === root ? [recent] : []), cards.length ? grid : el("p", { class: "shelf-empty", textContent: t("shelf.empty") }), more),
+    el("div", { class: "shelf-body" }, ...(bar ? [bar] : []), el("p", { class: "muted tag-found", textContent: found.length ? t("tags.found", { n: found.length }) : t("tags.none") }), found.length ? grid : "", more),
   );
-  if (node === root) void fillRecent(recent);
 }
 
 const RECENT_SHOWN = 12;
@@ -639,7 +699,7 @@ function message(title: string, text: string, ...extra: Node[]): void {
 }
 
 /** The shape of a view depends on the book's format: EcatmView for catalogs, PageView for paged documents. */
-function parseHash(): { book: string | null; folder: string | null; view: unknown } {
+function parseHash(): { book: string | null; folder: string | null; view: unknown; tags: string[] | null } {
   const params = new URLSearchParams(location.hash.slice(1));
   let view: unknown = null;
   try {
@@ -648,7 +708,7 @@ function parseHash(): { book: string | null; folder: string | null; view: unknow
   } catch {
     /* a broken link opens the book at its start */
   }
-  return { book: params.get("book"), folder: params.get("folder"), view };
+  return { book: params.get("book"), folder: params.get("folder"), view, tags: params.has("tags") ? parseTags(params.get("tags")) : null };
 }
 
 const writeView = (book: Book, view: unknown) => history.replaceState(null, "", `#book=${book.id}&view=${encodeURIComponent(JSON.stringify(view))}`);
@@ -726,7 +786,7 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
 
 function route(): void {
   const seq = ++routeSeq;
-  const { book, folder, view } = parseHash();
+  const { book, folder, view, tags } = parseHash();
   if (!book) {
     if (!books.length) {
       currentId = null;
@@ -734,6 +794,7 @@ function route(): void {
       renderTree();
       return message(t("pick.title"), t("pick.empty"));
     }
+    if (tags?.length) return showTagShelf(tags);
     return showShelf(folder ?? "");
   }
   const found = booksById.get(book);
@@ -798,6 +859,7 @@ function tourSteps(forReader = true): TourStep[] {
     { target: "#panel-toggle", text: "tour.panel", more: "tour.panelMore", picture: "panel" },
     { target: "#panel", text: "tour.tree", more: "tour.treeMore", picture: "tree" },
     { target: "#search", text: fullTextOn ? "tour.searchText" : "tour.search", more: "tour.searchMore", picture: "search" },
+    { target: "[data-tour=tags]", text: "tour.tags", more: "tour.tagsMore", picture: "tags" },
     { target: "[data-tour=signin]", text: "tour.signin", more: "tour.signinMore", picture: "signin" },
     { target: "[data-tour=bookmarks]", text: "tour.bookmarks", more: "tour.bookmarksMore", picture: "bookmarks" },
     { target: "[data-tour=projects]", text: "tour.projects", more: "tour.projectsMore", picture: "flow" },

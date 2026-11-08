@@ -144,7 +144,7 @@ e2e("the administrator changes a book's details in its window, takes a typed val
   expect(shown).toContain("И. Г. Беляев");
   expect(shown).toContain("1949"); // the file's year: the 1950 typed above was never saved
   expect(shown).not.toContain("1950");
-  expect(shown).toContain("радио, схемы");
+  expect(await reader.$$eval(".card-tag", (links) => links.map((a) => a.textContent))).toEqual(["радио", "схемы"]); // the tags are links to the books that have them
   expect(shown).toContain("Only an administrator");
   expect(errors).toEqual([]);
   expect(readerErrors).toEqual([]);
