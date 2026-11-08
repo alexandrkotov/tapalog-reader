@@ -783,3 +783,15 @@ test("the administrator's browser reads a scan page by page and the server keeps
   expect((await call(lan, "/api/fulltext?q=осциллограф")).body.books).toEqual([]);
   await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie }); // as it was: nothing left running when the library closes
 });
+
+test("the engine that reads pictures is served from a fixed list, to anybody, with no way to reach other files", async () => {
+  for (const [name, type, least] of [["worker.min.js", "text/javascript", 10_000], ["tesseract.min.js", "text/javascript", 10_000], ["core/tesseract-core-simd-lstm.wasm.js", "text/javascript", 1_000_000], ["lang/rus.traineddata.gz", "application/octet-stream", 1_000_000], ["lang/eng.traineddata.gz", "application/octet-stream", 1_000_000]] as const) {
+    const res = await fetch(`${lan}/ocr/${name}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain(type);
+    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(least);
+  }
+  expect((await fetch(`${lan}/ocr/lang/deu.traineddata.gz`)).status).toBe(404);
+  expect((await fetch(`${lan}/ocr/..%2Fpackage.json`)).status).toBe(404);
+  expect((await fetch(`${lan}/ocr/`)).status).toBe(404);
+});

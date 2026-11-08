@@ -17,6 +17,7 @@ export const COMPONENTS: Component[] = [
   { name: "pdf.js", license: "Apache-2.0", url: "https://github.com/mozilla/pdf.js" },
   { name: "foliate-js", license: "MIT", url: "https://github.com/johnfactotum/foliate-js" },
   { name: "Bun", license: "MIT, with JavaScriptCore under LGPL-2.1", url: "https://bun.sh" },
+  { name: "Tesseract (tesseract.js)", license: "Apache-2.0", url: "https://github.com/naptha/tesseract.js" },
   { name: "cloudflared", license: "Apache-2.0", url: "https://github.com/cloudflare/cloudflared" },
   { name: "sql.js", license: "MIT", url: "https://github.com/sql-js/sql.js" },
   { name: "fflate", license: "MIT", url: "https://github.com/101arrowz/fflate" },

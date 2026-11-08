@@ -21,6 +21,7 @@ import { mimeOf } from "./formats";
 import { APP_NAME, PING } from "./instance";
 import { Plugins } from "./plugins";
 import type { BookRow, Library } from "./library";
+import { OCR_ASSETS } from "./ocrAssets.generated";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
 import { RESET_FILE, type Recovery } from "./recovery";
 import type { Shares } from "./shares";
@@ -113,6 +114,15 @@ function servePdfjsAsset(req: Request): Response {
   if (!path) return notFound();
   const ext = name.slice(name.lastIndexOf(".") + 1);
   return new Response(Bun.file(path), { headers: { "Content-Type": ASSET_TYPES[ext] ?? "application/octet-stream", "Cache-Control": "public, max-age=86400" } });
+}
+
+/** The engine that reads the pictures of scanned pages: script, worker, core and language data (see scripts/gen-ocr-assets.ts). */
+function serveOcrAsset(req: Request): Response {
+  const name = decodeURIComponent(new URL(req.url).pathname.slice("/ocr/".length));
+  const path = Object.hasOwn(OCR_ASSETS, name) ? OCR_ASSETS[name] : undefined; // a fixed list again
+  if (!path) return notFound();
+  const type = name.endsWith(".js") ? "text/javascript" : "application/octet-stream";
+  return new Response(Bun.file(path), { headers: { "Content-Type": type, "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" } });
 }
 
 const param = (req: Bun.BunRequest, name: string) => req.params[name] ?? "";
@@ -264,6 +274,7 @@ function buildRoutes(app: App, origin: Origin) {
     "/": index,
     "/s/:token": index,
     "/pdfjs/*": servePdfjsAsset,
+    "/ocr/*": serveOcrAsset, // open like /pdfjs/*: no library data in it
     // files of the installed plugins: readers and what they load. Open like /pdfjs/*, because the page of a share link needs them too and they hold no library data
     "/plugins/*": (req: Request) => {
       const [, , id = "", ...rest] = new URL(req.url).pathname.split("/");

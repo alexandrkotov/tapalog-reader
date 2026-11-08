@@ -62,6 +62,10 @@ try {
       const res = await fetch(`${root}/pdfjs/${asset}`);
       check(res.ok && (await res.arrayBuffer()).byteLength > 1000, `/pdfjs/${asset} is embedded`);
     }
+    for (const asset of ["tesseract.min.js", "worker.min.js", "core/tesseract-core-simd-lstm.wasm.js", "lang/rus.traineddata.gz", "lang/eng.traineddata.gz"]) {
+      const res = await fetch(`${root}/ocr/${asset}`);
+      check(res.ok && (await res.arrayBuffer()).byteLength > 10_000, `/ocr/${asset} is embedded`);
+    }
     const book = await fetch(`${root}/api/file/${library_[0]!.id}`);
     check((await book.text()) === "hello from the smoke test", "the book file is served");
     const status = (await (await fetch(`${root}/api/status`)).json()) as { writable?: boolean };
