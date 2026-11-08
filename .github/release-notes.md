@@ -1,12 +1,10 @@
 ## English
 
 What's new:
-- **About the program.** **About** at the foot of the left panel opens a window with the version, the licence, links to the site, the source and the issues page, the parts the program is built from, and a button that copies the version for a report of a problem; the administrator also sees where the program keeps its files.
-- **Titles everywhere.** Bookmarks, project items, the list of links and the page of a share link now show a book by its **title**, not its file name.
-- **Tags of the library.** The administrator's **⚙** button after the tags on the top shelf opens a window with every tag and its number of books: **Rename** (to a name already in use it merges the two tags) and **Remove**, each for all books at once.
-- **Search in a text file.** A hit in a TXT file says how far into the text it lies ("44% of the book"), since such a file has no pages.
-- **Clearer card buttons.** The button that takes a typed value back says what it does: **↺ Use the file's value**, or **↺ Clear my text** where the file says nothing.
-- **Tidier search.** The search box says it searches the library, not only file names; the places of a book line up, and on a phone they stand over the text.
+- **Scanned books can be searched.** A PDF made of page pictures has no text, so search used to find nothing in it. **Read scanned pages…** in Settings (and a button on a PDF's own card) now lists the PDFs without text and reads the ticked ones in your browser with Tesseract, in Russian, English or both. Search then finds the words with the page number and the text around them, and opens the book at that page.
+- **Nothing leaves your machine.** The engine and the language models are inside the program (about 10 MB more), so nothing is downloaded. Pages are read on up to four lanes at once and sent to the server one by one: a stop or a closed window loses only the pages in hand, and a second run skips the pages already read. The window has to stay open while it works.
+- **Kept apart from the index.** The text read from scans is not lost when the search index is rebuilt; **Forget** removes it for one book. The PDF file itself is never changed.
+- **About lists Tesseract** among the parts the program is built from.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -20,12 +18,10 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **О программе.** **О программе** внизу левой панели открывает окно с версией, лицензией, ссылками на сайт, исходный код и страницу проблем, списком того, из чего собрана программа, и кнопкой, которая копирует версию для сообщения о проблеме; администратор видит ещё, где программа хранит свои файлы.
-- **Названия везде.** Закладки, элементы проектов, список ссылок и страница общей ссылки показывают книгу по **названию**, а не по имени файла.
-- **Теги библиотеки.** Кнопка администратора **⚙** после тегов на верхней полке открывает окно со всеми тегами и числом книг: **Переименовать** (в уже занятое имя — два тега сливаются) и **Удалить**, сразу для всех книг.
-- **Поиск в текстовом файле.** Находка в TXT-файле говорит, как далеко от начала она лежит («44% книги»), ведь страниц у такого файла нет.
-- **Понятнее кнопки карточки.** Кнопка, возвращающая введённое значение, говорит, что делает: **↺ Взять из файла**, а где файл ничего не говорит — **↺ Стереть мой текст**.
-- **Аккуратнее поиск.** Строка поиска говорит, что ищет по библиотеке, а не только по именам файлов; места в книге выровнены, а на телефоне стоят над текстом.
+- **Сканы теперь ищутся.** PDF из картинок страниц не содержит текста, и поиск в нём ничего не находил. **Прочитать сканы…** в настройках (и кнопка на карточке самого PDF) показывает PDF без текста и читает отмеченные в вашем браузере с помощью Tesseract — по-русски, по-английски или обоими языками. Поиск находит слова с номером страницы и текстом вокруг и открывает книгу на этой странице.
+- **Ничего не уходит с вашего компьютера.** Движок и языковые модели лежат внутри программы (примерно на 10 МБ больше), ничего не скачивается. Страницы читаются на нескольких потоках (до четырёх) сразу и уходят на сервер по одной: остановка или закрытое окно теряют только те страницы, что были в работе, а повторный запуск пропускает уже прочитанные. Пока идёт чтение, окно должно оставаться открытым.
+- **Отдельно от индекса.** Текст, прочитанный со сканов, не пропадает при перестройке поискового индекса; **Забыть** убирает его для одной книги. Сам PDF-файл не меняется никогда.
+- **В «О программе»** среди составных частей теперь есть Tesseract.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -39,12 +35,10 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **Про програму.** **Про програму** внизу лівої панелі відкриває вікно з версією, ліцензією, посиланнями на сайт, вихідний код і сторінку проблем, переліком того, з чого зібрана програма, і кнопкою, що копіює версію для повідомлення про проблему; адміністратор бачить ще, де програма зберігає свої файли.
-- **Назви скрізь.** Закладки, елементи проєктів, список посилань і сторінка спільного посилання показують книгу за **назвою**, а не за іменем файлу.
-- **Теги бібліотеки.** Кнопка адміністратора **⚙** після тегів на верхній полиці відкриває вікно з усіма тегами й кількістю книг: **Перейменувати** (на вже зайняте ім’я — два теги зливаються) і **Видалити**, одразу для всіх книг.
-- **Пошук у текстовому файлі.** Знахідка в TXT-файлі каже, як далеко від початку вона лежить («44% книги»), адже сторінок у такого файлу немає.
-- **Зрозуміліші кнопки картки.** Кнопка, що повертає введене значення, каже, що робить: **↺ Узяти з файлу**, а де файл нічого не каже — **↺ Стерти мій текст**.
-- **Охайніший пошук.** Рядок пошуку каже, що шукає по бібліотеці, а не лише за іменами файлів; місця в книзі вирівняні, а на телефоні стоять над текстом.
+- **Скани тепер шукаються.** PDF із картинок сторінок не містить тексту, і пошук у ньому нічого не знаходив. **Прочитати скани…** в налаштуваннях (і кнопка на картці самого PDF) показує PDF без тексту й читає позначені у вашому браузері за допомогою Tesseract — російською, англійською або обома мовами. Пошук знаходить слова з номером сторінки й текстом навколо та відкриває книгу на цій сторінці.
+- **Нічого не залишає ваш комп’ютер.** Рушій і мовні моделі лежать усередині програми (приблизно на 10 МБ більше), нічого не завантажується. Сторінки читаються на кількох потоках (до чотирьох) одразу й надходять на сервер по одній: зупинка або закрите вікно втрачають лише ті сторінки, що були в роботі, а повторний запуск пропускає вже прочитані. Поки триває читання, вікно має лишатися відкритим.
+- **Окремо від індексу.** Текст, прочитаний зі сканів, не зникає під час перебудови пошукового індексу; **Забути** прибирає його для однієї книги. Сам PDF-файл не змінюється ніколи.
+- **У «Про програму»** серед складових частин тепер є Tesseract.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 
