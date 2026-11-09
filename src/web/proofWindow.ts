@@ -25,6 +25,11 @@ const AHEAD = "1500px 0px";
 const SAVE_AFTER = 1000;
 /** After a failure (the server or the network) the page is tried again after this. */
 const RETRY_AFTER = 3000;
+/** A figure is cut from the PDF at up to this many pixels per point and no more than this many pixels on its longer side. */
+const FIGURE_MAX_SCALE = 4;
+const FIGURE_MAX_SIDE = 3200;
+/** A frame smaller than this (in screen pixels) is a click. */
+const MIN_FRAME = 16;
 
 /** One page of the list: its parts, and what the server holds of it. */
 interface Slot {
@@ -59,9 +64,16 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     if (unsaved()) e.preventDefault(); // a page is still on its way to the server
   };
   addEventListener("beforeunload", warn);
+  /** Esc leaves the figure mode (set once the window is built) before it closes the window. */
+  let leaveFigureMode: (() => boolean) | null = null;
+  const onEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && leaveFigureMode?.()) e.stopImmediatePropagation();
+  };
+  addEventListener("keydown", onEscape, true);
   const finish = () => {
     closed = true;
     removeEventListener("beforeunload", warn);
+    removeEventListener("keydown", onEscape, true);
     observer?.disconnect();
     void task?.destroy();
     for (const slot of slots.values()) if (slot.text.value !== slot.sent) void save(slot); // what was typed last is not lost with the window
@@ -203,6 +215,18 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   });
 
   const scroller = el("div", { class: "proof-pages" });
+  const figureButton = el("button", { type: "button", class: "btn small proof-figure", textContent: t("proof.figure.mode"), title: t("proof.figure.hint") });
+  figureButton.setAttribute("aria-pressed", "false");
+  const hint = el("p", { class: "muted small proof-hint", textContent: t("proof.figure.hint"), hidden: true });
+  let selecting = false;
+  const selectMode = (on: boolean) => {
+    selecting = on;
+    scroller.classList.toggle("selecting", on);
+    figureButton.classList.toggle("active", on);
+    figureButton.setAttribute("aria-pressed", String(on));
+    hint.hidden = !on;
+  };
+  figureButton.addEventListener("click", () => selectMode(!selecting));
   const byPage = new Map(list.items.map((item) => [item.page, item]));
   for (let n = 1; n <= list.pages; n++) {
     const item = byPage.get(n);
@@ -238,7 +262,101 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const row = scroller.children[Math.min(Math.max(n, 1), list.pages) - 1] as HTMLElement | undefined;
     if (row) scroller.scrollTo({ top: row.offsetTop });
   });
-  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, ...downloads)), scroller);
+  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, figureButton, ...downloads)), hint, scroller);
+
+  /** Cuts the framed part of a page out of the PDF (drawn again for it, sharper than the page on the screen), keeps it on the server and writes its reference into the text. */
+  async function cutFigure(slot: Slot, frame: { x: number; y: number; w: number; h: number }): Promise<void> {
+    const say = (text: string) => (slot.state.textContent = text);
+    say(t("proof.figure.cutting"));
+    try {
+      const page = await doc.getPage(slot.n);
+      const size = page.getViewport({ scale: 1 });
+      const scale = Math.min(FIGURE_MAX_SCALE, FIGURE_MAX_SIDE / Math.max(frame.w * size.width, frame.h * size.height));
+      const viewport = page.getViewport({ scale });
+      const canvas = el("canvas");
+      canvas.width = Math.max(1, Math.round(frame.w * viewport.width));
+      canvas.height = Math.max(1, Math.round(frame.h * viewport.height));
+      await page.render({ canvas, viewport, transform: [1, 0, 0, 1, -frame.x * viewport.width, -frame.y * viewport.height] }).promise;
+      page.cleanup();
+      const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      canvas.width = canvas.height = 0;
+      if (!png) throw new Error("no picture");
+      await ensureStarted();
+      const res = await fetch(`${base}/images?page=${slot.n}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "image/png" }, body: png });
+      if (!res.ok) throw new ApiError(res.status, res.statusText);
+      const image = (await res.json()) as { name: string };
+      insertFigure(slot, image.name);
+      say(t("proof.figure.added"));
+    } catch {
+      say(t("proof.figure.failed"));
+    }
+  }
+
+  /** Puts `![Fig. 8.1](images/p008-1.png)` at the cursor of the page's text, as a paragraph of its own. */
+  function insertFigure(slot: Slot, name: string): void {
+    const field = slot.text;
+    const [, page, number] = /^p0*(\d+)-(\d+)\.png$/.exec(name) ?? [];
+    const ref = `![${t("proof.figure.alt", { n: `${page}.${number}` })}](images/${name})`;
+    const at = Math.min(field.selectionStart, field.value.length);
+    const end = Math.min(field.selectionEnd, field.value.length);
+    const before = field.value.slice(0, at);
+    const after = field.value.slice(end);
+    const lead = before === "" || before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n";
+    const tail = after === "" || after.startsWith("\n\n") ? "" : after.startsWith("\n") ? "\n" : "\n\n";
+    field.value = before + lead + ref + tail + after;
+    const caret = (before + lead + ref).length;
+    field.setSelectionRange(caret, caret);
+    field.dispatchEvent(new Event("input")); // saved like anything typed
+  }
+
+  let drag: { slot: Slot; scan: HTMLElement; canvas: HTMLCanvasElement; pointer: number; x0: number; y0: number; box: HTMLElement } | null = null;
+  const stopDrag = () => {
+    drag?.box.remove();
+    drag = null;
+  };
+  scroller.addEventListener("pointerdown", (e) => {
+    if (!selecting || drag || (e.pointerType === "mouse" && e.button !== 0)) return;
+    const scan = (e.target as HTMLElement).closest<HTMLElement>(".proof-scan");
+    const canvas = scan?.querySelector("canvas");
+    const slot = scan?.parentElement ? slots.get(Number((scan.parentElement as HTMLElement).dataset.page)) : undefined;
+    if (!scan || !canvas || !slot) return;
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const box = el("div", { class: "proof-rect" });
+    scan.append(box);
+    scan.setPointerCapture(e.pointerId);
+    drag = { slot, scan, canvas, pointer: e.pointerId, x0: Math.min(Math.max(e.clientX, rect.left), rect.right), y0: Math.min(Math.max(e.clientY, rect.top), rect.bottom), box };
+  });
+  /** The frame in pixels of the picture on the screen, kept inside the page. */
+  const frameOf = (e: PointerEvent) => {
+    const d = drag!;
+    const rect = d.canvas.getBoundingClientRect();
+    const x1 = Math.min(Math.max(e.clientX, rect.left), rect.right);
+    const y1 = Math.min(Math.max(e.clientY, rect.top), rect.bottom);
+    return { left: Math.min(d.x0, x1) - rect.left, top: Math.min(d.y0, y1) - rect.top, width: Math.abs(x1 - d.x0), height: Math.abs(y1 - d.y0), page: rect };
+  };
+  scroller.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const f = frameOf(e);
+    const offset = drag.canvas.getBoundingClientRect();
+    const scan = drag.scan.getBoundingClientRect();
+    Object.assign(drag.box.style, { left: `${f.left + offset.left - scan.left}px`, top: `${f.top + offset.top - scan.top}px`, width: `${f.width}px`, height: `${f.height}px` });
+  });
+  scroller.addEventListener("pointerup", (e) => {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const f = frameOf(e);
+    const { slot } = drag;
+    stopDrag();
+    if (f.width < MIN_FRAME || f.height < MIN_FRAME) return; // a click, not a frame
+    void cutFigure(slot, { x: f.left / f.page.width, y: f.top / f.page.height, w: f.width / f.page.width, h: f.height / f.page.height });
+  });
+  scroller.addEventListener("pointercancel", stopDrag);
+  leaveFigureMode = () => {
+    if (!selecting) return false;
+    if (drag) stopDrag();
+    else selectMode(false);
+    return true; // the next Esc closes the window
+  };
 
   const canvases = new Map<number, HTMLCanvasElement>();
   const drawing = new Set<number>();
