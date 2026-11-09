@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { strFromU8, unzipSync } from "fflate";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -839,6 +840,54 @@ test("the administrator corrects the text of a scanned page, takes the correctio
 
   await send("", "DELETE");
   await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie });
+});
+
+test("the administrator keeps pictures cut from a scanned page, refers to them in the text, and takes them as a zip", async () => {
+  const books = (await call(lan, "/api/library", { cookie: adminCookie })).body.books as { id: string; path: string }[];
+  const pdf = books.find((b) => b.path === "sub/three.pdf")!.id;
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Scanner", password: "scan123" } })).cookie!;
+  const send = (path: string, method: string, body?: unknown, cookie = adminCookie) => call(lan, `/api/admin/ocr/${pdf}${path}`, { method, body, cookie });
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new Array(60).fill(3)]);
+  const upload = (page: number | string, init: { type?: string; cookie?: string; body?: Uint8Array<ArrayBuffer>; headers?: Record<string, string> } = {}) =>
+    fetch(`${lan}/api/admin/ocr/${pdf}/images?page=${page}`, { method: "POST", headers: { "Content-Type": init.type ?? "image/png", Cookie: init.cookie ?? adminCookie, ...init.headers }, body: init.body ?? png });
+
+  await send("/start", "POST", { pages: 3, lang: "rus" });
+  expect((await upload(2, { cookie: readerCookie })).status).toBe(403);
+  expect((await upload(2, { type: "image/jpeg" })).status).toBe(400);
+  expect((await upload(2, { headers: { Origin: "http://evil.example" } })).status).toBe(400);
+  expect((await upload(9)).status).toBe(400); // not a page of the book
+  expect((await upload("x")).status).toBe(400);
+  expect((await upload(2, { body: new Uint8Array([1, 2, 3]) })).status).toBe(400);
+  const stored = await upload(2);
+  expect(stored.status).toBe(200);
+  expect(await stored.json()).toEqual({ name: "p002-1.png", page: 2, size: png.length });
+
+  expect((await send("/images", "GET")).body).toEqual({ items: [{ name: "p002-1.png", page: 2, size: png.length }] });
+  expect((await send("/images", "GET", undefined, readerCookie)).status).toBe(403);
+  const served = await fetch(`${lan}/api/admin/ocr/${pdf}/images/p002-1.png`, { headers: { Cookie: adminCookie } });
+  expect(served.headers.get("content-type")).toBe("image/png");
+  expect(new Uint8Array(await served.arrayBuffer())).toEqual(png);
+  expect((await send("/images/p003-1.png", "GET")).status).toBe(404);
+  expect((await send("/images/..%2Fx.png", "GET")).status).toBe(404); // only the names the server gives
+  expect((await call(lan, `/api/admin/ocr/${pdf}/images/p002-1.png`, { cookie: readerCookie })).status).toBe(403);
+
+  // the text refers to it; the file has it in a zip, plain text does not
+  await send("/edit/2", "PUT", { text: "Схема усилителя.\n\n![Рис. 1](images/p002-1.png)" });
+  const zip = await fetch(`${lan}/api/admin/ocr/${pdf}/text?format=zip&lang=ru`, { headers: { Cookie: adminCookie } });
+  expect(zip.headers.get("content-type")).toBe("application/zip");
+  expect(zip.headers.get("content-disposition")).toContain("filename*=UTF-8''three.zip");
+  const files = unzipSync(new Uint8Array(await zip.arrayBuffer()));
+  expect(Object.keys(files).sort()).toEqual(["book.md", "images/p002-1.png"]);
+  expect(strFromU8(files["book.md"]!)).toBe("# three\n\n> Распознано страниц: 1 из 3.\n\n## Страница 2\n\nСхема усилителя.\n\n![Рис. 1](images/p002-1.png)\n");
+  expect(await (await fetch(`${lan}/api/admin/ocr/${pdf}/text?format=txt`, { headers: { Cookie: adminCookie } })).text()).toBe("three\n\nRecognized pages: 1 of 3.\n\n[Page 2]\n\nСхема усилителя.\n");
+
+  // deleting it takes the reference out of the page
+  expect((await send("/images/p002-1.png", "DELETE", undefined, readerCookie)).status).toBe(403);
+  expect((await send("/images/p002-1.png", "DELETE")).body).toEqual({ pages: [{ page: 2, text: "Схема усилителя.", edited: true }] });
+  expect((await send("/images/p002-1.png", "DELETE")).status).toBe(404);
+  expect((await send("/images", "GET")).body).toEqual({ items: [] });
+
+  await send("", "DELETE");
 });
 
 test("the engine that reads pictures is served from a fixed list, to anybody, with no way to reach other files", async () => {

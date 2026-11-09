@@ -28,7 +28,7 @@ import type { Shares } from "./shares";
 import type { TunnelController } from "./tunnelController";
 import index from "../web/index.html";
 import { COMPONENTS, REPO_URL, SITE_URL, VERSION } from "./about";
-import { exportFormat, MAX_PAGES, renderOcrText, validLang } from "./ocr";
+import { exportFormat, IMAGE_NAME, MAX_PAGES, renderOcrText, validLang, zipOcrText } from "./ocr";
 
 export interface App {
   library: Library;
@@ -886,18 +886,47 @@ function buildRoutes(app: App, origin: Origin) {
         const progress = app.fullText.ocr.progress(id);
         if (!book || !progress) return notFound();
         const url = new URL(req.url);
-        const format = url.searchParams.get("format") ?? "md";
+        const wanted = url.searchParams.get("format") ?? "md";
+        const zip = wanted === "zip"; // the Markdown with the pictures cut from the scan, in a folder beside it
+        const format = zip ? "md" : wanted;
         if (!exportFormat(format)) return bad();
         const title = titleOf(book);
         const text = renderOcrText({ title, pages: app.fullText.ocr.pages(id), total: progress.pages, done: progress.done, format, lang: url.searchParams.get("lang") ?? undefined });
-        const fileName = `${title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim().slice(0, 120) || "book"}.${format}`;
-        return new Response(text, {
-          headers: {
-            "Content-Type": `${format === "md" ? "text/markdown" : "text/plain"}; charset=utf-8`,
-            "Content-Disposition": `attachment; filename="book.${format}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-            "Cache-Control": "no-store",
-          },
-        });
+        const base = title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim().slice(0, 120) || "book";
+        const ext = zip ? "zip" : format;
+        const headers = {
+          "Content-Disposition": `attachment; filename="book.${ext}"; filename*=UTF-8''${encodeURIComponent(`${base}.${ext}`)}`,
+          "Cache-Control": "no-store",
+        };
+        if (zip) return new Response(zipOcrText(text, app.fullText.ocr.imageFiles(id)) as Uint8Array<ArrayBuffer>, { headers: { ...headers, "Content-Type": "application/zip" } });
+        return new Response(text, { headers: { ...headers, "Content-Type": `${format === "md" ? "text/markdown" : "text/plain"}; charset=utf-8` } });
+      }),
+    },
+    // the pictures a person cuts from the scan to put into the text: PNG files kept with the book's text
+    "/api/admin/ocr/:id/images": {
+      GET: admin((req) => {
+        const id = param(req, "id");
+        return app.fullText.ocr.progress(id) ? json({ items: app.fullText.ocr.images(id) }, 200, { "Cache-Control": "no-store" }) : notFound();
+      }),
+      POST: admin(async (req) => {
+        if (!sameOrigin(req) || req.headers.get("content-type") !== "image/png") return bad("not a PNG upload");
+        const page = wholeNumber(new URL(req.url).searchParams.get("page") ?? "");
+        const image = app.fullText.ocr.addImage(param(req, "id"), page, new Uint8Array(await req.arrayBuffer()));
+        return image ? json(image) : bad("not a usable picture");
+      }),
+    },
+    "/api/admin/ocr/:id/images/:name": {
+      GET: admin((req) => {
+        const name = param(req, "name");
+        const data = IMAGE_NAME.test(name) ? app.fullText.ocr.image(param(req, "id"), name) : null;
+        return data ? new Response(data as Uint8Array<ArrayBuffer>, { headers: { "Content-Type": "image/png", "Cache-Control": "no-store" } }) : notFound();
+      }),
+      // answers with the pages that referred to it, as they are now
+      DELETE: admin((req) => {
+        if (!sameOrigin(req)) return forbidden();
+        const name = param(req, "name");
+        const pages = IMAGE_NAME.test(name) ? app.fullText.ocr.removeImage(param(req, "id"), name) : null;
+        return pages ? json({ pages }) : notFound();
       }),
     },
     // ----- editing the library: real changes to the files on disk -----

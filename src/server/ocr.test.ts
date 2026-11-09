@@ -112,3 +112,94 @@ test("the book as a file: a heading or a bracket per page, pages without text le
   const whole = renderOcrText({ title: "Book", pages: [{ page: 1, text: "Text.", edited: false }], total: 1, done: 1, format: "md" });
   expect(whole).toBe("# Book\n\n## Page 1\n\nText.\n"); // English by default, and no note for a whole book
 });
+
+// ----- pictures cut from the scan -----
+
+import { imagesIn, MAX_IMAGE_BYTES, withoutImages, zipOcrText } from "./ocr";
+import { unzipSync, strFromU8 } from "fflate";
+
+const png = (extra = 0) => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new Array(40 + extra).fill(7)]);
+
+test("the references to pictures stay out of what is searched, but the page keeps them", () => {
+  const ocr = fresh();
+  ocr.start("b", 3, "rus");
+  ocr.put("b", 1, "Схема генератора");
+  const text = "Схема усилителя\n\n![Рис. 1](images/p001-1.png)\n\nПодпись под рисунком";
+  expect(ocr.edit("b", 1, text)).toMatchObject({ edited: 1 });
+  expect(ocr.pages("b")).toEqual([{ page: 1, text, edited: true }]);
+  expect(find(ocr, "усилителя")).toHaveLength(1);
+  expect(find(ocr, "png")).toEqual([]); // nothing of the reference is in the index
+  expect(find(ocr, "images")).toEqual([]);
+  expect(ocr.rows("рисунком", "[", "]", undefined, 5)[0]!.snip).not.toContain("png");
+  expect(ocr.restore("b", 1)).toEqual({ page: { page: 1, text: "Схема генератора", edited: false } }); // back to what was read, without the picture
+  expect(ocr.pages("b")[0]!.text).toBe("Схема генератора");
+  // a page of nothing but a picture is a page with text for the file and none for the index
+  ocr.edit("b", 2, "![Рис.](images/p002-1.png)");
+  expect(ocr.pages("b", 2, 2)).toEqual([{ page: 2, text: "![Рис.](images/p002-1.png)", edited: true }]);
+  expect(ocr.progress("b")).toMatchObject({ done: 2, edited: 1 });
+});
+
+test("pictures are kept with the book, named by page, and only a PNG of a sensible size is taken", () => {
+  const ocr = fresh();
+  ocr.start("b", 9, "rus");
+  expect(ocr.addImage("b", 8, png())).toEqual({ name: "p008-1.png", page: 8, size: png().length });
+  expect(ocr.addImage("b", 8, png(1))?.name).toBe("p008-2.png");
+  expect(ocr.addImage("b", 2, png())?.name).toBe("p002-1.png");
+  expect(ocr.images("b").map((i) => i.name)).toEqual(["p002-1.png", "p008-1.png", "p008-2.png"]);
+  expect(ocr.image("b", "p008-2.png")).toEqual(png(1));
+  expect(ocr.image("b", "p009-1.png")).toBeNull();
+  expect(ocr.addImage("b", 10, png())).toBeNull(); // not in the book
+  expect(ocr.addImage("none", 1, png())).toBeNull(); // the book was not started
+  expect(ocr.addImage("b", 1, new Uint8Array([1, 2, 3, 4, ...new Array(60).fill(0)]))).toBeNull(); // not a PNG
+  expect(ocr.addImage("b", 1, new Uint8Array(MAX_IMAGE_BYTES + 1))).toBeNull();
+  expect(ocr.addImage("b", 1, png()) !== null).toBe(true);
+  ocr.removeImage("b", "p008-1.png");
+  expect(ocr.addImage("b", 8, png())?.name).toBe("p008-3.png"); // a number is not used again while a later one exists
+});
+
+test("deleting a picture takes its references out of the pages; forgetting a book deletes its pictures", () => {
+  const ocr = fresh();
+  ocr.start("b", 3, "rus");
+  ocr.addImage("b", 1, png());
+  ocr.addImage("b", 1, png(1));
+  ocr.edit("b", 1, "До\n\n![А](images/p001-1.png)\n\nпосле ![Б](images/p001-2.png) конец");
+  ocr.edit("b", 2, "Вторая ссылается на ту же: ![А](images/p001-1.png)");
+  expect(ocr.removeImage("b", "p001-1.png")).toEqual([
+    { page: 1, text: "До\n\nпосле ![Б](images/p001-2.png) конец", edited: true },
+    { page: 2, text: "Вторая ссылается на ту же:", edited: true },
+  ]);
+  expect(ocr.images("b").map((i) => i.name)).toEqual(["p001-2.png"]);
+  expect(ocr.removeImage("b", "p001-1.png")).toBeNull();
+  expect(find(ocr, "ссылается")).toHaveLength(1); // the index follows the page
+  expect(ocr.remove("b")).toBe(2);
+  expect(ocr.images("b")).toEqual([]);
+  expect(ocr.image("b", "p001-2.png")).toBeNull();
+});
+
+test("a database from before pictures keeps its pages and gains the column for them", () => {
+  const db = new Database(":memory:");
+  const first = new OcrText(db);
+  first.start("b", 1, "rus");
+  first.edit("b", 1, "правка");
+  db.run("ALTER TABLE ocr_pages DROP COLUMN md");
+  const ocr = new OcrText(db);
+  expect(ocr.pages("b")).toEqual([{ page: 1, text: "правка", edited: true }]);
+  expect(ocr.edit("b", 1, "![x](images/p001-1.png)")).toMatchObject({ edited: 1 });
+});
+
+test("the book as a file leaves the pictures out of plain text and puts them into a zip beside the Markdown", () => {
+  const pages = [
+    { page: 1, text: "Текст.\n\n![Рис. 1](images/p001-1.png)\n\nПодпись.", edited: true },
+    { page: 2, text: "![Рис. 2](images/p002-1.png)", edited: true },
+  ];
+  const md = renderOcrText({ title: "Книга", pages, total: 2, done: 2, format: "md", lang: "ru" });
+  expect(md).toContain("![Рис. 1](images/p001-1.png)");
+  const txt = renderOcrText({ title: "Книга", pages, total: 2, done: 2, format: "txt", lang: "ru" });
+  expect(txt).toBe("Книга\n\n[Страница 1]\n\nТекст.\n\nПодпись.\n"); // the page of a picture alone has nothing to say in plain text
+  expect(imagesIn(md)).toEqual(["p001-1.png", "p002-1.png"]);
+  expect(withoutImages("a ![x](images/p001-1.png) b ![y](https://example.com/z.png)")).toBe("a  b ![y](https://example.com/z.png)"); // only the book's own pictures
+  const files = unzipSync(zipOcrText(md, [{ name: "p001-1.png", data: png() }, { name: "p002-1.png", data: png(1) }, { name: "p009-1.png", data: png(2) }]));
+  expect(Object.keys(files).sort()).toEqual(["book.md", "images/p001-1.png", "images/p002-1.png"]); // a picture nothing refers to is not shipped
+  expect(strFromU8(files["book.md"]!)).toBe(md);
+  expect(files["images/p002-1.png"]).toEqual(png(1));
+});

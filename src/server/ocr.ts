@@ -1,9 +1,38 @@
 import type { Database } from "bun:sqlite";
+import { strToU8, zipSync } from "fflate";
 
 /** Recognized text of one page is cut here: a page of a book holds a few thousand characters, not a hundred thousand. */
 export const MAX_PAGE_CHARS = 100_000;
 export const MAX_PAGES = 20_000;
+/** A picture cut from a page: a PNG, and a book keeps a few hundred of them at most. */
+export const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+export const MAX_IMAGES = 1000;
 const LANGS = new Set(["rus", "rus+eng"]);
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+/** The name of a picture cut from a page, as the Markdown refers to it: `images/p008-1.png`. */
+export const IMAGE_NAME = /^p\d{3,5}-\d{1,4}\.png$/;
+const IMAGE_REF = /!\[[^\]\n]*\]\(images\/p\d{3,5}-\d{1,4}\.png\)/g;
+
+/** The text of a page without the references to its pictures: what the search reads and what plain text shows. */
+export function withoutImages(text: string): string {
+  return text.replace(IMAGE_REF, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+const hasImages = (text: string): boolean => {
+  IMAGE_REF.lastIndex = 0;
+  return IMAGE_REF.test(text);
+};
+
+/** The names of the pictures a text refers to. */
+export function imagesIn(text: string): string[] {
+  return [...text.matchAll(IMAGE_REF)].map((m) => m[0].slice(m[0].lastIndexOf("(") + 1, -1).slice("images/".length));
+}
+
+export interface OcrImage {
+  name: string;
+  page: number;
+  size: number;
+}
 
 export interface OcrProgress {
   pages: number;
@@ -63,6 +92,14 @@ export function cleanEditedText(raw: string): string {
 export type ExportFormat = "md" | "txt";
 export const exportFormat = (v: unknown): v is ExportFormat => v === "md" || v === "txt";
 
+/** The Markdown of a book with the pictures it refers to, as one zip: `book.md` and the `images/` folder. */
+export function zipOcrText(markdown: string, images: { name: string; data: Uint8Array }[]): Uint8Array {
+  const used = new Set(imagesIn(markdown));
+  const files: Record<string, [Uint8Array, { level: 0 }]> = { "book.md": [strToU8(markdown), { level: 0 }] };
+  for (const image of images) if (used.has(image.name)) files[`images/${image.name}`] = [image.data, { level: 0 }];
+  return zipSync(files);
+}
+
 const WORDS: Record<string, { page: string; partial: string }> = {
   en: { page: "Page", partial: "Recognized pages: {done} of {total}." },
   ru: { page: "Страница", partial: "Распознано страниц: {done} из {total}." },
@@ -83,7 +120,9 @@ export function renderOcrText(opts: { title: string; pages: OcrPage[]; total: nu
   }
   for (const page of opts.pages) {
     if (!page.text) continue;
-    out.push(md ? `## ${words.page} ${page.page}` : `[${words.page} ${page.page}]`, page.text);
+    const text = md ? page.text : withoutImages(page.text);
+    if (!text) continue;
+    out.push(md ? `## ${words.page} ${page.page}` : `[${words.page} ${page.page}]`, text);
   }
   return out.join("\n\n") + "\n";
 }
@@ -101,9 +140,12 @@ export class OcrText {
     // `row` is the rowid of the page's text in ocr_chunks; null for a page with nothing on it
     // `edited`: a person has written the page; `orig` keeps what the recognizer read before the first correction (null: the page had not been read)
     db.run("CREATE TABLE IF NOT EXISTS ocr_pages (id TEXT NOT NULL, page INTEGER NOT NULL, row INTEGER, edited INTEGER NOT NULL DEFAULT 0, orig TEXT, PRIMARY KEY (id, page)) WITHOUT ROWID");
+    // `md`: the whole text of a page that refers to pictures (the index holds it without the references); null for a page that does not
+    db.run("CREATE TABLE IF NOT EXISTS ocr_images (id TEXT NOT NULL, name TEXT NOT NULL, page INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (id, name)) WITHOUT ROWID");
     const columns = (db.query("PRAGMA table_info(ocr_pages)").all() as { name: string }[]).map((c) => c.name);
     if (!columns.includes("edited")) db.run("ALTER TABLE ocr_pages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0");
     if (!columns.includes("orig")) db.run("ALTER TABLE ocr_pages ADD COLUMN orig TEXT");
+    if (!columns.includes("md")) db.run("ALTER TABLE ocr_pages ADD COLUMN md TEXT");
     db.run("CREATE VIRTUAL TABLE IF NOT EXISTS ocr_chunks USING fts5(text, id UNINDEXED, loc UNINDEXED, tokenize = 'unicode61 remove_diacritics 2')");
   }
 
@@ -138,8 +180,8 @@ export class OcrText {
 
   /** The pages of a book that have an entry (read or written), from `from` to `to`, with their text. */
   pages(id: string, from = 1, to = MAX_PAGES): OcrPage[] {
-    const rows = this.db.query("SELECT page, row, edited FROM ocr_pages WHERE id = ? AND page BETWEEN ? AND ? ORDER BY page").all(id, from, to) as { page: number; row: number | null; edited: number }[];
-    return rows.map((r) => ({ page: r.page, text: this.textOf(r.row), edited: r.edited === 1 }));
+    const rows = this.db.query("SELECT page, row, edited, md FROM ocr_pages WHERE id = ? AND page BETWEEN ? AND ? ORDER BY page").all(id, from, to) as { page: number; row: number | null; edited: number; md: string | null }[];
+    return rows.map((r) => ({ page: r.page, text: r.md ?? this.textOf(r.row), edited: r.edited === 1 }));
   }
 
   /**
@@ -149,13 +191,15 @@ export class OcrText {
   edit(id: string, page: number, raw: string): { done: number; pages: number; edited: number } | null {
     const doc = this.db.query("SELECT pages FROM ocr_docs WHERE id = ?").get(id) as { pages: number } | null;
     if (!doc || !Number.isInteger(page) || page < 1 || page > doc.pages) return null;
-    const text = cleanEditedText(raw);
+    const full = cleanEditedText(raw);
+    const text = withoutImages(full);
+    const md = hasImages(full) ? full : null; // the index never sees the references to pictures
     this.db.transaction(() => {
       const old = this.db.query("SELECT row, edited, orig FROM ocr_pages WHERE id = ? AND page = ?").get(id, page) as { row: number | null; edited: number; orig: string | null } | null;
       const orig = old?.edited ? old.orig : old ? this.textOf(old.row) : null; // the first correction keeps what was read
       if (old?.row) this.db.run("DELETE FROM ocr_chunks WHERE rowid = ?", [old.row]);
       const row = text ? Number(this.db.run("INSERT INTO ocr_chunks (text, id, loc) VALUES (?, ?, ?)", [text, id, JSON.stringify({ page })]).lastInsertRowid) : null;
-      this.db.run("INSERT INTO ocr_pages (id, page, row, edited, orig) VALUES (?, ?, ?, 1, ?) ON CONFLICT(id, page) DO UPDATE SET row = excluded.row, edited = 1, orig = excluded.orig", [id, page, row, orig]);
+      this.db.run("INSERT INTO ocr_pages (id, page, row, edited, orig, md) VALUES (?, ?, ?, 1, ?, ?) ON CONFLICT(id, page) DO UPDATE SET row = excluded.row, edited = 1, orig = excluded.orig, md = excluded.md", [id, page, row, orig, md]);
       this.db.run("UPDATE ocr_docs SET updated = ? WHERE id = ?", [Date.now(), id]);
     })();
     const count = (extra: string) => (this.db.query(`SELECT COUNT(*) AS n FROM ocr_pages WHERE id = ?${extra}`).get(id) as { n: number }).n;
@@ -176,12 +220,60 @@ export class OcrText {
         this.db.run("DELETE FROM ocr_pages WHERE id = ? AND page = ?", [id, page]);
       } else {
         const row = old.orig ? Number(this.db.run("INSERT INTO ocr_chunks (text, id, loc) VALUES (?, ?, ?)", [old.orig, id, JSON.stringify({ page })]).lastInsertRowid) : null;
-        this.db.run("UPDATE ocr_pages SET row = ?, edited = 0, orig = NULL WHERE id = ? AND page = ?", [row, id, page]);
+        this.db.run("UPDATE ocr_pages SET row = ?, edited = 0, orig = NULL, md = NULL WHERE id = ? AND page = ?", [row, id, page]);
         result = { page, text: old.orig, edited: false };
       }
       this.db.run("UPDATE ocr_docs SET updated = ? WHERE id = ?", [Date.now(), id]);
     })();
     return { page: result };
+  }
+
+  /**
+   * Keeps a picture cut from a page of a book (a PNG) and names it `p008-1.png`, the page and a number. Null when the book was
+   * not started, the page is not in it, the bytes are not a PNG or too big, or the book holds too many pictures already.
+   */
+  addImage(id: string, page: number, data: Uint8Array): OcrImage | null {
+    const doc = this.db.query("SELECT pages FROM ocr_docs WHERE id = ?").get(id) as { pages: number } | null;
+    if (!doc || !Number.isInteger(page) || page < 1 || page > doc.pages) return null;
+    if (data.length < 33 || data.length > MAX_IMAGE_BYTES || PNG_SIGNATURE.some((b, i) => data[i] !== b)) return null;
+    if ((this.db.query("SELECT COUNT(*) AS n FROM ocr_images WHERE id = ?").get(id) as { n: number }).n >= MAX_IMAGES) return null;
+    const prefix = `p${String(page).padStart(3, "0")}-`;
+    const taken = (this.db.query("SELECT name FROM ocr_images WHERE id = ? AND page = ?").all(id, page) as { name: string }[]).map((r) => Number(r.name.slice(prefix.length, -4)));
+    const name = `${prefix}${Math.max(0, ...taken) + 1}.png`;
+    this.db.run("INSERT INTO ocr_images (id, name, page, data) VALUES (?, ?, ?, ?)", [id, name, page, data]);
+    return { name, page, size: data.length };
+  }
+
+  /** The pictures a book has, in page order. */
+  images(id: string): OcrImage[] {
+    return this.db.query("SELECT name, page, length(data) AS size FROM ocr_images WHERE id = ? ORDER BY page, length(name), name").all(id) as OcrImage[];
+  }
+
+  image(id: string, name: string): Uint8Array | null {
+    const row = this.db.query("SELECT data FROM ocr_images WHERE id = ? AND name = ?").get(id, name) as { data: Uint8Array } | null;
+    return row?.data ?? null;
+  }
+
+  /** The bytes of every picture of a book, for the zip. */
+  imageFiles(id: string): { name: string; data: Uint8Array }[] {
+    return this.db.query("SELECT name, data FROM ocr_images WHERE id = ?").all(id) as { name: string; data: Uint8Array }[];
+  }
+
+  /** Deletes a picture and the references to it from the pages; those pages as they are now. Null when the book has no such picture. */
+  removeImage(id: string, name: string): OcrPage[] | null {
+    if (!this.image(id, name)) return null;
+    const changed: OcrPage[] = [];
+    this.db.transaction(() => {
+      this.db.run("DELETE FROM ocr_images WHERE id = ? AND name = ?", [id, name]);
+      const ref = new RegExp(`!\\[[^\\]\\n]*\\]\\(images/${name.replace(/\./g, "\\.")}\\)`, "g");
+      for (const r of this.db.query("SELECT page, md FROM ocr_pages WHERE id = ? AND md IS NOT NULL").all(id) as { page: number; md: string }[]) {
+        if (!ref.test(r.md)) continue;
+        ref.lastIndex = 0;
+        this.edit(id, r.page, r.md.replace(ref, ""));
+        changed.push(...this.pages(id, r.page, r.page));
+      }
+    })();
+    return changed;
   }
 
   progress(id: string): OcrProgress | null {
@@ -200,6 +292,7 @@ export class OcrText {
     this.db.transaction(() => {
       for (const r of this.db.query("SELECT row FROM ocr_pages WHERE id = ? AND row IS NOT NULL").all(id) as { row: number }[]) this.db.run("DELETE FROM ocr_chunks WHERE rowid = ?", [r.row]);
       this.db.run("DELETE FROM ocr_pages WHERE id = ?", [id]);
+      this.db.run("DELETE FROM ocr_images WHERE id = ?", [id]);
       this.db.run("DELETE FROM ocr_docs WHERE id = ?", [id]);
     })();
     return pages;
