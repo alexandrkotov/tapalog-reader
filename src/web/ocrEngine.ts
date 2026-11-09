@@ -1,4 +1,5 @@
 import { pdfDocumentOptions } from "./readers/pdfAssets";
+import { boxesOf, type FoundBlock, type OcrBox } from "./ocrBoxes";
 import { runOcr, type OcrOutcome, type OcrProgress } from "./ocrRun";
 import { api } from "./ui";
 
@@ -37,7 +38,7 @@ export function defaultLanes(cores = navigator.hardwareConcurrency || 2): number
 export class OcrBookError extends Error {}
 
 interface Recognizer {
-  recognize(image: HTMLCanvasElement): Promise<{ data: { text: string } }>;
+  recognize(image: HTMLCanvasElement, options: object, output: { text: boolean; blocks: boolean }): Promise<{ data: { text: string; blocks: FoundBlock[] | null } }>;
   setParameters(params: Record<string, unknown>): Promise<unknown>;
   terminate(): Promise<unknown>;
 }
@@ -145,7 +146,7 @@ export async function recognizeBook(options: RecognizeOptions): Promise<OcrOutco
     if (options.signal?.aborted) return { done: done.length, pages: pdf.numPages, failed: [], stopped: true };
     options.onState?.("reading");
     const idle = [...workers];
-    return await runOcr<HTMLCanvasElement>({
+    return await runOcr<HTMLCanvasElement, { text: string; boxes: OcrBox[] }>({
       pages: pdf.numPages,
       done,
       lanes,
@@ -165,7 +166,9 @@ export async function recognizeBook(options: RecognizeOptions): Promise<OcrOutco
       async recognize(canvas) {
         const worker = idle.pop()!; // never more pages in hand than readers
         try {
-          return (await worker.recognize(canvas)).data.text;
+          // the words with their frames come with the text, for the reader to make the scan selectable
+          const { data } = await worker.recognize(canvas, {}, { text: true, blocks: true });
+          return { text: data.text, boxes: boxesOf(data.blocks, canvas.width, canvas.height) };
         } finally {
           idle.push(worker);
         }
@@ -173,8 +176,8 @@ export async function recognizeBook(options: RecognizeOptions): Promise<OcrOutco
       release(canvas) {
         canvas.width = canvas.height = 0; // the memory goes back at once, not when the collector gets round to it
       },
-      async upload(page, text) {
-        await api(`/api/admin/ocr/${options.id}/pages/${page}`, { text }, "PUT");
+      async upload(page, { text, boxes }) {
+        await api(`/api/admin/ocr/${options.id}/pages/${page}`, boxes.length ? { text, boxes } : { text }, "PUT");
       },
     });
   } finally {

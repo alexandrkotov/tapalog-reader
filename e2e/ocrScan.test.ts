@@ -72,6 +72,21 @@ e2e("a scanned PDF is read page by page in the browser, the text goes to the ser
   expect(firstHit).toHaveLength(1);
   expect(firstHit[0]!.hits[0]!.loc).toEqual({ page: 1 });
 
+  // the words of the page come with its text, with their frames as parts of the page, in reading order
+  const frames = async (n: number) => (await api<{ boxes: [string, number, number, number, number][] }>(ctx, inst, `/api/ocr/${id}/boxes/${n}`)).boxes;
+  const one = await frames(1);
+  expect(one.map((b) => b[0]).join(" ").toLowerCase().replace(/ё/g, "е")).toContain("радиоприемник");
+  expect(one[0]![0].toLowerCase()).toContain("лампов"); // the first word of the first line comes first
+  for (const [, x0, y0, x1, y1] of one) {
+    expect(x0).toBeGreaterThanOrEqual(0);
+    expect(y0).toBeGreaterThanOrEqual(0);
+    expect(x1).toBeLessThanOrEqual(1);
+    expect(y1).toBeLessThanOrEqual(1);
+    expect(x1).toBeGreaterThan(x0);
+    expect(y1).toBeGreaterThan(y0);
+  }
+  expect((await ctx.request.get(`${inst.url}/api/ocr/${id}/boxes/2`)).status()).toBe(404); // not read yet
+
   // going on: the held page is not read again, the other is
   const second = await page.evaluate(async (bookId) => {
     const m = (await import("/__ocr.js" as string)) as { recognizeBook(o: object): Promise<unknown> };
@@ -80,6 +95,7 @@ e2e("a scanned PDF is read page by page in the browser, the text goes to the ser
   expect(second).toMatchObject({ done: 2, pages: 2, failed: [], stopped: false });
   status = (await api<{ books: typeof status[] }>(ctx, inst, "/api/admin/ocr")).books[0]!;
   expect(status).toMatchObject({ pages: 2, done: 2 });
+  expect((await frames(2)).map((b) => b[0]).join(" ").toLowerCase()).toContain("amplifier");
   const english = (await api<{ books: { hits: { loc: { page: number } }[] }[] }>(ctx, inst, "/api/fulltext?q=amplifier")).books;
   expect(english).toHaveLength(1);
   expect(english[0]!.hits[0]!.loc).toEqual({ page: 2 });

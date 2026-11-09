@@ -5,18 +5,19 @@
  * read is tried once more and then set aside, and a failure of the upload ends the run: the server is gone.
  */
 
-export interface OcrSteps<Image> {
+/** `Read` is what reading a picture gives: the text alone, or the text with whatever goes with it (the frames of its words). */
+export interface OcrSteps<Image, Read = string> {
   /** Draws page `page` (1-based). */
   render(page: number): Promise<Image>;
-  /** Reads the text of the picture. */
-  recognize(image: Image): Promise<string>;
+  /** Reads the picture. */
+  recognize(image: Image): Promise<Read>;
   /** Frees what `render` made, whether the page was read or not. */
   release?(image: Image): void;
-  /** Gives the text of a page to the server. A rejection ends the run. */
-  upload(page: number, text: string): Promise<void>;
+  /** Gives what was read from a page to the server. A rejection ends the run. */
+  upload(page: number, read: Read): Promise<void>;
 }
 
-export interface OcrRunOptions<Image> extends OcrSteps<Image> {
+export interface OcrRunOptions<Image, Read = string> extends OcrSteps<Image, Read> {
   pages: number;
   /** Pages the server already holds. */
   done: Iterable<number>;
@@ -61,7 +62,7 @@ export function splitEta(seconds: number): { hours: number; minutes: number; sec
   return { hours: Math.floor(minutes / 60), minutes: minutes % 60, seconds: 0 };
 }
 
-export async function runOcr<Image>(options: OcrRunOptions<Image>): Promise<OcrOutcome> {
+export async function runOcr<Image, Read = string>(options: OcrRunOptions<Image, Read>): Promise<OcrOutcome> {
   const { pages, signal } = options;
   const have = new Set(options.done);
   const todo: number[] = [];
@@ -77,7 +78,7 @@ export async function runOcr<Image>(options: OcrRunOptions<Image>): Promise<OcrO
   const report = () => options.onProgress?.({ done: have.size, pages, failed: [...failed], etaSeconds: etaSeconds(readNow, total - readNow - failed.length, Date.now() - started) });
   const halted = () => failure || signal?.aborted === true;
 
-  async function work(page: number): Promise<string | null> {
+  async function work(page: number): Promise<Read | null> {
     for (let attempt = 0; attempt <= retries; attempt++) {
       if (halted()) return null;
       let image: Image | undefined;
@@ -98,14 +99,14 @@ export async function runOcr<Image>(options: OcrRunOptions<Image>): Promise<OcrO
     while (!halted()) {
       const page = todo.shift();
       if (page === undefined) return;
-      const text = await work(page);
-      if (text === null) {
+      const read = await work(page);
+      if (read === null) {
         report();
         continue;
       }
       if (failure) return; // the server is gone: nothing more can be handed over
       try {
-        await options.upload(page, text);
+        await options.upload(page, read);
       } catch (e) {
         failure = true;
         error = e;
