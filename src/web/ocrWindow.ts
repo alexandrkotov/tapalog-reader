@@ -1,5 +1,5 @@
 import { t, type Key } from "./i18n";
-import { defaultLanes, OCR_LANGS, ocrSupported, OcrBookError, recognizeBook, type OcrLang } from "./ocrEngine";
+import { defaultLanes, OCR_LANGS, ocrSupported, OcrBookError, Readers, recognizeBook, type OcrLang } from "./ocrEngine";
 import { filterRows, isUnread, OCR_SHOWS, OCR_SORTS, sortRows, type OcrListRow, type OcrShow, type OcrSort } from "./ocrList";
 import { splitEta, type OcrProgress } from "./ocrRun";
 import { openProof } from "./proofWindow";
@@ -184,6 +184,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     bar.hidden = progressLine.hidden = false;
     let read = 0;
     let serverError = false;
+    const readers = new Readers(lang.value as OcrLang); // made for the first book, kept for the next ones, ended with the run
     for (const [index, row] of queue.entries()) {
       if (controller.signal.aborted) break;
       const showProgress = (p: OcrProgress) => {
@@ -200,7 +201,8 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
       try {
         const outcome = await recognizeBook({
           id: row.id,
-          lang: lang.value as OcrLang,
+          lang: readers.lang,
+          readers,
           signal: controller.signal,
           lanes: defaultLanes(),
           onProgress: showProgress,
@@ -224,6 +226,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
       if (status) status.textContent = statusText(row);
       if (row.pages !== null && row.done >= row.pages) checked.delete(row.id); // a book not read to the end stays ticked, to be taken up again
     }
+    await readers.close();
     running = false;
     abort.current = null;
     bar.hidden = progressLine.hidden = true;

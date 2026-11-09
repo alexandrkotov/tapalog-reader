@@ -63,11 +63,61 @@ function loadTesseract(): Promise<Tesseract> {
   return loading;
 }
 
+/**
+ * The readers (tesseract workers) of one run. Making one means fetching the engine and the language data and starting its
+ * WebAssembly, which is most of the wait before the first page; a run of several books makes them once, for the first book,
+ * adds the ones a bigger book needs, and ends them with `close`.
+ */
+export class Readers {
+  private workers: Recognizer[] = [];
+  private turn: Promise<unknown> = Promise.resolve();
+  private closed = false;
+  constructor(readonly lang: OcrLang) {}
+
+  /** At least `n` readers, made now if they are not there yet. */
+  ensure(n: number): Promise<Recognizer[]> {
+    const next = this.turn.then(async () => {
+      if (this.closed) throw new Error("the readers are closed");
+      const Tesseract = await loadTesseract();
+      const origin = location.origin;
+      const langs = this.lang.split("+");
+      // all of them are waited for, even when one fails: a reader that is ready after `close` would never be ended
+      const made = await Promise.allSettled(
+        Array.from({ length: Math.max(0, n - this.workers.length) }, async () => {
+          const worker = await Tesseract.createWorker(langs, 1, {
+            workerPath: `${origin}/ocr/worker.min.js`,
+            corePath: `${origin}/ocr/core/tesseract-core-simd-lstm.wasm.js`,
+            langPath: `${origin}/ocr/lang`,
+            gzip: true,
+            cacheMethod: "none", // the browser's own cache keeps the files; no second copy in a database
+          });
+          this.workers.push(worker); // kept before the next step, so `close` ends it even when that fails
+          await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO }); // the default merges the lines of two columns
+        }),
+      );
+      for (const m of made) if (m.status === "rejected") throw m.reason;
+      return this.workers.slice(0, n);
+    });
+    this.turn = next.catch(() => undefined);
+    return next;
+  }
+
+  /** Ends every reader; the ones still being made are ended when they are ready. */
+  async close(): Promise<void> {
+    this.closed = true;
+    await this.turn;
+    const all = this.workers.splice(0);
+    await Promise.all(all.map((w) => w.terminate().catch(() => undefined)));
+  }
+}
+
 export interface RecognizeOptions {
   /** The book's id (a PDF of the library). */
   id: string;
   lang: OcrLang;
   signal?: AbortSignal;
+  /** The readers of a run of several books, which the caller closes; without them the book makes its own and ends them. */
+  readers?: Readers;
   /** Pages at once; the default fits the computer. */
   lanes?: number;
   onProgress?(progress: OcrProgress): void;
@@ -79,32 +129,19 @@ export interface RecognizeOptions {
 export async function recognizeBook(options: RecognizeOptions): Promise<OcrOutcome> {
   if (!ocrSupported()) throw new OcrBookError("this browser cannot run the engine");
   options.onState?.("loading");
-  const [Tesseract, pdfjs] = await Promise.all([loadTesseract(), import("pdfjs-dist/build/pdf.min.mjs")]);
+  if (options.readers && options.readers.lang !== options.lang) throw new Error("the readers are for another language");
+  const pdfjs = await import("pdfjs-dist/build/pdf.min.mjs");
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
   const task = pdfjs.getDocument(pdfDocumentOptions(`/api/file/${options.id}`));
   task.onPassword = () => void task.destroy();
-  const workers: Recognizer[] = [];
+  const readers = options.readers ?? new Readers(options.lang);
   try {
     const pdf = await task.promise.catch(() => {
       throw new OcrBookError("the PDF cannot be opened (damaged or protected)");
     });
     const { done } = await api<{ done: number[] }>(`/api/admin/ocr/${options.id}/start`, { pages: pdf.numPages, lang: options.lang });
     const lanes = Math.max(1, Math.min(options.lanes ?? defaultLanes(), pdf.numPages - done.length || 1));
-    const origin = location.origin;
-    const langs = options.lang.split("+");
-    await Promise.all(
-      Array.from({ length: lanes }, async () => {
-        const worker = await Tesseract.createWorker(langs, 1, {
-          workerPath: `${origin}/ocr/worker.min.js`,
-          corePath: `${origin}/ocr/core/tesseract-core-simd-lstm.wasm.js`,
-          langPath: `${origin}/ocr/lang`,
-          gzip: true,
-          cacheMethod: "none", // the browser's own cache keeps the files; no second copy in a database
-        });
-        workers.push(worker);
-        await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO }); // the default merges the lines of two columns
-      }),
-    );
+    const workers = await readers.ensure(lanes);
     if (options.signal?.aborted) return { done: done.length, pages: pdf.numPages, failed: [], stopped: true };
     options.onState?.("reading");
     const idle = [...workers];
@@ -141,7 +178,7 @@ export async function recognizeBook(options: RecognizeOptions): Promise<OcrOutco
       },
     });
   } finally {
-    await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
+    if (!options.readers) await readers.close();
     void task.destroy();
   }
 }
