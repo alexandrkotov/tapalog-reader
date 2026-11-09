@@ -164,6 +164,7 @@ test("deleting a picture takes its references out of the pages; forgetting a boo
   ocr.addImage("b", 1, png(1));
   ocr.edit("b", 1, "До\n\n![А](images/p001-1.png)\n\nпосле ![Б](images/p001-2.png) конец");
   ocr.edit("b", 2, "Вторая ссылается на ту же: ![А](images/p001-1.png)");
+  expect(ocr.progress("b")).toMatchObject({ images: 2 }); // what the Forget question counts
   expect(ocr.removeImage("b", "p001-1.png")).toEqual([
     { page: 1, text: "До\n\nпосле ![Б](images/p001-2.png) конец", edited: true },
     { page: 2, text: "Вторая ссылается на ту же:", edited: true },

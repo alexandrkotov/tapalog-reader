@@ -9,12 +9,26 @@ interface PageItem {
   edited: boolean;
 }
 
+/** A picture cut from a page of the scan, kept on the server. */
+interface ImageItem {
+  name: string;
+  page: number;
+  size: number;
+}
+
 interface Listing {
   pages: number;
   done: number;
   edited: number;
   lang: string;
   items: PageItem[];
+  images: ImageItem[];
+}
+
+/** The text without the references to one picture, tidied as the server tidies it. */
+function withoutReference(text: string, name: string): string {
+  const ref = new RegExp(`!\\[[^\\]\\n]*\\]\\(images/${name.replace(/\./g, "\\.")}\\)`, "g");
+  return text.replace(ref, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** A page is drawn no wider than this, whatever the screen: the memory of a thousand-page book is the limit, not the sharpness. */
@@ -37,6 +51,8 @@ interface Slot {
   scan: HTMLElement;
   text: HTMLTextAreaElement;
   state: HTMLElement;
+  /** The pictures cut from this page, as small pictures under its heading, to put into the text again or to delete. */
+  figs: HTMLElement;
   badge: HTMLElement;
   restore: HTMLButtonElement;
   /** The text the server holds (as it was typed or read), to tell what is still unsaved. */
@@ -117,7 +133,9 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   if (closed) return;
   const doc = pdf;
   // a book never recognized has nothing on the server: its pages are empty and it is started when the first page is saved
-  const list: Listing = held ?? { pages: pdf.numPages, done: 0, edited: 0, lang: "", items: [] };
+  const list: Listing = held ?? { pages: pdf.numPages, done: 0, edited: 0, lang: "", items: [], images: [] };
+  list.images ??= [];
+  let imageCount = list.images.length;
   let started = held !== null;
   let starting: Promise<unknown> | null = null;
   const url = (n: number) => `${base}/edit/${n}`;
@@ -128,6 +146,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     await starting;
     started = true;
     for (const button of downloads) button.hidden = false;
+    showZip();
   }
 
   const counts = { done: list.done, edited: list.edited };
@@ -200,7 +219,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
       if (unsaved()) await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
-  async function download(format: "md" | "txt"): Promise<void> {
+  async function download(format: "md" | "txt" | "zip"): Promise<void> {
     await flush();
     const link = el("a", { href: `${base}/text?format=${format}&lang=${lang()}` });
     link.download = "";
@@ -214,6 +233,9 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     return button;
   });
 
+  const zipButton = el("button", { type: "button", class: "btn small proof-download proof-download-zip", textContent: t("proof.download.zip"), hidden: !started || imageCount === 0 });
+  zipButton.addEventListener("click", () => void download("zip"));
+  const showZip = () => (zipButton.hidden = !started || imageCount === 0);
   const scroller = el("div", { class: "proof-pages" });
   const figureButton = el("button", { type: "button", class: "btn small proof-figure", textContent: t("proof.figure.mode"), title: t("proof.figure.hint") });
   figureButton.setAttribute("aria-pressed", "false");
@@ -237,9 +259,10 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const state = el("span", { class: "muted small proof-state" });
     const restoreButton = el("button", { type: "button", class: "btn small proof-restore", textContent: t("proof.restore"), hidden: !item?.edited });
     const head = el("div", { class: "proof-head" }, el("span", { class: "proof-label", textContent: t("proof.page", { n }) }), badge, el("span", { class: "proof-gap" }), state, restoreButton);
-    const row = el("section", { class: "proof-row" }, scan, el("div", { class: "proof-side" }, head, text));
+    const figs = el("div", { class: "proof-figs" });
+    const row = el("section", { class: "proof-row" }, scan, el("div", { class: "proof-side" }, head, figs, text));
     row.dataset.page = String(n);
-    const slot: Slot = { n, scan, text, state, badge, restore: restoreButton, sent: item?.text ?? "", edited: !!item?.edited, inflight: false, timer: null };
+    const slot: Slot = { n, scan, text, state, figs, badge, restore: restoreButton, sent: item?.text ?? "", edited: !!item?.edited, inflight: false, timer: null };
     slots.set(n, slot);
     text.addEventListener("input", () => {
       if (slot.timer) clearTimeout(slot.timer);
@@ -262,7 +285,11 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const row = scroller.children[Math.min(Math.max(n, 1), list.pages) - 1] as HTMLElement | undefined;
     if (row) scroller.scrollTo({ top: row.offsetTop });
   });
-  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, figureButton, ...downloads)), hint, scroller);
+  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, figureButton, ...downloads, zipButton)), hint, scroller);
+  for (const image of list.images) {
+    const slot = slots.get(image.page);
+    if (slot) addThumb(slot, image.name);
+  }
 
   /** Cuts the framed part of a page out of the PDF (drawn again for it, sharper than the page on the screen), keeps it on the server and writes its reference into the text. */
   async function cutFigure(slot: Slot, frame: { x: number; y: number; w: number; h: number }): Promise<void> {
@@ -286,6 +313,10 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
       if (!res.ok) throw new ApiError(res.status, res.statusText);
       const image = (await res.json()) as { name: string };
       insertFigure(slot, image.name);
+      addThumb(slot, image.name);
+      imageCount++;
+      touched = true;
+      showZip();
       say(t("proof.figure.added"));
     } catch {
       say(t("proof.figure.failed"));
@@ -307,6 +338,45 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const caret = (before + lead + ref).length;
     field.setSelectionRange(caret, caret);
     field.dispatchEvent(new Event("input")); // saved like anything typed
+  }
+
+  /** A small picture of a figure under the text of its page, with the buttons to put it into the text again and to delete it. */
+  function addThumb(slot: Slot, name: string): void {
+    const picture = el("img", { src: `${base}/images/${name}`, alt: name, title: name, loading: "lazy" });
+    const insert = el("button", { type: "button", class: "btn small proof-fig-insert", textContent: t("proof.figure.insert"), title: t("proof.figure.insertTitle") });
+    insert.addEventListener("click", () => {
+      insertFigure(slot, name);
+      slot.text.focus({ preventScroll: true });
+    });
+    const remove = el("button", { type: "button", class: "btn small proof-fig-delete", textContent: "×", title: t("proof.figure.delete") });
+    remove.setAttribute("aria-label", t("proof.figure.delete"));
+    const fig = el("figure", { class: "proof-fig" }, picture, el("div", { class: "proof-fig-actions" }, insert, remove));
+    fig.dataset.name = name;
+    remove.addEventListener("click", () => void removeFigure(slot, name, fig));
+    slot.figs.append(fig);
+  }
+
+  /** Deletes a figure from the book; the references to it go out of the text of every page that had them. */
+  async function removeFigure(slot: Slot, name: string, fig: HTMLElement): Promise<void> {
+    if (!confirm(t("proof.figure.deleteAsk"))) return;
+    await flush(); // what was typed is on the server before it is changed there
+    try {
+      const result = await api<{ pages: PageItem[] }>(`${base}/images/${name}`, undefined, "DELETE");
+      for (const page of result.pages) {
+        const other = slots.get(page.page);
+        if (!other) continue;
+        const typedSince = other.text.value !== other.sent; // typed while the request was on its way: keep it, without the reference
+        other.sent = page.text;
+        other.text.value = typedSince ? withoutReference(other.text.value, name) : page.text;
+        if (other.text.value !== other.sent) other.text.dispatchEvent(new Event("input"));
+      }
+      fig.remove();
+      imageCount = Math.max(0, imageCount - 1);
+      touched = true;
+      showZip();
+    } catch {
+      slot.state.textContent = t("proof.figure.deleteFailed");
+    }
   }
 
   let drag: { slot: Slot; scan: HTMLElement; canvas: HTMLCanvasElement; pointer: number; x0: number; y0: number; box: HTMLElement } | null = null;

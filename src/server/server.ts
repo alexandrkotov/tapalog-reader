@@ -822,6 +822,7 @@ function buildRoutes(app: App, origin: Origin) {
           pages: ocr?.pages ?? null,
           done: ocr?.done ?? 0,
           edited: ocr?.edited ?? 0,
+          images: ocr?.images ?? 0,
           lang: ocr?.lang ?? null,
         }));
         const status = app.fullText.status();
@@ -861,7 +862,7 @@ function buildRoutes(app: App, origin: Origin) {
         const from = url.searchParams.has("from") ? wholeNumber(url.searchParams.get("from")!) : 1;
         const to = url.searchParams.has("to") ? wholeNumber(url.searchParams.get("to")!) : MAX_PAGES;
         if (from < 1 || to < from) return bad();
-        return json({ ...progress, items: app.fullText.ocr.pages(id, from, to) }, 200, { "Cache-Control": "no-store" });
+        return json({ ...progress, items: app.fullText.ocr.pages(id, from, to), images: app.fullText.ocr.images(id) }, 200, { "Cache-Control": "no-store" });
       }),
     },
     // a person writes the text of a page; the reading never replaces it, and DELETE takes it back to what was read

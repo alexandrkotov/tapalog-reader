@@ -39,6 +39,8 @@ export interface OcrProgress {
   done: number;
   /** Pages a person has corrected (or written) by hand: the reading of the book never replaces them. */
   edited: number;
+  /** Pictures cut from the scan and kept with the text. */
+  images: number;
   lang: string;
   updated: number;
 }
@@ -282,8 +284,8 @@ export class OcrText {
 
   /** The reading of every book that has begun. */
   all(): Map<string, OcrProgress> {
-    const rows = this.db.query("SELECT d.id, d.pages, d.lang, d.updated, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id) AS done, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.edited = 1) AS edited FROM ocr_docs d").all() as (OcrProgress & { id: string })[];
-    return new Map(rows.map((r) => [r.id, { pages: r.pages, done: r.done, edited: r.edited, lang: r.lang, updated: r.updated }]));
+    const rows = this.db.query("SELECT d.id, d.pages, d.lang, d.updated, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id) AS done, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.edited = 1) AS edited, (SELECT COUNT(*) FROM ocr_images i WHERE i.id = d.id) AS images FROM ocr_docs d").all() as (OcrProgress & { id: string })[];
+    return new Map(rows.map((r) => [r.id, { pages: r.pages, done: r.done, edited: r.edited, images: r.images, lang: r.lang, updated: r.updated }]));
   }
 
   /** Forgets everything read from a book; how many pages that was. */

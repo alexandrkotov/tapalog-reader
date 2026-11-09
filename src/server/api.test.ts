@@ -863,6 +863,8 @@ test("the administrator keeps pictures cut from a scanned page, refers to them i
   expect(await stored.json()).toEqual({ name: "p002-1.png", page: 2, size: png.length });
 
   expect((await send("/images", "GET")).body).toEqual({ items: [{ name: "p002-1.png", page: 2, size: png.length }] });
+  expect((await send("/pages", "GET")).body).toMatchObject({ images: [{ name: "p002-1.png", page: 2 }] }); // what the editor shows under the pages
+  expect((await call(lan, "/api/admin/ocr", { cookie: adminCookie })).body.books.find((b: { id: string }) => b.id === pdf)).toMatchObject({ images: 1 });
   expect((await send("/images", "GET", undefined, readerCookie)).status).toBe(403);
   const served = await fetch(`${lan}/api/admin/ocr/${pdf}/images/p002-1.png`, { headers: { Cookie: adminCookie } });
   expect(served.headers.get("content-type")).toBe("image/png");

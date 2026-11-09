@@ -96,6 +96,11 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .proof-pages.selecting .proof-canvas { pointer-events: none; }
 .proof-rect { position: absolute; box-sizing: border-box; border: 2px solid var(--accent, #2563eb); background: rgba(37, 99, 235, 0.15); pointer-events: none; }
 .proof-figure.active { background: var(--accent, #2563eb); border-color: var(--accent, #2563eb); color: #fff; }
+.proof-figs { flex: none; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0; }
+.proof-figs:empty { display: none; }
+.proof-fig { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.proof-fig img { display: block; height: 64px; width: auto; max-width: 140px; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 4px; }
+.proof-fig-actions { display: flex; gap: 4px; }
 .proof-hint { margin: 0; }
 .proof-hint[hidden] { display: none; }
 .proof-failed { color: #555; font-size: 14px; padding: 12px; text-align: center; }

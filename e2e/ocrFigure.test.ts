@@ -110,6 +110,53 @@ e2e("a figure is framed on the scan, cut from the PDF sharper than it is shown, 
   await page.keyboard.press("Escape");
   expect(await page.getAttribute(".proof-figure", "aria-pressed")).toBe("false");
   expect(await page.isVisible(".proof-pages")).toBe(true);
+
+  // each figure has a small picture under the text of its page, and the zip button is there
+  expect(await page.$$eval(".proof-row:nth-child(1) .proof-fig", (n) => n.map((x) => (x as HTMLElement).dataset.name))).toEqual(["p001-1.png", "p001-2.png"]);
+  expect(await page.$$(".proof-row:nth-child(2) .proof-fig")).toHaveLength(0);
+  expect(await page.isVisible(".proof-download-zip")).toBe(true);
+  const loaded = await page.$eval(".proof-row:nth-child(1) .proof-fig img", (img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0);
+  expect(loaded).toBe(true);
+  const refs = async () => (await page.inputValue(textOf(1))).match(/!\[[^\]]*\]\(images\/p001-\d\.png\)/g) ?? [];
+
+  // put the first one into the text again: another reference to it, at the cursor
+  await page.click(".proof-row:nth-child(1) .proof-fig:nth-child(1) .proof-fig-insert");
+  expect(await refs()).toHaveLength(3);
+  await saved(page, 1);
+
+  // deleting it asks first, takes every reference to it out of the text, and the page is saved without them
+  page.once("dialog", (d) => void d.dismiss());
+  await page.click(".proof-row:nth-child(1) .proof-fig:nth-child(1) .proof-fig-delete");
+  expect(await refs()).toHaveLength(3);
+  page.once("dialog", (d) => void d.accept());
+  await page.click(".proof-row:nth-child(1) .proof-fig:nth-child(1) .proof-fig-delete");
+  await page.waitForFunction((sel) => !(document.querySelector(sel) as HTMLTextAreaElement).value.includes("p001-1.png"), textOf(1));
+  expect(await refs()).toEqual(["![Fig. 1.2](images/p001-2.png)"]);
+  expect(await page.$$eval(".proof-row:nth-child(1) .proof-fig", (n) => n.map((x) => (x as HTMLElement).dataset.name))).toEqual(["p001-2.png"]);
+  expect(await page.inputValue(textOf(1))).toBe("Начало страницы.\n\n![Fig. 1.2](images/p001-2.png)\n\nКонец страницы.");
+  const id = await bookIdOf();
+  expect((await api<{ items: { text: string }[] }>(ctx, inst, `/api/admin/ocr/${id}/pages`)).items[0]!.text).toBe("Начало страницы.\n\n![Fig. 1.2](images/p001-2.png)\n\nКонец страницы.");
+  expect((await api<{ items: { name: string }[] }>(ctx, inst, `/api/admin/ocr/${id}/images`)).items.map((i) => i.name)).toEqual(["p001-2.png"]);
+
+  // closed and opened again: the figures are still under their pages
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".proof-pages", { state: "detached" });
+  await page.goto(inst.url + "/#folder=Scans");
+  await page.waitForSelector(".card:has-text('figures') .card-info");
+  await page.click(".card:has-text('figures') .card-info");
+  await page.waitForSelector(".card-form");
+  await page.click(".card-proof");
+  await page.waitForFunction(() => document.querySelectorAll(".proof-row").length === 3);
+  expect(await page.$$eval(".proof-row:nth-child(1) .proof-fig", (n) => n.map((x) => (x as HTMLElement).dataset.name))).toEqual(["p001-2.png"]);
+  expect(await page.isVisible(".proof-download-zip")).toBe(true);
+
+  // the last one gone: no figures, no zip button, and the text has no reference left
+  page.once("dialog", (d) => void d.accept());
+  await page.click(".proof-row:nth-child(1) .proof-fig-delete");
+  await page.waitForFunction(() => document.querySelectorAll(".proof-fig").length === 0);
+  expect(await page.isVisible(".proof-download-zip")).toBe(false);
+  expect(await page.inputValue(textOf(1))).toBe("Начало страницы.\n\nКонец страницы.");
+
   await page.keyboard.press("Escape");
   await page.waitForSelector(".proof-pages", { state: "detached" });
   expect(errors).toEqual([]);
@@ -120,3 +167,28 @@ async function bookIdOf(): Promise<string> {
   const books = (await api<{ books: { id: string; path: string }[] }>(ctx, inst, "/api/library")).books;
   return books.find((b) => b.path === "Scans/figures.pdf")!.id;
 }
+
+e2e("forgetting the text of a book says how many figures cut from the scan will be lost with it", async () => {
+  await api(ctx, inst, "/api/admin/fulltext", { enabled: true }); // the window for reading scans belongs to search
+  const id = await bookIdOf();
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new Array(60).fill(1)]);
+  const added = await ctx.request.post(`${inst.url}/api/admin/ocr/${id}/images?page=3`, { data: png, headers: { "Content-Type": "image/png", Origin: inst.url } });
+  expect(added.ok()).toBe(true);
+  const page = await ctx.newPage();
+  await page.goto(inst.url + "/");
+  await page.waitForSelector(".credit-about", { state: "attached" });
+  await page.click("button:has-text('Settings')");
+  await page.waitForSelector(".modal .section");
+  await page.click("button:has-text('Recognize scanned pages')");
+  await page.waitForSelector(".ocr-row .ocr-forget");
+  let asked = "";
+  page.once("dialog", (dialog) => {
+    asked = dialog.message();
+    void dialog.dismiss();
+  });
+  await page.click(".ocr-row .ocr-forget");
+  expect(asked).toContain("1 figures you cut from the scan");
+  expect(asked).toContain("1 pages you corrected by hand"); // page 1 was written in the first test
+  expect((await api<{ items: unknown[] }>(ctx, inst, `/api/admin/ocr/${id}/images`)).items).toHaveLength(1); // dismissed: still there
+  await page.close();
+});

@@ -8,6 +8,8 @@ import { api, el, openModal, store } from "./ui";
 interface Row extends OcrListRow {
   /** Pages a person has corrected by hand. */
   edited: number;
+  /** Pictures cut from the scan. */
+  images: number;
   lang: string | null;
 }
 
@@ -94,7 +96,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     list = next;
     rows.clear();
     for (const r of next.books) rows.set(r.id, r);
-    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, edited: 0, lang: null });
+    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, edited: 0, images: 0, lang: null });
     for (const id of [...checked]) if (!rows.has(id)) checked.delete(id);
   }
 
@@ -123,7 +125,8 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
           boxOf.set(row.id, box);
           const forget = el("button", { type: "button", class: "btn small ocr-forget", textContent: t("ocr.forget"), hidden: row.done === 0, disabled: running });
           forget.addEventListener("click", async () => {
-            if (!confirm(row.edited ? t("ocr.forgetEditedAsk", { n: row.edited }) : t("ocr.forgetAsk"))) return;
+            const ask = row.edited && row.images ? t("ocr.forgetBothAsk", { n: row.edited, m: row.images }) : row.images ? t("ocr.forgetFiguresAsk", { m: row.images }) : row.edited ? t("ocr.forgetEditedAsk", { n: row.edited }) : t("ocr.forgetAsk");
+            if (!confirm(ask)) return;
             await api(`/api/admin/ocr/${encodeURIComponent(row.id)}`, undefined, "DELETE");
             failedPages.delete(row.id);
             await refresh();
