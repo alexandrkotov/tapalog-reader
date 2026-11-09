@@ -2,6 +2,7 @@ import { t, type Key } from "./i18n";
 import { defaultLanes, OCR_LANGS, ocrSupported, OcrBookError, recognizeBook, type OcrLang } from "./ocrEngine";
 import { filterRows, isUnread, OCR_SHOWS, OCR_SORTS, sortRows, type OcrListRow, type OcrShow, type OcrSort } from "./ocrList";
 import { splitEta, type OcrProgress } from "./ocrRun";
+import { openProof } from "./proofWindow";
 import { api, el, openModal, store } from "./ui";
 
 interface Row extends OcrListRow {
@@ -126,7 +127,9 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
             await refresh();
             opts.changed?.();
           });
-          return el("label", { class: "ocr-row" }, box, el("span", { class: "ocr-what" }, el("span", { class: "ocr-title", textContent: row.title }), el("span", { class: "muted small ocr-path", textContent: row.path }), status), forget);
+          const proof = el("button", { type: "button", class: "btn small ocr-proof", textContent: t("ocr.proof"), hidden: row.done === 0 });
+          proof.addEventListener("click", () => void openProof({ id: row.id, title: row.title }));
+          return el("label", { class: "ocr-row" }, box, el("span", { class: "ocr-what" }, el("span", { class: "ocr-title", textContent: row.title }), el("span", { class: "muted small ocr-path", textContent: row.path }), status), proof, forget);
         }),
       );
     }
