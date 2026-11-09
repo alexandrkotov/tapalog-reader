@@ -1,9 +1,7 @@
 ## English
 
 What's new:
-- **Export the checked book to a new PDF.** **Export to a new PDF** in the window for checking the text makes a PDF of your corrected text with the figures you cut out, set on A4 or A5 sheets with the headings of the pages if you want them, and downloads it. The text in it is real text you can select and search, the figures are shrunk to what paper can show (a page of figures is about a hundred kilobytes), and the notes about how far the recognition got and the number of every sheet are there too. Nothing is added to the library and the scan is not changed.
-- **Made on your computer.** The PDF is set in the browser; a book of a hundred pages takes a few seconds. The letters are DejaVu Sans, so Russian, Ukrainian and English come out right. The choice of sheet and headings is remembered.
-- **A bigger program.** The libraries that write the PDF (pdf-lib, MIT) add about 2 MB to the program.
+- **A lighter page.** The libraries that write the PDF (pdf-lib) are no longer part of the script every visit downloads: the page script is back to about 4.3 MB from 6.1 MB, and the libraries are fetched from the program's own files only when you export a PDF. Nothing changes in what the export makes.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -17,9 +15,7 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **Проверенная книга в новый PDF.** **Экспортировать в новый PDF** в окне проверки текста делает PDF из вашего исправленного текста с вырезанными рисунками, на листах A4 или A5 и, если хотите, с заголовками страниц, и скачивает его. Текст в нём настоящий: его можно выделять и искать. Рисунки сжаты до того, что способна показать бумага (страница с рисунками занимает около ста килобайт), есть примечание о том, как далеко дошло распознавание, и номер каждого листа. В библиотеку ничего не добавляется, скан не меняется.
-- **Делается у вас на компьютере.** PDF набирается в браузере; книга на сто страниц занимает несколько секунд. Шрифт DejaVu Sans, поэтому русский, украинский и английский выходят правильно. Выбор листа и заголовков запоминается.
-- **Программа чуть больше.** Библиотеки, которые пишут PDF (pdf-lib, MIT), добавляют к программе около 2 МБ.
+- **Страница легче.** Библиотеки, которые пишут PDF (pdf-lib), больше не входят в скрипт, который скачивается при каждом заходе: скрипт страницы снова около 4,3 МБ вместо 6,1 МБ, а библиотеки берутся из файлов самой программы только при экспорте PDF. В том, что делает экспорт, ничего не меняется.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -33,9 +29,7 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **Перевірена книга в новий PDF.** **Експортувати в новий PDF** у вікні перевірки тексту робить PDF з вашого виправленого тексту з вирізаними малюнками, на аркушах A4 або A5 і, якщо хочете, із заголовками сторінок, і завантажує його. Текст у ньому справжній: його можна виділяти й шукати. Малюнки стиснуті до того, що здатен показати папір (сторінка з малюнками займає близько ста кілобайтів), є примітка про те, як далеко дійшло розпізнавання, і номер кожного аркуша. До бібліотеки нічого не додається, скан не змінюється.
-- **Робиться у вас на комп'ютері.** PDF набирається в браузері; книга на сто сторінок займає кілька секунд. Шрифт DejaVu Sans, тому українська, російська й англійська виходять правильно. Вибір аркуша й заголовків запам'ятовується.
-- **Програма трохи більша.** Бібліотеки, що пишуть PDF (pdf-lib, MIT), додають до програми близько 2 МБ.
+- **Сторінка легша.** Бібліотеки, що пишуть PDF (pdf-lib), більше не входять у скрипт, який завантажується під час кожного заходу: скрипт сторінки знову близько 4,3 МБ замість 6,1 МБ, а бібліотеки беруться з файлів самої програми лише під час експорту PDF. У тому, що робить експорт, нічого не змінюється.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 
