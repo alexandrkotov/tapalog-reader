@@ -66,6 +66,10 @@ try {
       const res = await fetch(`${root}/ocr/${asset}`);
       check(res.ok && (await res.arrayBuffer()).byteLength > 10_000, `/ocr/${asset} is embedded`);
     }
+    for (const asset of ["pdf-lib.min.js", "fontkit.umd.min.js"]) {
+      const res = await fetch(`${root}/pdflib/${asset}`);
+      check(res.ok && (await res.arrayBuffer()).byteLength > 400_000, `/pdflib/${asset} is embedded`);
+    }
     const book = await fetch(`${root}/api/file/${library_[0]!.id}`);
     check((await book.text()) === "hello from the smoke test", "the book file is served");
     const status = (await (await fetch(`${root}/api/status`)).json()) as { writable?: boolean };

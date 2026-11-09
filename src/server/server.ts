@@ -22,6 +22,7 @@ import { APP_NAME, PING } from "./instance";
 import { Plugins } from "./plugins";
 import type { BookRow, Library } from "./library";
 import { OCR_ASSETS } from "./ocrAssets.generated";
+import { PDFLIB_ASSETS } from "./pdflibAssets.generated";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
 import { RESET_FILE, type Recovery } from "./recovery";
 import type { Shares } from "./shares";
@@ -123,6 +124,14 @@ function serveOcrAsset(req: Request): Response {
   if (!path) return notFound();
   const type = name.endsWith(".js") ? "text/javascript" : "application/octet-stream";
   return new Response(Bun.file(path), { headers: { "Content-Type": type, "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" } });
+}
+
+/** The scripts that write a PDF in the browser: pdf-lib and its font reader (see scripts/gen-pdflib-assets.ts). */
+function servePdflibAsset(req: Request): Response {
+  const name = decodeURIComponent(new URL(req.url).pathname.slice("/pdflib/".length));
+  const path = Object.hasOwn(PDFLIB_ASSETS, name) ? PDFLIB_ASSETS[name] : undefined; // a fixed list again
+  if (!path) return notFound();
+  return new Response(Bun.file(path), { headers: { "Content-Type": "text/javascript", "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" } });
 }
 
 const param = (req: Bun.BunRequest, name: string) => req.params[name] ?? "";
@@ -275,6 +284,7 @@ function buildRoutes(app: App, origin: Origin) {
     "/s/:token": index,
     "/pdfjs/*": servePdfjsAsset,
     "/ocr/*": serveOcrAsset, // open like /pdfjs/*: no library data in it
+    "/pdflib/*": servePdflibAsset, // and so is this
     // files of the installed plugins: readers and what they load. Open like /pdfjs/*, because the page of a share link needs them too and they hold no library data
     "/plugins/*": (req: Request) => {
       const [, , id = "", ...rest] = new URL(req.url).pathname.split("/");

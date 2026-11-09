@@ -892,6 +892,19 @@ test("the administrator keeps pictures cut from a scanned page, refers to them i
   await send("", "DELETE");
 });
 
+test("the scripts that write a PDF are served from a fixed list, to anybody, with no way to reach other files", async () => {
+  for (const name of ["pdf-lib.min.js", "fontkit.umd.min.js"]) {
+    const res = await fetch(`${lan}/pdflib/${name}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/javascript");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await res.text()).length).toBeGreaterThan(400_000);
+  }
+  expect((await fetch(`${lan}/pdflib/pdf-lib.esm.min.js`)).status).toBe(404);
+  expect((await fetch(`${lan}/pdflib/..%2Fpackage.json`)).status).toBe(404);
+  expect((await fetch(`${lan}/pdflib/`)).status).toBe(404);
+});
+
 test("the engine that reads pictures is served from a fixed list, to anybody, with no way to reach other files", async () => {
   for (const [name, type, least] of [["worker.min.js", "text/javascript", 10_000], ["tesseract.min.js", "text/javascript", 10_000], ["core/tesseract-core-simd-lstm.wasm.js", "text/javascript", 1_000_000], ["lang/rus.traineddata.gz", "application/octet-stream", 1_000_000], ["lang/eng.traineddata.gz", "application/octet-stream", 1_000_000]] as const) {
     const res = await fetch(`${lan}/ocr/${name}`);
