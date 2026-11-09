@@ -1,14 +1,10 @@
 import { t, type Key } from "./i18n";
 import { defaultLanes, OCR_LANGS, ocrSupported, OcrBookError, recognizeBook, type OcrLang } from "./ocrEngine";
+import { filterRows, isUnread, OCR_SHOWS, OCR_SORTS, sortRows, type OcrListRow, type OcrShow, type OcrSort } from "./ocrList";
 import { splitEta, type OcrProgress } from "./ocrRun";
 import { api, el, openModal, store } from "./ui";
 
-interface Row {
-  id: string;
-  title: string;
-  path: string;
-  pages: number | null;
-  done: number;
+interface Row extends OcrListRow {
   lang: string | null;
 }
 
@@ -20,6 +16,7 @@ interface Listing {
 }
 
 const LANG_KEY = "tapalog.ocrLang";
+const SORT_KEY = "tapalog.ocrSort";
 
 /** "2 h 5 min", "14 min", "40 s" in the reader's language. */
 function etaText(seconds: number): string {
@@ -53,11 +50,21 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
   const statusOf = new Map<string, HTMLElement>();
   const boxOf = new Map<string, HTMLInputElement>();
   let running = false;
+  let shownCount = 0;
 
   const savedLang = store.get(LANG_KEY);
   const lang = el("select", { class: "ocr-lang" }, ...OCR_LANGS.map((l) => el("option", { value: l, textContent: t(`ocr.lang.${l}` as Key) })));
   lang.value = OCR_LANGS.includes(savedLang as OcrLang) ? savedLang! : "rus";
   lang.addEventListener("change", () => store.set(LANG_KEY, lang.value));
+
+  const savedSort = store.get(SORT_KEY);
+  const sort = el("select", { class: "ocr-sort", title: t("ocr.sort") }, ...OCR_SORTS.map((k) => el("option", { value: k, textContent: t(`ocr.sort.${k}` as Key) })));
+  sort.value = OCR_SORTS.includes(savedSort as OcrSort) ? savedSort! : "path";
+  const show = el("select", { class: "ocr-show", title: t("ocr.show") }, ...OCR_SHOWS.map((k) => el("option", { value: k, textContent: t(`ocr.show.${k}` as Key) })));
+  const query = el("input", { type: "search", class: "ocr-query", placeholder: t("ocr.query"), autocomplete: "off" });
+  const count = el("p", { class: "muted small ocr-count" });
+  const tools = el("div", { class: "ocr-tools" }, query, show, sort);
+  const visible = (): Row[] => sortRows(filterRows([...rows.values()], query.value, show.value as OcrShow), sort.value as OcrSort);
 
   const listEl = el("div", { class: "ocr-list" });
   const start = el("button", { type: "button", class: "btn primary", textContent: t("ocr.start") });
@@ -79,13 +86,12 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     const base = row.pages === null || row.done === 0 ? t("ocr.row.new") : row.done >= row.pages ? t("ocr.row.done", { pages: row.pages }) : t("ocr.row.partial", { done: row.done, pages: row.pages });
     return failed ? `${base} · ${t("ocr.row.failed", { n: failed })}` : base;
   };
-  const unread = (row: Row) => row.pages === null || row.done < row.pages;
 
   function take(next: Listing): void {
     list = next;
     rows.clear();
     for (const r of next.books) rows.set(r.id, r);
-    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, pages: null, done: 0, lang: null });
+    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, lang: null });
     for (const id of [...checked]) if (!rows.has(id)) checked.delete(id);
   }
 
@@ -93,11 +99,16 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     statusOf.clear();
     boxOf.clear();
     const supported = ocrSupported();
+    const shown = visible();
+    tools.hidden = count.hidden = !rows.size;
+    shownCount = shown.length;
     if (!rows.size) {
       listEl.replaceChildren(el("p", { class: "muted", textContent: list.enabled ? t("ocr.empty") : t("ocr.needIndex") }));
+    } else if (!shown.length) {
+      listEl.replaceChildren(el("p", { class: "muted", textContent: t("ocr.noMatch") }));
     } else {
       listEl.replaceChildren(
-        ...[...rows.values()].map((row) => {
+        ...shown.map((row) => {
           const box = el("input", { type: "checkbox", checked: checked.has(row.id), disabled: running });
           box.addEventListener("change", () => {
             if (box.checked) checked.add(row.id);
@@ -127,6 +138,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
   }
 
   function update(): void {
+    count.textContent = t("ocr.count", { shown: shownCount, total: rows.size, ticked: checked.size });
     start.disabled = running || !ocrSupported() || checked.size === 0;
     start.hidden = running;
     stop.hidden = !running;
@@ -138,7 +150,13 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
   }
 
   selectUnread.addEventListener("click", () => {
-    for (const row of rows.values()) if (unread(row)) checked.add(row.id);
+    for (const row of visible()) if (isUnread(row)) checked.add(row.id); // only the books on view: a filter picks a folder
+    draw();
+  });
+  query.addEventListener("input", draw);
+  show.addEventListener("change", draw);
+  sort.addEventListener("change", () => {
+    store.set(SORT_KEY, sort.value);
     draw();
   });
   stop.addEventListener("click", () => {
@@ -147,7 +165,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
   });
 
   start.addEventListener("click", async () => {
-    const queue = [...rows.values()].filter((r) => checked.has(r.id));
+    const queue = sortRows([...rows.values()].filter((r) => checked.has(r.id)), sort.value as OcrSort); // in the order the list shows them
     if (!queue.length) return;
     const controller = new AbortController();
     abort.current = controller;
@@ -160,13 +178,13 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     let serverError = false;
     for (const [index, row] of queue.entries()) {
       if (controller.signal.aborted) break;
-      const status = statusOf.get(row.id);
-      const show = (p: OcrProgress) => {
+      const showProgress = (p: OcrProgress) => {
         row.done = p.done;
         row.pages = p.pages;
         bar.value = p.pages ? p.done / p.pages : 0;
         const where = t("ocr.progress", { book: index + 1, books: queue.length, done: p.done, pages: p.pages });
         progressLine.textContent = p.etaSeconds === null ? where : `${where} · ${t("ocr.eta", { time: etaText(p.etaSeconds) })}`;
+        const status = statusOf.get(row.id); // looked up each time: the list may have been drawn again by a filter
         if (status) status.textContent = t("ocr.row.running", { done: p.done, pages: p.pages });
       };
       const before = row.done;
@@ -177,7 +195,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
           lang: lang.value as OcrLang,
           signal: controller.signal,
           lanes: defaultLanes(),
-          onProgress: show,
+          onProgress: showProgress,
           onState: (s) => (progressLine.textContent = s === "loading" ? t("ocr.loading") : progressLine.textContent),
         });
         read += outcome.done - before;
@@ -194,6 +212,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
           break;
         }
       }
+      const status = statusOf.get(row.id);
       if (status) status.textContent = statusText(row);
       if (row.pages !== null && row.done >= row.pages) checked.delete(row.id); // a book not read to the end stays ticked, to be taken up again
     }
@@ -216,6 +235,8 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     ...(ocrSupported() ? [] : [el("p", { class: "project-missing", textContent: t("ocr.unsupported") })]),
     ...(list.enabled ? [] : [el("p", { class: "project-missing", textContent: t("ocr.needIndex") })]),
     el("label", { class: "ocr-langline" }, el("span", { class: "muted small", textContent: t("ocr.lang") }), lang),
+    tools,
+    count,
     listEl,
     el("div", { class: "row project-buttons ocr-actions" }, selectUnread, start, stop),
     bar,

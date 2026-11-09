@@ -818,6 +818,7 @@ function buildRoutes(app: App, origin: Origin) {
           name: book.name,
           title: titleOf(book),
           path: book.path,
+          size: book.size,
           pages: ocr?.pages ?? null,
           done: ocr?.done ?? 0,
           lang: ocr?.lang ?? null,

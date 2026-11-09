@@ -71,6 +71,11 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .modal-body .about-links a, .modal-body .about-components a { color: var(--accent); }
 .about-actions { margin-top: 8px; }
 .ocr-langline { display: flex; align-items: center; gap: 8px; }
+.ocr-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.ocr-tools[hidden], .ocr-count[hidden] { display: none; }
+.ocr-query { flex: 1 1 100%; min-width: 0; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+.ocr-show, .ocr-sort { flex: 1 1 200px; min-width: 0; }
+.ocr-count { margin: 6px 0; }
 .ocr-list { display: flex; flex-direction: column; max-height: 45vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
 .ocr-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .ocr-row:last-child { border-bottom: 0; }

@@ -770,6 +770,7 @@ test("the administrator's browser reads a scan page by page and the server keeps
 
   const list = (await call(lan, "/api/admin/ocr", { cookie: adminCookie })).body;
   expect(list.books.find((b: { id: string }) => b.id === pdf)).toMatchObject({ pages: 2, done: 1, lang: "rus", path: "sub/three.pdf" });
+  expect(list.books.every((b: { size: unknown }) => typeof b.size === "number")).toBe(true);
   expect(list).toMatchObject({ recognizedBooks: 1, recognizedPages: 1 });
 
   await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: adminCookie }); // an earlier test may have turned the search off
