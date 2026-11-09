@@ -1,7 +1,7 @@
 import type * as Pdfjs from "pdfjs-dist/build/pdf.min.mjs";
-import { t } from "./i18n";
+import { lang, t } from "./i18n";
 import { pdfDocumentOptions } from "./readers/pdfAssets";
-import { api, el, openModal } from "./ui";
+import { api, ApiError, el, openModal, store } from "./ui";
 
 interface PageItem {
   page: number;
@@ -72,12 +72,15 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   const say = (text: string) => modal.body.replaceChildren(el("p", { class: "muted", textContent: text }));
   say(t("card.loading"));
 
-  let list: Listing;
+  const base = `/api/admin/ocr/${encodeURIComponent(book.id)}`;
+  let held: Listing | null = null;
   try {
-    list = await api<Listing>(`/api/admin/ocr/${encodeURIComponent(book.id)}/pages`);
-  } catch {
-    say(t("proof.none"));
-    return;
+    held = await api<Listing>(`${base}/pages`);
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 404)) {
+      say(t("card.failed"));
+      return;
+    }
   }
   if (closed) return;
 
@@ -101,7 +104,19 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   }
   if (closed) return;
   const doc = pdf;
-  const url = (n: number) => `/api/admin/ocr/${encodeURIComponent(book.id)}/edit/${n}`;
+  // a book never recognized has nothing on the server: its pages are empty and it is started when the first page is saved
+  const list: Listing = held ?? { pages: pdf.numPages, done: 0, edited: 0, lang: "", items: [] };
+  let started = held !== null;
+  let starting: Promise<unknown> | null = null;
+  const url = (n: number) => `${base}/edit/${n}`;
+  const preferredLang = () => (store.get("tapalog.ocrLang") === "rus+eng" ? "rus+eng" : "rus");
+  async function ensureStarted(): Promise<void> {
+    if (started) return;
+    starting ??= api(`${base}/start`, { pages: list.pages, lang: preferredLang() }).finally(() => (starting = null));
+    await starting;
+    started = true;
+    for (const button of downloads) button.hidden = false;
+  }
 
   const counts = { done: list.done, edited: list.edited };
   const stats = el("p", { class: "muted small proof-stats" });
@@ -124,6 +139,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     slot.inflight = true;
     slot.state.textContent = t("proof.state.saving");
     try {
+      await ensureStarted();
       const result = await api<{ done: number; edited: number }>(url(slot.n), { text: value }, "PUT");
       slot.sent = value;
       touched = true;
@@ -165,6 +181,27 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     }
   }
 
+  /** Waits until every page typed has reached the server (a page that keeps failing is given up after a few seconds). */
+  async function flush(): Promise<void> {
+    for (let i = 0; i < 40 && unsaved(); i++) {
+      await Promise.all([...slots.values()].filter((slot) => !slot.inflight && slot.text.value !== slot.sent).map((slot) => save(slot)));
+      if (unsaved()) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  async function download(format: "md" | "txt"): Promise<void> {
+    await flush();
+    const link = el("a", { href: `${base}/text?format=${format}&lang=${lang()}` });
+    link.download = "";
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+  const downloads = (["md", "txt"] as const).map((format) => {
+    const button = el("button", { type: "button", class: `btn small proof-download proof-download-${format}`, textContent: t(`proof.download.${format}`), hidden: !started });
+    button.addEventListener("click", () => void download(format));
+    return button;
+  });
+
   const scroller = el("div", { class: "proof-pages" });
   const byPage = new Map(list.items.map((item) => [item.page, item]));
   for (let n = 1; n <= list.pages; n++) {
@@ -201,7 +238,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const row = scroller.children[Math.min(Math.max(n, 1), list.pages) - 1] as HTMLElement | undefined;
     if (row) scroller.scrollTo({ top: row.offsetTop });
   });
-  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto)), scroller);
+  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, ...downloads)), scroller);
 
   const canvases = new Map<number, HTMLCanvasElement>();
   const drawing = new Set<number>();

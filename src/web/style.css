@@ -84,6 +84,8 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .proof-jump { display: flex; align-items: center; gap: 8px; }
 .proof-goto { width: 5.5em; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
 .proof-gap { flex: 1; }
+.proof-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.proof-download[hidden] { display: none; }
 .proof-state { white-space: nowrap; }
 .proof-restore[hidden], .proof-badge[hidden] { display: none; }
 .proof-pages { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 4px; }

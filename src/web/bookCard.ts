@@ -1,6 +1,7 @@
 import { t, type Key } from "./i18n";
 import { tagsHash } from "./tags";
 import { openOcr } from "./ocrWindow";
+import { openProof } from "./proofWindow";
 import { api, ApiError, badge, el, formatBytes, openModal } from "./ui";
 
 interface Fields {
@@ -188,7 +189,9 @@ export async function openBookCard(id: string, canEdit: boolean, changed: (card:
   const save = el("button", { type: "submit", class: "btn primary", textContent: t("common.save") });
   const readPages = card.ext === "pdf" ? [el("button", { type: "button", class: "btn card-ocr", textContent: t("card.ocr") })] : []; // a scan can be read here, one book at a time
   readPages[0]?.addEventListener("click", () => void openOcr({ focus: { id, title: card.fields.title || card.name, path: card.path } }));
-  const form = el("form", { class: "card-form" }, ...rows.map((r) => r.node), el("div", { class: "row project-buttons" }, save, saved, ...readPages), error);
+  const checkText = card.ext === "pdf" ? [el("button", { type: "button", class: "btn card-proof", textContent: t("card.proof") })] : []; // the scan beside its text, to correct it (or to write it)
+  checkText[0]?.addEventListener("click", () => void openProof({ id, title: card.fields.title || card.name }));
+  const form = el("form", { class: "card-form" }, ...rows.map((r) => r.node), el("div", { class: "row project-buttons" }, save, saved, ...readPages, ...checkText), error);
   form.noValidate = true; // the server's answer (in the reader's language) explains a bad value, not the browser's bubble
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
