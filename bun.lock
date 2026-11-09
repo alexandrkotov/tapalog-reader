@@ -5,7 +5,7 @@
     "": {
       "name": "tapalog-reader",
       "dependencies": {
-        "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.2.0/ecm-viewer-engine-0.2.0.tgz",
+        "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.4.0/ecm-viewer-engine-0.4.0.tgz",
         "@tesseract.js-data/eng": "^1.0.0",
         "@tesseract.js-data/rus": "^1.0.0",
         "fflate": "^0.8.3",
@@ -23,7 +23,7 @@
     },
   },
   "packages": {
-    "@ecm/viewer-engine": ["@ecm/viewer-engine@https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.2.0/ecm-viewer-engine-0.2.0.tgz", { "dependencies": { "@types/sql.js": "^1.4.9", "sql.js": "^1.11.0" } }, "sha512-XXdvvf1tNYPS+wAN9reo5dz1WhNcCtsYVTROAPUcxKEWsA8kmS5eImdibiyET2nv4DVTLqhoQrK5SbPlmdSBUA=="],
+    "@ecm/viewer-engine": ["@ecm/viewer-engine@https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.4.0/ecm-viewer-engine-0.4.0.tgz", { "dependencies": { "@types/sql.js": "^1.4.9", "sql.js": "^1.11.0" } }, "sha512-qXvW7Y8tqVpT2/csnutAWh9Nmcxbrp3BKrm5PjpS1AO3KQPJaAyYc8T7bVhUoRkuVRRM96urB7QXf8udW3y4aA=="],
 
     "@napi-rs/canvas": ["@napi-rs/canvas@1.1.0", "", { "optionalDependencies": { "@napi-rs/canvas-android-arm64": "1.1.0", "@napi-rs/canvas-darwin-arm64": "1.1.0", "@napi-rs/canvas-darwin-x64": "1.1.0", "@napi-rs/canvas-linux-arm-gnueabihf": "1.1.0", "@napi-rs/canvas-linux-arm64-gnu": "1.1.0", "@napi-rs/canvas-linux-arm64-musl": "1.1.0", "@napi-rs/canvas-linux-riscv64-gnu": "1.1.0", "@napi-rs/canvas-linux-x64-gnu": "1.1.0", "@napi-rs/canvas-linux-x64-musl": "1.1.0", "@napi-rs/canvas-win32-arm64-msvc": "1.1.0", "@napi-rs/canvas-win32-x64-msvc": "1.1.0" } }, "sha512-k+ph/D8H9GS8ZZ48okvHrKeJynkqAA1kMUZRuzRWNlQUDHXngq7oRaWMZBdmSfd9ZhVy9bwNKei/7wMboI/uMg=="],
 

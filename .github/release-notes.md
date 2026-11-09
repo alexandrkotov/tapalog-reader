@@ -6,6 +6,7 @@ What's new:
 - **Write a page by hand.** A book that was never recognized opens the same way, with empty pages to type into; nothing is stored until the first page is saved.
 - **Save the book as a file.** **Download Markdown** and **Download text** give the whole text with the number of every page.
 - **A safer Forget.** **Forget the text** now says how many pages you corrected by hand before it deletes them.
+- **Catalogs (.ecatm) open and respond much faster.** The catalog engine is updated to 0.4.0: a catalog no longer copies all its pictures at every click, so on a large catalog a click on a marker or a row takes a fraction of a second instead of seconds. The engine also brings, where the catalog provides them, several part numbers behind one callout marker, the ↑/↓ keys in the list of pictures and in the table, a "Where to buy" button, a choice of condition for a part, and a bookmarks panel that closes on Esc or a click outside it.
 - **Tidier phone.** In the list of scans, the buttons of a book move to their own line instead of squeezing its title.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
@@ -25,6 +26,7 @@ Check a download against `SHA256SUMS.txt`.
 - **Страница, написанная вручную.** Книга, которую ещё не распознавали, открывается так же, с пустыми страницами для ввода; пока не сохранена первая страница, ничего не записывается.
 - **Книга как файл.** **Скачать Markdown** и **Скачать текст** отдают весь текст с номером каждой страницы.
 - **Безопаснее «Забыть».** **Забыть текст** теперь говорит, сколько страниц вы исправили вручную, прежде чем их удалить.
+- **Каталоги (.ecatm) открываются и отзываются намного быстрее.** Движок каталогов обновлён до 0.4.0: каталог больше не копирует все свои картинки при каждом клике, поэтому на большом каталоге клик по маркеру или строке занимает доли секунды, а не секунды. Вместе с ним приходят (там, где каталог их задаёт) несколько номеров деталей за одним маркером выноски, клавиши ↑/↓ в списке картинок и в таблице, кнопка «Where to buy», выбор состояния детали и панель закладок, которая закрывается по Esc и по клику мимо неё.
 - **Аккуратнее на телефоне.** В списке сканов кнопки книги переходят на отдельную строку и не сдавливают название.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
@@ -44,6 +46,7 @@ Check a download against `SHA256SUMS.txt`.
 - **Сторінка, написана вручну.** Книга, яку ще не розпізнавали, відкривається так само, з порожніми сторінками для введення; доки не збережено першу сторінку, нічого не записується.
 - **Книга як файл.** **Завантажити Markdown** і **Завантажити текст** віддають увесь текст із номером кожної сторінки.
 - **Безпечніше «Забути».** **Забути текст** тепер каже, скільки сторінок ви виправили вручну, перш ніж їх видалити.
+- **Каталоги (.ecatm) відкриваються й відгукуються значно швидше.** Рушій каталогів оновлено до 0.4.0: каталог більше не копіює всі свої картинки під час кожного кліку, тому на великому каталозі клік по маркеру чи рядку займає частки секунди, а не секунди. Разом із ним приходять (там, де каталог їх задає) кілька номерів деталей за одним маркером виноски, клавіші ↑/↓ у списку картинок і в таблиці, кнопка «Where to buy», вибір стану деталі та панель закладок, що закривається по Esc і по кліку повз неї.
 - **Охайніше на телефоні.** У списку сканів кнопки книги переходять на окремий рядок і не здавлюють назву.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.

@@ -20,7 +20,7 @@
     "e2e": "bun test e2e"
   },
   "dependencies": {
-    "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.2.0/ecm-viewer-engine-0.2.0.tgz",
+    "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.4.0/ecm-viewer-engine-0.4.0.tgz",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/rus": "^1.0.0",
     "fflate": "^0.8.3",
