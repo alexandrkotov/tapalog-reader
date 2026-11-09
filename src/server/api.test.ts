@@ -802,6 +802,13 @@ test("the frames of the words of a scanned page come with its text, and whoever 
   expect((await put(2, { text: "Без рамок" })).status).toBe(200); // a recognizer that sends no frames still works
 
   expect((await call(lan, `/api/ocr/${pdf}/boxes`, { cookie: readerCookie })).body).toEqual({ pages: [1] }); // page 2 was read without frames
+  // which books have pages to make selectable, and a start that takes those pages up again
+  const listed = (await call(lan, "/api/admin/ocr", { cookie: adminCookie })).body.books.find((b: { id: string }) => b.id === pdf);
+  expect(listed).toMatchObject({ done: 2, plain: 1 });
+  const start = (again?: unknown) => call(lan, `/api/admin/ocr/${pdf}/start`, { body: { pages: 3, lang: "rus", again }, cookie: adminCookie });
+  expect((await start()).body).toEqual({ done: [1, 2] });
+  expect((await start(true)).body).toEqual({ done: [1] });
+  expect((await start("yes")).body).toEqual({ done: [1, 2] }); // only a true asks for it
   // the page's words, to a reader (they are as open as the book's text in the search)
   expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).body).toEqual({ boxes });
   expect((await call(lan, `/api/ocr/${pdf}/boxes/2`, { cookie: readerCookie })).status).toBe(404); // none were sent

@@ -62,6 +62,8 @@ export interface OcrProgress {
   edited: number;
   /** Pictures cut from the scan and kept with the text. */
   images: number;
+  /** Pages the recognizer read (not written by hand) that have no frames of words yet: their text cannot be selected in the reader until they are read again. */
+  plain: number;
   lang: string;
   updated: number;
 }
@@ -174,12 +176,24 @@ export class OcrText {
     db.run("CREATE VIRTUAL TABLE IF NOT EXISTS ocr_chunks USING fts5(text, id UNINDEXED, loc UNINDEXED, tokenize = 'unicode61 remove_diacritics 2')");
   }
 
-  /** Begins (or goes on with) the reading of a book of `pages` pages; the pages already read are returned. A different page count means a different file: start again. */
-  start(id: string, pages: number, lang: string): number[] {
+  /**
+   * Begins (or goes on with) the reading of a book of `pages` pages; the pages already read are returned. A different page count
+   * means a different file: start again. With `again`, the pages that have no frames of words are not counted as read, so the
+   * reading takes them up once more (a page written by hand is never among them).
+   */
+  start(id: string, pages: number, lang: string, again = false): number[] {
     const known = this.progress(id);
     if (known && known.pages !== pages) this.remove(id);
     this.db.run("INSERT INTO ocr_docs (id, pages, lang, updated) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET lang = excluded.lang, updated = excluded.updated", [id, pages, lang, Date.now()]);
-    return (this.db.query("SELECT page FROM ocr_pages WHERE id = ? ORDER BY page").all(id) as { page: number }[]).map((r) => r.page);
+    const held = (this.db.query("SELECT page FROM ocr_pages WHERE id = ? ORDER BY page").all(id) as { page: number }[]).map((r) => r.page);
+    if (!again) return held;
+    const plain = new Set(this.plainPages(id));
+    return held.filter((p) => !plain.has(p));
+  }
+
+  /** The pages the recognizer read, with text, that have no frames of words: the ones a second reading would make selectable. */
+  plainPages(id: string): number[] {
+    return (this.db.query("SELECT p.page FROM ocr_pages p WHERE p.id = ? AND p.edited = 0 AND p.row IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ocr_boxes b WHERE b.id = p.id AND b.page = p.page) ORDER BY p.page").all(id) as { page: number }[]).map((r) => r.page);
   }
 
   /**
@@ -324,8 +338,8 @@ export class OcrText {
 
   /** The reading of every book that has begun. */
   all(): Map<string, OcrProgress> {
-    const rows = this.db.query("SELECT d.id, d.pages, d.lang, d.updated, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id) AS done, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.edited = 1) AS edited, (SELECT COUNT(*) FROM ocr_images i WHERE i.id = d.id) AS images FROM ocr_docs d").all() as (OcrProgress & { id: string })[];
-    return new Map(rows.map((r) => [r.id, { pages: r.pages, done: r.done, edited: r.edited, images: r.images, lang: r.lang, updated: r.updated }]));
+    const rows = this.db.query("SELECT d.id, d.pages, d.lang, d.updated, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id) AS done, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.edited = 1) AS edited, (SELECT COUNT(*) FROM ocr_images i WHERE i.id = d.id) AS images, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.edited = 0 AND p.row IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ocr_boxes b WHERE b.id = p.id AND b.page = p.page)) AS plain FROM ocr_docs d").all() as (OcrProgress & { id: string })[];
+    return new Map(rows.map((r) => [r.id, { pages: r.pages, done: r.done, edited: r.edited, images: r.images, plain: r.plain, lang: r.lang, updated: r.updated }]));
   }
 
   /** Forgets everything read from a book; how many pages that was. */

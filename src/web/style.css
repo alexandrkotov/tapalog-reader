@@ -130,6 +130,7 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .ocr-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ocr-bar { width: 100%; }
 .ocr-actions { flex-wrap: wrap; }
+.ocr-again-line { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; }
 .ocr-list > p { margin: 10px; }
 @media (max-width: 520px) { .about-components { columns: 1; } }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }

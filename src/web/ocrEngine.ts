@@ -119,6 +119,8 @@ export interface RecognizeOptions {
   signal?: AbortSignal;
   /** The readers of a run of several books, which the caller closes; without them the book makes its own and ends them. */
   readers?: Readers;
+  /** Read once more the pages recognized before without frames of words, so that their text can be selected in the reader. */
+  again?: boolean;
   /** Pages at once; the default fits the computer. */
   lanes?: number;
   onProgress?(progress: OcrProgress): void;
@@ -140,7 +142,7 @@ export async function recognizeBook(options: RecognizeOptions): Promise<OcrOutco
     const pdf = await task.promise.catch(() => {
       throw new OcrBookError("the PDF cannot be opened (damaged or protected)");
     });
-    const { done } = await api<{ done: number[] }>(`/api/admin/ocr/${options.id}/start`, { pages: pdf.numPages, lang: options.lang });
+    const { done } = await api<{ done: number[] }>(`/api/admin/ocr/${options.id}/start`, { pages: pdf.numPages, lang: options.lang, ...(options.again ? { again: true } : {}) });
     const lanes = Math.max(1, Math.min(options.lanes ?? defaultLanes(), pdf.numPages - done.length || 1));
     const workers = await readers.ensure(lanes);
     if (options.signal?.aborted) return { done: done.length, pages: pdf.numPages, failed: [], stopped: true };

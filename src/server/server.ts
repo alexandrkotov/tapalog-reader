@@ -833,6 +833,7 @@ function buildRoutes(app: App, origin: Origin) {
           done: ocr?.done ?? 0,
           edited: ocr?.edited ?? 0,
           images: ocr?.images ?? 0,
+          plain: ocr?.plain ?? 0,
           lang: ocr?.lang ?? null,
         }));
         const status = app.fullText.status();
@@ -848,7 +849,7 @@ function buildRoutes(app: App, origin: Origin) {
         if (book.ext !== "pdf") return bad("only a PDF can be read");
         const pages = data?.pages;
         if (typeof pages !== "number" || !Number.isInteger(pages) || pages < 1 || pages > MAX_PAGES || !validLang(data?.lang)) return bad();
-        return json({ done: app.fullText.ocr.start(book.id, pages, data.lang) });
+        return json({ done: app.fullText.ocr.start(book.id, pages, data.lang, data.again === true) }); // `again`: the pages without frames of words are read once more
       }),
     },
     "/api/admin/ocr/:id/pages/:page": {

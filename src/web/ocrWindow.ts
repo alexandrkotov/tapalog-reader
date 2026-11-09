@@ -10,6 +10,8 @@ interface Row extends OcrListRow {
   edited: number;
   /** Pictures cut from the scan. */
   images: number;
+  /** Pages read without frames of words: their text cannot be selected in the reader until they are read again. */
+  plain: number;
   lang: string | null;
 }
 
@@ -75,6 +77,9 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
   const start = el("button", { type: "button", class: "btn primary", textContent: t("ocr.start") });
   const stop = el("button", { type: "button", class: "btn", textContent: t("ocr.stop"), hidden: true });
   const selectUnread = el("button", { type: "button", class: "btn", textContent: t("ocr.selectUnread") });
+  const selectPlain = el("button", { type: "button", class: "btn ocr-select-plain", textContent: t("ocr.selectPlain") });
+  const againBox = el("input", { type: "checkbox", class: "ocr-again" });
+  const again = el("label", { class: "ocr-again-line small" }, againBox, el("span", { textContent: t("ocr.again") }));
   const bar = el("progress", { class: "ocr-bar", max: 1, value: 0, hidden: true });
   const progressLine = el("p", { class: "muted small ocr-progress", hidden: true });
   const message = el("p", { class: "small ocr-message", hidden: true });
@@ -89,14 +94,15 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     if (locked.has(row.id)) return t("ocr.row.locked");
     const failed = failedPages.get(row.id) ?? 0;
     const base = row.pages === null || row.done === 0 ? t("ocr.row.new") : row.done >= row.pages ? t("ocr.row.done", { pages: row.pages }) : t("ocr.row.partial", { done: row.done, pages: row.pages });
-    return failed ? `${base} · ${t("ocr.row.failed", { n: failed })}` : base;
+    const notes = [...(row.plain ? [t("ocr.row.plain", { n: row.plain })] : []), ...(failed ? [t("ocr.row.failed", { n: failed })] : [])];
+    return [base, ...notes].join(" · ");
   };
 
   function take(next: Listing): void {
     list = next;
     rows.clear();
     for (const r of next.books) rows.set(r.id, r);
-    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, edited: 0, images: 0, lang: null });
+    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, edited: 0, images: 0, plain: 0, lang: null });
     for (const id of [...checked]) if (!rows.has(id)) checked.delete(id);
   }
 
@@ -142,6 +148,9 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     kept.hidden = !list.recognizedPages;
     lang.disabled = running;
     selectUnread.disabled = running || !supported;
+    selectPlain.hidden = ![...rows.values()].some((r) => r.plain);
+    selectPlain.disabled = running || !supported;
+    againBox.disabled = running;
     update();
   }
 
@@ -159,6 +168,11 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
 
   selectUnread.addEventListener("click", () => {
     for (const row of visible()) if (isUnread(row)) checked.add(row.id); // only the books on view: a filter picks a folder
+    draw();
+  });
+  selectPlain.addEventListener("click", () => {
+    for (const row of visible()) if (row.plain) checked.add(row.id); // the books on view that have pages to make selectable
+    againBox.checked = true; // they are read again only with this on
     draw();
   });
   query.addEventListener("input", draw);
@@ -196,13 +210,14 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
         const status = statusOf.get(row.id); // looked up each time: the list may have been drawn again by a filter
         if (status) status.textContent = t("ocr.row.running", { done: p.done, pages: p.pages });
       };
-      const before = row.done;
+      const before = row.done - (againBox.checked ? row.plain : 0); // the pages the server counts as read when this run begins
       bar.value = 0; // this book's own progress: the last one's is not shown while the engine loads
       try {
         const outcome = await recognizeBook({
           id: row.id,
           lang: readers.lang,
           readers,
+          ...(againBox.checked ? { again: true } : {}),
           signal: controller.signal,
           lanes: defaultLanes(),
           onProgress: showProgress,
@@ -249,7 +264,8 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     tools,
     count,
     listEl,
-    el("div", { class: "row project-buttons ocr-actions" }, selectUnread, start, stop),
+    el("div", { class: "row project-buttons ocr-actions" }, selectUnread, selectPlain, start, stop),
+    again,
     bar,
     progressLine,
     message,

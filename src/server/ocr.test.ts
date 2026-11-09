@@ -147,6 +147,24 @@ test("the frames of a page's words are kept with its reading, replaced by the ne
   expect(ocr.boxes("b", 3)).toBeNull();
 });
 
+test("pages read without frames can be taken up again: the next start does not count them as read, and a page written by hand is never one of them", () => {
+  const ocr = fresh();
+  ocr.start("b", 4, "rus");
+  ocr.put("b", 1, "С рамками", [["С", 0.1, 0.1, 0.2, 0.2]]);
+  ocr.put("b", 2, "Без рамок");
+  ocr.put("b", 3, "   "); // an empty page has nothing to select
+  ocr.put("b", 4, "Правленая");
+  ocr.edit("b", 4, "Правленая вручную");
+  expect(ocr.plainPages("b")).toEqual([2]);
+  expect(ocr.progress("b")).toMatchObject({ done: 4, plain: 1 });
+  expect(ocr.start("b", 4, "rus")).toEqual([1, 2, 3, 4]); // a plain start goes on as it always did
+  expect(ocr.start("b", 4, "rus", true)).toEqual([1, 3, 4]); // page 2 is to be read again
+  ocr.put("b", 2, "Без рамок", [["Без", 0.1, 0.1, 0.3, 0.2]]);
+  expect(ocr.progress("b")).toMatchObject({ done: 4, plain: 0 });
+  expect(ocr.start("b", 4, "rus", true)).toEqual([1, 2, 3, 4]); // nothing left to take up
+  expect(ocr.plainPages("nope")).toEqual([]);
+});
+
 test("a database from before frames keeps its pages and gains the table for them", () => {
   const db = new Database(":memory:");
   db.run("CREATE TABLE ocr_docs (id TEXT PRIMARY KEY, pages INTEGER NOT NULL, lang TEXT NOT NULL, updated INTEGER NOT NULL)");
