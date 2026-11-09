@@ -785,6 +785,62 @@ test("the administrator's browser reads a scan page by page and the server keeps
   await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie }); // as it was: nothing left running when the library closes
 });
 
+test("the administrator corrects the text of a scanned page, takes the correction back, and saves the book as a file", async () => {
+  const books = (await call(lan, "/api/library", { cookie: adminCookie })).body.books as { id: string; path: string; name: string }[];
+  const pdf = books.find((b) => b.path === "sub/three.pdf")!.id;
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Scanner", password: "scan123" } })).cookie!;
+  const send = (path: string, method: string, body?: unknown, cookie = adminCookie) => call(lan, `/api/admin/ocr/${pdf}${path}`, { method, body, cookie });
+  await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: adminCookie });
+
+  await send("/start", "POST", { pages: 3, lang: "rus" });
+  await send("/pages/1", "PUT", { text: "Старый ламповый осцилограф" }); // read with a mistake
+  await send("/pages/3", "PUT", { text: "Третья страница." });
+
+  // what the editor asks for, and only the administrator may
+  expect((await call(lan, `/api/admin/ocr/${pdf}/pages`, { cookie: readerCookie })).status).toBe(403);
+  expect((await call(lan, `/api/admin/ocr/${pdf}/pages`)).status).toBe(401);
+  expect((await send("/pages", "GET")).body).toMatchObject({ pages: 3, done: 2, edited: 0, items: [{ page: 1, text: "Старый ламповый осцилограф", edited: false }, { page: 3, text: "Третья страница.", edited: false }] });
+  expect((await send("/pages?from=2&to=3", "GET")).body.items.map((i: { page: number }) => i.page)).toEqual([3]);
+  expect((await send("/pages?from=0", "GET")).status).toBe(400);
+  expect((await call(lan, "/api/admin/ocr/nope/pages", { cookie: adminCookie })).status).toBe(404);
+
+  // a correction: searched at once, kept against a second reading, and counted
+  expect((await send("/edit/1", "PUT", { text: "Старый ламповый осциллограф\nс экраном" }, readerCookie)).status).toBe(403);
+  expect((await send("/edit/1", "PUT", { text: 5 })).status).toBe(400);
+  expect((await send("/edit/4", "PUT", { text: "outside the book" })).status).toBe(404);
+  expect((await send("/edit/1", "PUT", { text: "Старый ламповый осциллограф\nс экраном" })).body).toEqual({ done: 2, pages: 3, edited: 1 });
+  expect((await send("/edit/2", "PUT", { text: "Вторая страница, написанная вручную." })).body).toEqual({ done: 3, pages: 3, edited: 2 }); // a page that was never read
+  expect((await call(lan, "/api/fulltext?q=осциллограф")).body.books.map((b: { id: string }) => b.id)).toEqual([pdf]);
+  expect((await call(lan, "/api/fulltext?q=осцилограф")).body.books).toEqual([]); // the mistake is gone from search
+  await send("/pages/1", "PUT", { text: "Совсем другое чтение" });
+  expect((await send("/pages", "GET")).body.items[0]).toEqual({ page: 1, text: "Старый ламповый осциллограф\nс экраном", edited: true });
+  expect((await call(lan, "/api/admin/ocr", { cookie: adminCookie })).body.books.find((b: { id: string }) => b.id === pdf)).toMatchObject({ pages: 3, done: 3, edited: 2 });
+
+  // the book as a file
+  const file = await fetch(`${lan}/api/admin/ocr/${pdf}/text?format=md&lang=ru`, { headers: { Cookie: adminCookie } });
+  expect(file.status).toBe(200);
+  expect(file.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+  expect(file.headers.get("content-disposition")).toContain("attachment");
+  expect(file.headers.get("content-disposition")).toContain("filename*=UTF-8''three.md");
+  expect(await file.text()).toBe("# three\n\n## Страница 1\n\nСтарый ламповый осциллограф\nс экраном\n\n## Страница 2\n\nВторая страница, написанная вручную.\n\n## Страница 3\n\nТретья страница.\n");
+  const plain = await fetch(`${lan}/api/admin/ocr/${pdf}/text?format=txt`, { headers: { Cookie: adminCookie } });
+  expect(plain.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+  expect((await plain.text()).startsWith("three\n\n[Page 1]\n\n")).toBe(true);
+  expect((await send("/text?format=docx", "GET")).status).toBe(400);
+  expect((await call(lan, `/api/admin/ocr/${pdf}/text`, { cookie: readerCookie })).status).toBe(403);
+
+  // taking back: to what was read, or to unread for the page nobody had read
+  expect((await send("/edit/1", "DELETE", undefined, readerCookie)).status).toBe(403);
+  expect((await send("/edit/1", "DELETE")).body).toEqual({ page: { page: 1, text: "Старый ламповый осцилограф", edited: false } });
+  expect((await send("/edit/2", "DELETE")).body).toEqual({ page: null });
+  expect((await send("/edit/3", "DELETE")).status).toBe(404); // never corrected
+  expect((await send("/pages", "GET")).body).toMatchObject({ done: 2, edited: 0 });
+  expect((await call(lan, "/api/fulltext?q=осцилограф")).body.books).toHaveLength(1);
+
+  await send("", "DELETE");
+  await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie });
+});
+
 test("the engine that reads pictures is served from a fixed list, to anybody, with no way to reach other files", async () => {
   for (const [name, type, least] of [["worker.min.js", "text/javascript", 10_000], ["tesseract.min.js", "text/javascript", 10_000], ["core/tesseract-core-simd-lstm.wasm.js", "text/javascript", 1_000_000], ["lang/rus.traineddata.gz", "application/octet-stream", 1_000_000], ["lang/eng.traineddata.gz", "application/octet-stream", 1_000_000]] as const) {
     const res = await fetch(`${lan}/ocr/${name}`);

@@ -28,7 +28,7 @@ import type { Shares } from "./shares";
 import type { TunnelController } from "./tunnelController";
 import index from "../web/index.html";
 import { COMPONENTS, REPO_URL, SITE_URL, VERSION } from "./about";
-import { MAX_PAGES, validLang } from "./ocr";
+import { exportFormat, MAX_PAGES, renderOcrText, validLang } from "./ocr";
 
 export interface App {
   library: Library;
@@ -821,6 +821,7 @@ function buildRoutes(app: App, origin: Origin) {
           size: book.size,
           pages: ocr?.pages ?? null,
           done: ocr?.done ?? 0,
+          edited: ocr?.edited ?? 0,
           lang: ocr?.lang ?? null,
         }));
         const status = app.fullText.status();
@@ -849,6 +850,55 @@ function buildRoutes(app: App, origin: Origin) {
     },
     "/api/admin/ocr/:id": {
       DELETE: admin((req) => (sameOrigin(req) ? json({ removed: app.fullText.ocr.remove(param(req, "id")) }) : forbidden())),
+    },
+    // the text of a book for the editor: the pages that have an entry (read or written), optionally a range of them
+    "/api/admin/ocr/:id/pages": {
+      GET: admin((req) => {
+        const id = param(req, "id");
+        const progress = app.fullText.ocr.progress(id);
+        if (!progress) return notFound();
+        const url = new URL(req.url);
+        const from = url.searchParams.has("from") ? wholeNumber(url.searchParams.get("from")!) : 1;
+        const to = url.searchParams.has("to") ? wholeNumber(url.searchParams.get("to")!) : MAX_PAGES;
+        if (from < 1 || to < from) return bad();
+        return json({ ...progress, items: app.fullText.ocr.pages(id, from, to) }, 200, { "Cache-Control": "no-store" });
+      }),
+    },
+    // a person writes the text of a page; the reading never replaces it, and DELETE takes it back to what was read
+    "/api/admin/ocr/:id/edit/:page": {
+      PUT: admin(async (req) => {
+        const data = await body(req);
+        if (typeof data?.text !== "string") return bad();
+        const progress = app.fullText.ocr.edit(param(req, "id"), wholeNumber(param(req, "page")), data.text);
+        return progress ? json(progress) : notFound();
+      }),
+      DELETE: admin((req) => {
+        if (!sameOrigin(req)) return forbidden();
+        const restored = app.fullText.ocr.restore(param(req, "id"), wholeNumber(param(req, "page")));
+        return restored ? json(restored) : notFound();
+      }),
+    },
+    // the text of a book as a file: Markdown (a heading per page) or plain text
+    "/api/admin/ocr/:id/text": {
+      GET: admin((req) => {
+        const id = param(req, "id");
+        const book = app.library.byId(id);
+        const progress = app.fullText.ocr.progress(id);
+        if (!book || !progress) return notFound();
+        const url = new URL(req.url);
+        const format = url.searchParams.get("format") ?? "md";
+        if (!exportFormat(format)) return bad();
+        const title = titleOf(book);
+        const text = renderOcrText({ title, pages: app.fullText.ocr.pages(id), total: progress.pages, done: progress.done, format, lang: url.searchParams.get("lang") ?? undefined });
+        const fileName = `${title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim().slice(0, 120) || "book"}.${format}`;
+        return new Response(text, {
+          headers: {
+            "Content-Type": `${format === "md" ? "text/markdown" : "text/plain"}; charset=utf-8`,
+            "Content-Disposition": `attachment; filename="book.${format}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+            "Cache-Control": "no-store",
+          },
+        });
+      }),
     },
     // ----- editing the library: real changes to the files on disk -----
     // ----- books fetched from a shared Google Drive link -----
