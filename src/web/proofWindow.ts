@@ -240,11 +240,18 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   const figureButton = el("button", { type: "button", class: "btn small proof-figure", textContent: t("proof.figure.mode"), title: t("proof.figure.hint") });
   figureButton.setAttribute("aria-pressed", "false");
   const hint = el("p", { class: "muted small proof-hint", textContent: t("proof.figure.hint"), hidden: true });
+  let hintTimer: ReturnType<typeof setTimeout> | undefined;
+  /** What just happened, in the line of the mode: with a finger the text beside the scan may be out of sight. */
+  const flashHint = (text: string) => {
+    hint.textContent = text;
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => (hint.textContent = t("proof.figure.hint")), 3500);
+  };
   let selecting = false;
   const selectMode = (on: boolean) => {
     selecting = on;
     scroller.classList.toggle("selecting", on);
-    figureButton.classList.toggle("active", on);
+    figureButton.classList.toggle("primary", on);
     figureButton.setAttribute("aria-pressed", String(on));
     hint.hidden = !on;
   };
@@ -293,7 +300,10 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
 
   /** Cuts the framed part of a page out of the PDF (drawn again for it, sharper than the page on the screen), keeps it on the server and writes its reference into the text. */
   async function cutFigure(slot: Slot, frame: { x: number; y: number; w: number; h: number }): Promise<void> {
-    const say = (text: string) => (slot.state.textContent = text);
+    const say = (text: string, shown = text) => {
+      slot.state.textContent = text;
+      flashHint(shown);
+    };
     say(t("proof.figure.cutting"));
     try {
       const page = await doc.getPage(slot.n);
@@ -317,7 +327,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
       imageCount++;
       touched = true;
       showZip();
-      say(t("proof.figure.added"));
+      say(t("proof.figure.added"), t("proof.figure.addedTo", { n: slot.n }));
     } catch {
       say(t("proof.figure.failed"));
     }

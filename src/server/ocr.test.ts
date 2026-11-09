@@ -188,6 +188,16 @@ test("a database from before pictures keeps its pages and gains the column for t
   expect(ocr.edit("b", 1, "![x](images/p001-1.png)")).toMatchObject({ edited: 1 });
 });
 
+test("the names of the pictures a text refers to are all found, whatever was searched before", () => {
+  const ocr = fresh();
+  ocr.start("b", 2, "rus");
+  const text = "![А](images/p001-1.png)\n\n![Б](images/p001-2.png)";
+  ocr.edit("b", 1, text); // looks for references in the text just as a later search does
+  ocr.edit("b", 2, text);
+  expect(imagesIn(text)).toEqual(["p001-1.png", "p001-2.png"]);
+  expect(imagesIn(text)).toEqual(["p001-1.png", "p001-2.png"]);
+});
+
 test("the book as a file leaves the pictures out of plain text and puts them into a zip beside the Markdown", () => {
   const pages = [
     { page: 1, text: "Текст.\n\n![Рис. 1](images/p001-1.png)\n\nПодпись.", edited: true },

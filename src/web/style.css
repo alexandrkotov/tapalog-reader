@@ -95,7 +95,6 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .proof-pages.selecting .proof-scan { cursor: crosshair; touch-action: none; user-select: none; }
 .proof-pages.selecting .proof-canvas { pointer-events: none; }
 .proof-rect { position: absolute; box-sizing: border-box; border: 2px solid var(--accent, #2563eb); background: rgba(37, 99, 235, 0.15); pointer-events: none; }
-.proof-figure.active { background: var(--accent, #2563eb); border-color: var(--accent, #2563eb); color: #fff; }
 .proof-figs { flex: none; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0; }
 .proof-figs:empty { display: none; }
 .proof-fig { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; }
@@ -112,6 +111,9 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 @media (max-width: 760px) {
   .proof-row { grid-template-columns: minmax(0, 1fr); }
   .proof-side { min-height: 45vh; }
+  .proof-bar { gap: 4px 12px; }
+  .proof-actions { gap: 6px; }
+  .proof-actions .btn { height: 28px; padding: 0 8px; font-size: 13px; }
 }
 .ocr-proof { white-space: nowrap; }
 .ocr-list { display: flex; flex-direction: column; max-height: 45vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }

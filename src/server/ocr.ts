@@ -18,14 +18,12 @@ export function withoutImages(text: string): string {
   return text.replace(IMAGE_REF, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-const hasImages = (text: string): boolean => {
-  IMAGE_REF.lastIndex = 0;
-  return IMAGE_REF.test(text);
-};
+/** Without the g flag: a regular expression with it remembers where it stopped, and the next search would begin there. */
+const hasImages = (text: string): boolean => new RegExp(IMAGE_REF.source).test(text);
 
 /** The names of the pictures a text refers to. */
 export function imagesIn(text: string): string[] {
-  return [...text.matchAll(IMAGE_REF)].map((m) => m[0].slice(m[0].lastIndexOf("(") + 1, -1).slice("images/".length));
+  return [...text.matchAll(new RegExp(IMAGE_REF))].map((m) => m[0].slice(m[0].lastIndexOf("(") + 1, -1).slice("images/".length));
 }
 
 export interface OcrImage {

@@ -1,4 +1,5 @@
 import { expect } from "bun:test";
+import { strFromU8, unzipSync } from "fflate";
 import type { Browser, BrowserContext, Page } from "playwright-core";
 import { PAGE_H, PAGE_W, scanPdf, scanPictures } from "./fixtures";
 import { ADMIN, after, api, before, e2e, launch, signedIn, startServer, watchErrors, type Instance } from "./harness";
@@ -99,12 +100,12 @@ e2e("a figure is framed on the scan, cut from the PDF sharper than it is shown, 
 
   // the downloads came with the started book: the zip has the Markdown and its pictures
   expect(await page.isVisible(".proof-download-md")).toBe(true);
-  const zip = await page.evaluate(async (url) => {
-    const res = await fetch(url);
-    return { type: res.headers.get("content-type"), size: (await res.arrayBuffer()).byteLength };
-  }, `${inst.url}/api/admin/ocr/${await bookIdOf()}/text?format=zip`);
-  expect(zip.type).toBe("application/zip");
-  expect(zip.size).toBeGreaterThan(info.width);
+  const zip = await ctx.request.get(`${inst.url}/api/admin/ocr/${await bookIdOf()}/text?format=zip`);
+  expect(zip.headers()["content-type"]).toBe("application/zip");
+  const files = unzipSync(new Uint8Array(await zip.body()));
+  expect(Object.keys(files).sort()).toEqual(["book.md", "images/p001-1.png", "images/p001-2.png"]); // every figure the Markdown refers to
+  expect(strFromU8(files["book.md"]!)).toContain("![Fig. 1.1](images/p001-1.png)");
+  expect(files["images/p001-1.png"]!.length).toBe(items[0]!.size);
 
   // Esc leaves the mode first and only the next one closes the window
   await page.keyboard.press("Escape");
