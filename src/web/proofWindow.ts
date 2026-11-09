@@ -1,7 +1,7 @@
 import type * as Pdfjs from "pdfjs-dist/build/pdf.min.mjs";
 import { lang, t } from "./i18n";
 import { pdfDocumentOptions } from "./readers/pdfAssets";
-import { api, ApiError, el, openModal, store } from "./ui";
+import { api, ApiError, el, formatBytes, openModal, store } from "./ui";
 
 interface PageItem {
   page: number;
@@ -82,6 +82,8 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   addEventListener("beforeunload", warn);
   /** Esc leaves the figure mode (set once the window is built) before it closes the window. */
   let leaveFigureMode: (() => boolean) | null = null;
+  /** Stops the PDF being made when the window is closed. */
+  let pdfAbort: AbortController | null = null;
   const onEscape = (e: KeyboardEvent) => {
     if (e.key === "Escape" && leaveFigureMode?.()) e.stopImmediatePropagation();
   };
@@ -90,6 +92,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     closed = true;
     removeEventListener("beforeunload", warn);
     removeEventListener("keydown", onEscape, true);
+    pdfAbort?.abort();
     observer?.disconnect();
     void task?.destroy();
     for (const slot of slots.values()) if (slot.text.value !== slot.sent) void save(slot); // what was typed last is not lost with the window
@@ -147,6 +150,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     started = true;
     for (const button of downloads) button.hidden = false;
     showZip();
+    pdfButton.hidden = false;
   }
 
   const counts = { done: list.done, edited: list.edited };
@@ -236,6 +240,70 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   const zipButton = el("button", { type: "button", class: "btn small proof-download proof-download-zip", textContent: t("proof.download.zip"), hidden: !started || imageCount === 0 });
   zipButton.addEventListener("click", () => void download("zip"));
   const showZip = () => (zipButton.hidden = !started || imageCount === 0);
+
+  // a new PDF made of the text and the figures: set by the browser and only downloaded, never put into the library
+  const pdfButton = el("button", { type: "button", class: "btn small proof-pdf-open", textContent: t("proof.pdf.button"), hidden: !started });
+  pdfButton.setAttribute("aria-expanded", "false");
+  const formatSelect = el("select", { class: "proof-pdf-format" }, el("option", { value: "a4", textContent: "A4" }), el("option", { value: "a5", textContent: "A5" }));
+  formatSelect.value = store.get("tapalog.pdfFormat") === "a5" ? "a5" : "a4";
+  const headingsBox = el("input", { type: "checkbox", class: "proof-pdf-headings", checked: store.get("tapalog.pdfHeadings") !== "0" });
+  const runButton = el("button", { type: "button", class: "btn small primary proof-pdf-run", textContent: t("proof.pdf.run") });
+  const pdfState = el("span", { class: "muted small proof-pdf-state" });
+  pdfState.setAttribute("role", "status");
+  const pdfPanel = el("div", { class: "proof-pdf", hidden: true }, el("label", {}, t("proof.pdf.format"), formatSelect), el("label", {}, headingsBox, t("proof.pdf.headings")), runButton, pdfState);
+  pdfButton.addEventListener("click", () => {
+    pdfPanel.hidden = !pdfPanel.hidden;
+    pdfButton.setAttribute("aria-expanded", String(!pdfPanel.hidden));
+  });
+  async function exportPdf(): Promise<void> {
+    const format = formatSelect.value === "a5" ? "a5" : "a4";
+    store.set("tapalog.pdfFormat", format);
+    store.set("tapalog.pdfHeadings", headingsBox.checked ? "1" : "0");
+    runButton.disabled = true;
+    const abort = (pdfAbort = new AbortController());
+    pdfState.textContent = t("proof.pdf.preparing");
+    try {
+      await flush(); // what was typed is on the server before the book is read from it
+      const data = await api<Listing>(`${base}/pages`);
+      const pages = data.items.filter((item) => item.text.trim()).map((item) => ({ page: item.page, text: item.text }));
+      if (!pages.length) {
+        pdfState.textContent = t("proof.pdf.empty");
+        return;
+      }
+      const { buildBookPdf } = await import("./proofPdfFile"); // the PDF library comes only now
+      const bytes = await buildBookPdf(
+        {
+          title: book.title,
+          note: data.done < data.pages ? `${t("proof.stats", { done: data.done, pages: data.pages })}.` : undefined,
+          pages,
+          pageLabel: headingsBox.checked ? (n) => t("proof.page", { n }) : null,
+          missing: (alt) => t("proof.pdf.missing", { alt }),
+          figure: async (name) => {
+            const res = await fetch(`${base}/images/${name}`, { credentials: "same-origin", signal: abort.signal });
+            if (!res.ok) throw new ApiError(res.status, res.statusText);
+            return res.blob();
+          },
+        },
+        {
+          format,
+          signal: abort.signal,
+          onProgress: (p) => (pdfState.textContent = t(p.stage === "figures" ? "proof.pdf.figures" : "proof.pdf.pages", { done: p.done, total: p.total })),
+        },
+      );
+      const name = `${book.title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim().slice(0, 120) || "book"}.pdf`;
+      const link = el("a", { href: URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" })), download: name });
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
+      pdfState.textContent = t("proof.pdf.done", { name, size: formatBytes(bytes.length) });
+    } catch (err) {
+      pdfState.textContent = abort.signal.aborted || (err instanceof DOMException && err.name === "AbortError") ? "" : t("proof.pdf.failed");
+    } finally {
+      runButton.disabled = false;
+    }
+  }
+  runButton.addEventListener("click", () => void exportPdf());
   const scroller = el("div", { class: "proof-pages" });
   const figureButton = el("button", { type: "button", class: "btn small proof-figure", textContent: t("proof.figure.mode"), title: t("proof.figure.hint") });
   figureButton.setAttribute("aria-pressed", "false");
@@ -292,7 +360,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const row = scroller.children[Math.min(Math.max(n, 1), list.pages) - 1] as HTMLElement | undefined;
     if (row) scroller.scrollTo({ top: row.offsetTop });
   });
-  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, figureButton, ...downloads, zipButton)), hint, scroller);
+  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, figureButton, ...downloads, zipButton, pdfButton)), pdfPanel, hint, scroller);
   for (const image of list.images) {
     const slot = slots.get(image.page);
     if (slot) addThumb(slot, image.name);
