@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { cleanOcrText, MAX_PAGE_CHARS, validLang } from "./ocr";
+import { cleanBoxes, cleanOcrText, MAX_BOXES, MAX_PAGE_CHARS, validLang } from "./ocr";
 
 test("a word split by a hyphen at the end of a line is joined, and the lines of a paragraph run on", () => {
   expect(cleanOcrText("Основные параметры этих термосопротивлений при-\nведены в табл. 10-4.\nНовая строка.")).toBe("Основные параметры этих термосопротивлений приведены в табл. 10-4. Новая строка.");
@@ -85,6 +85,72 @@ test("pages come back in a range, in order", () => {
   for (const p of [4, 2, 5, 1]) ocr.put("b", p, `страница ${p}`);
   expect(ocr.pages("b").map((p) => p.page)).toEqual([1, 2, 4, 5]);
   expect(ocr.pages("b", 2, 4).map((p) => p.text)).toEqual(["страница 2", "страница 4"]);
+});
+
+test("the frames of words are kept to their shape: the corners held to the page, frames with no area and words with nothing to show dropped, and anything of another shape refused", () => {
+  expect(cleanBoxes([["Лампа", 0.1, 0.2, 0.3, 0.25]])).toEqual([["Лампа", 0.1, 0.2, 0.3, 0.25]]);
+  expect(cleanBoxes([["a", -0.5, 0.123456, 1.7, 0.2]])).toEqual([["a", 0, 0.1235, 1, 0.2]]); // held to the page, four decimals
+  expect(cleanBoxes([["x", 0.5, 0.5, 0.5, 0.6], ["y", 0.1, 0.4, 0.2, 0.3], [" \u0001 ", 0.1, 0.1, 0.2, 0.2], ["ok", 0.1, 0.1, 0.2, 0.2]])).toEqual([["ok", 0.1, 0.1, 0.2, 0.2]]);
+  expect(cleanBoxes([["a b\u0000c", 0.1, 0.1, 0.2, 0.2]])).toEqual([["abc", 0.1, 0.1, 0.2, 0.2]]); // a word has no space inside
+  expect(cleanBoxes([])).toEqual([]);
+  for (const bad of [null, "x", {}, [["a", 1, 2, 3]], [["a", 1, 2, 3, 4, 5]], [[1, 0, 0, 1, 1]], [["a", "0", 0, 1, 1]], [["a", 0, 0, NaN, 1]], [["a", 0, 0, Infinity, 1]], ["abcde"]]) expect(cleanBoxes(bad)).toBeNull();
+  const many = Array.from({ length: MAX_BOXES + 50 }, () => ["w", 0.1, 0.1, 0.2, 0.2]);
+  expect(cleanBoxes(many)).toHaveLength(MAX_BOXES); // the rest of a halftone's dots is not kept
+});
+
+test("the frames of a page's words are kept with its reading, replaced by the next one, hidden once a person writes the page, and gone with the page or the book", () => {
+  const ocr = fresh();
+  ocr.start("b", 3, "rus");
+  const frames = (word: string): [string, number, number, number, number][] => [[word, 0.1, 0.1, 0.4, 0.15]];
+  ocr.put("b", 1, "Тихий приёмник", frames("Тихий"));
+  ocr.put("b", 2, "Без рамок");
+  ocr.put("b", 3, "Третья", frames("Третья"));
+  expect(ocr.boxes("b", 1)).toEqual(frames("Тихий"));
+  expect(ocr.boxes("b", 2)).toBeNull(); // read by a recognizer that gave none
+  expect(ocr.boxes("b", 9)).toBeNull();
+  expect(ocr.boxes("nope", 1)).toBeNull();
+
+  ocr.put("b", 1, "Другое чтение", frames("Другое")); // the next reading brings its own
+  expect(ocr.boxes("b", 1)).toEqual(frames("Другое"));
+  ocr.put("b", 1, "Чтение без рамок"); // and one without leaves none: they would belong to the old words
+  expect(ocr.boxes("b", 1)).toBeNull();
+  ocr.put("b", 1, "   ", frames("лишнее")); // a page with no text has no words to lay over it
+  expect(ocr.boxes("b", 1)).toBeNull();
+
+  // written by hand: the words are no longer the frames', so none are shown; taking the writing back shows them again
+  ocr.put("b", 3, "Третья", frames("Третья"));
+  ocr.edit("b", 3, "Третья, поправлено");
+  expect(ocr.boxes("b", 3)).toBeNull();
+  ocr.put("b", 3, "Совсем другое", frames("Другое")); // a page written by hand is not touched by a reading, frames included
+  ocr.restore("b", 3);
+  expect(ocr.boxes("b", 3)).toEqual(frames("Третья"));
+
+  // a page that was never read, written and then taken back, is unread again and has nothing
+  ocr.edit("b", 2, "Написано");
+  ocr.restore("b", 2);
+  expect(ocr.boxes("b", 2)).toBeNull();
+
+  ocr.remove("b");
+  expect(ocr.boxes("b", 3)).toBeNull();
+  ocr.start("b", 3, "rus");
+  ocr.put("b", 3, "Снова", frames("Снова"));
+  ocr.start("b", 4, "rus"); // another page count: another file, and none of the old frames
+  expect(ocr.boxes("b", 3)).toBeNull();
+});
+
+test("a database from before frames keeps its pages and gains the table for them", () => {
+  const db = new Database(":memory:");
+  db.run("CREATE TABLE ocr_docs (id TEXT PRIMARY KEY, pages INTEGER NOT NULL, lang TEXT NOT NULL, updated INTEGER NOT NULL)");
+  db.run("CREATE TABLE ocr_pages (id TEXT NOT NULL, page INTEGER NOT NULL, row INTEGER, edited INTEGER NOT NULL DEFAULT 0, orig TEXT, md TEXT, PRIMARY KEY (id, page)) WITHOUT ROWID");
+  db.run("CREATE VIRTUAL TABLE ocr_chunks USING fts5(text, id UNINDEXED, loc UNINDEXED, tokenize = 'unicode61 remove_diacritics 2')");
+  db.run("INSERT INTO ocr_docs VALUES ('old', 1, 'rus', 1)");
+  const row = Number(db.run("INSERT INTO ocr_chunks (text, id, loc) VALUES ('старый текст', 'old', '{\"page\":1}')").lastInsertRowid);
+  db.run("INSERT INTO ocr_pages (id, page, row) VALUES ('old', 1, ?)", [row]);
+  const ocr = new OcrText(db);
+  expect(ocr.pages("old")).toEqual([{ page: 1, text: "старый текст", edited: false }]);
+  expect(ocr.boxes("old", 1)).toBeNull(); // read before frames were kept
+  ocr.put("old", 1, "новое чтение", [["новое", 0.1, 0.1, 0.2, 0.2]]);
+  expect(ocr.boxes("old", 1)).toEqual([["новое", 0.1, 0.1, 0.2, 0.2]]);
 });
 
 test("a database made before pages could be written is brought up to date and keeps its text", () => {

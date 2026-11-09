@@ -786,6 +786,42 @@ test("the administrator's browser reads a scan page by page and the server keeps
   await call(lan, "/api/admin/fulltext", { body: { enabled: false }, cookie: adminCookie }); // as it was: nothing left running when the library closes
 });
 
+test("the frames of the words of a scanned page come with its text, and whoever may read the book gets them to make the scan selectable", async () => {
+  const books = (await call(lan, "/api/library", { cookie: adminCookie })).body.books as { id: string; path: string }[];
+  const pdf = books.find((b) => b.path === "sub/three.pdf")!.id;
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Scanner", password: "scan123" } })).cookie!;
+  const put = (page: number, body: unknown, cookie = adminCookie) => call(lan, `/api/admin/ocr/${pdf}/pages/${page}`, { method: "PUT", body, cookie });
+  const frames = (await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).status; // before anything was read
+  expect(frames).toBe(404);
+
+  await call(lan, `/api/admin/ocr/${pdf}/start`, { body: { pages: 3, lang: "rus" }, cookie: adminCookie });
+  const boxes = [["Лампа", 0.1, 0.2, 0.3, 0.25], ["схема", 0.32, 0.2, 0.5, 0.25]];
+  expect((await put(1, { text: "Лампа схема", boxes })).body).toEqual({ done: 1, pages: 3 });
+  expect((await put(2, { text: "Без рамок" })).status).toBe(200); // a recognizer that sends no frames still works
+
+  // the page's words, to a reader (they are as open as the book's text in the search)
+  expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).body).toEqual({ boxes });
+  expect((await call(lan, `/api/ocr/${pdf}/boxes/2`, { cookie: readerCookie })).status).toBe(404); // none were sent
+  expect((await call(lan, `/api/ocr/${pdf}/boxes/x`, { cookie: readerCookie })).status).toBe(404);
+  expect((await call(lan, `/api/ocr/nope/boxes/1`, { cookie: readerCookie })).status).toBe(404);
+  expect((await fetch(`${lan}/api/ocr/${pdf}/boxes/1`, { headers: { Cookie: readerCookie } })).headers.get("cache-control")).toBe("no-store");
+
+  // frames of another shape are refused, and the text with them: a reading is kept whole or not at all
+  for (const bad of ["Лампа", [["a", 1, 2, 3]], [["a", "0", 0, 1, 1]], { a: 1 }, null]) expect((await put(1, { text: "Испорчено", boxes: bad })).status).toBe(400);
+  expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).body).toEqual({ boxes });
+  expect((await call(lan, `/api/admin/ocr/${pdf}/pages`, { cookie: adminCookie })).body.items[0].text).toBe("Лампа схема");
+  expect((await put(1, { text: "x", boxes }, readerCookie)).status).toBe(403); // only the administrator writes them
+
+  // a page written by hand shows no frames, and taking it back shows them again
+  await call(lan, `/api/admin/ocr/${pdf}/edit/1`, { method: "PUT", body: { text: "Лампа, схема" }, cookie: adminCookie });
+  expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).status).toBe(404);
+  await call(lan, `/api/admin/ocr/${pdf}/edit/1`, { method: "DELETE", cookie: adminCookie });
+  expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).body).toEqual({ boxes });
+
+  await call(lan, `/api/admin/ocr/${pdf}`, { method: "DELETE", cookie: adminCookie }); // as it was
+  expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).status).toBe(404);
+});
+
 test("the administrator corrects the text of a scanned page, takes the correction back, and saves the book as a file", async () => {
   const books = (await call(lan, "/api/library", { cookie: adminCookie })).body.books as { id: string; path: string; name: string }[];
   const pdf = books.find((b) => b.path === "sub/three.pdf")!.id;

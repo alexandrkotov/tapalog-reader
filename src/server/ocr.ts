@@ -26,6 +26,29 @@ export function imagesIn(text: string): string[] {
   return [...text.matchAll(new RegExp(IMAGE_REF))].map((m) => m[0].slice(m[0].lastIndexOf("(") + 1, -1).slice("images/".length));
 }
 
+/** A word the recognizer found on a page: the word, then the corners of its frame as parts of the page's width and height, from the top left. */
+export type OcrBox = [word: string, x0: number, y0: number, x1: number, y1: number];
+/** A page holds a few thousand words at most; what a halftone makes of its dots beyond this is not kept. */
+export const MAX_BOXES = 8000;
+const MAX_BOX_WORD = 100;
+
+/**
+ * The frames of the words of a page, made fit to keep: the shape must be right (null when it is not), the words lose what cannot
+ * be shown, the corners are held to the page and to four decimals, and a frame with no area is dropped.
+ */
+export function cleanBoxes(raw: unknown): OcrBox[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_BOXES * 4) return null;
+  const out: OcrBox[] = [];
+  for (const item of raw) {
+    if (!Array.isArray(item) || item.length !== 5 || typeof item[0] !== "string" || item.slice(1).some((n) => typeof n !== "number" || !Number.isFinite(n))) return null;
+    // eslint-disable-next-line no-control-regex
+    const word = item[0].replace(/[\u0000-\u001f\u007f\u2028\u2029\s]+/g, "").slice(0, MAX_BOX_WORD);
+    const [x0, y0, x1, y1] = (item.slice(1) as number[]).map((n) => Math.round(Math.min(1, Math.max(0, n)) * 10000) / 10000) as [number, number, number, number];
+    if (word && x1 > x0 && y1 > y0 && out.length < MAX_BOXES) out.push([word, x0, y0, x1, y1]);
+  }
+  return out;
+}
+
 export interface OcrImage {
   name: string;
   page: number;
@@ -142,6 +165,8 @@ export class OcrText {
     db.run("CREATE TABLE IF NOT EXISTS ocr_pages (id TEXT NOT NULL, page INTEGER NOT NULL, row INTEGER, edited INTEGER NOT NULL DEFAULT 0, orig TEXT, PRIMARY KEY (id, page)) WITHOUT ROWID");
     // `md`: the whole text of a page that refers to pictures (the index holds it without the references); null for a page that does not
     db.run("CREATE TABLE IF NOT EXISTS ocr_images (id TEXT NOT NULL, name TEXT NOT NULL, page INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (id, name)) WITHOUT ROWID");
+    // `data`: the frames of the words of a page as the recognizer read it (JSON, see `cleanBoxes`); a page written by hand keeps them, hidden, for `restore`
+    db.run("CREATE TABLE IF NOT EXISTS ocr_boxes (id TEXT NOT NULL, page INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY (id, page)) WITHOUT ROWID");
     const columns = (db.query("PRAGMA table_info(ocr_pages)").all() as { name: string }[]).map((c) => c.name);
     if (!columns.includes("edited")) db.run("ALTER TABLE ocr_pages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0");
     if (!columns.includes("orig")) db.run("ALTER TABLE ocr_pages ADD COLUMN orig TEXT");
@@ -157,8 +182,11 @@ export class OcrText {
     return (this.db.query("SELECT page FROM ocr_pages WHERE id = ? ORDER BY page").all(id) as { page: number }[]).map((r) => r.page);
   }
 
-  /** Stores the text of one page (replacing an earlier reading of it). Null when the book was not started or the page is not in it. */
-  put(id: string, page: number, raw: string): { done: number; pages: number } | null {
+  /**
+   * Stores the text of one page (replacing an earlier reading of it) and, when the recognizer gave them, the frames of its words;
+   * a reading without frames leaves none behind, for they would belong to the old one. Null when the book was not started or the page is not in it.
+   */
+  put(id: string, page: number, raw: string, boxes: OcrBox[] = []): { done: number; pages: number } | null {
     const doc = this.db.query("SELECT pages FROM ocr_docs WHERE id = ?").get(id) as { pages: number } | null;
     if (!doc || !Number.isInteger(page) || page < 1 || page > doc.pages) return null;
     const text = cleanOcrText(raw);
@@ -169,9 +197,17 @@ export class OcrText {
       let row: number | null = null;
       if (text) row = Number(this.db.run("INSERT INTO ocr_chunks (text, id, loc) VALUES (?, ?, ?)", [text, id, JSON.stringify({ page })]).lastInsertRowid);
       this.db.run("INSERT INTO ocr_pages (id, page, row) VALUES (?, ?, ?) ON CONFLICT(id, page) DO UPDATE SET row = excluded.row", [id, page, row]);
+      if (text && boxes.length) this.db.run("INSERT INTO ocr_boxes (id, page, data) VALUES (?, ?, ?) ON CONFLICT(id, page) DO UPDATE SET data = excluded.data", [id, page, JSON.stringify(boxes)]);
+      else this.db.run("DELETE FROM ocr_boxes WHERE id = ? AND page = ?", [id, page]);
       this.db.run("UPDATE ocr_docs SET updated = ? WHERE id = ?", [Date.now(), id]);
     })();
     return { done: (this.db.query("SELECT COUNT(*) AS n FROM ocr_pages WHERE id = ?").get(id) as { n: number }).n, pages: doc.pages };
+  }
+
+  /** The frames of the words of a page, for the reader to lay over the scan. Null when the page has none, or has been written by hand (its words are no longer the frames'). */
+  boxes(id: string, page: number): OcrBox[] | null {
+    const row = this.db.query("SELECT b.data, p.edited FROM ocr_boxes b JOIN ocr_pages p ON p.id = b.id AND p.page = b.page WHERE b.id = ? AND b.page = ?").get(id, page) as { data: string; edited: number } | null;
+    return row && !row.edited ? (JSON.parse(row.data) as OcrBox[]) : null;
   }
 
   private textOf(row: number | null): string {
@@ -218,6 +254,7 @@ export class OcrText {
       if (old.row) this.db.run("DELETE FROM ocr_chunks WHERE rowid = ?", [old.row]);
       if (old.orig === null) {
         this.db.run("DELETE FROM ocr_pages WHERE id = ? AND page = ?", [id, page]);
+        this.db.run("DELETE FROM ocr_boxes WHERE id = ? AND page = ?", [id, page]);
       } else {
         const row = old.orig ? Number(this.db.run("INSERT INTO ocr_chunks (text, id, loc) VALUES (?, ?, ?)", [old.orig, id, JSON.stringify({ page })]).lastInsertRowid) : null;
         this.db.run("UPDATE ocr_pages SET row = ?, edited = 0, orig = NULL, md = NULL WHERE id = ? AND page = ?", [row, id, page]);
@@ -293,6 +330,7 @@ export class OcrText {
       for (const r of this.db.query("SELECT row FROM ocr_pages WHERE id = ? AND row IS NOT NULL").all(id) as { row: number }[]) this.db.run("DELETE FROM ocr_chunks WHERE rowid = ?", [r.row]);
       this.db.run("DELETE FROM ocr_pages WHERE id = ?", [id]);
       this.db.run("DELETE FROM ocr_images WHERE id = ?", [id]);
+      this.db.run("DELETE FROM ocr_boxes WHERE id = ?", [id]);
       this.db.run("DELETE FROM ocr_docs WHERE id = ?", [id]);
     })();
     return pages;

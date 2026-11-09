@@ -29,7 +29,7 @@ import type { Shares } from "./shares";
 import type { TunnelController } from "./tunnelController";
 import index from "../web/index.html";
 import { COMPONENTS, REPO_URL, SITE_URL, VERSION } from "./about";
-import { exportFormat, IMAGE_NAME, MAX_PAGES, renderOcrText, validLang, zipOcrText } from "./ocr";
+import { cleanBoxes, exportFormat, IMAGE_NAME, MAX_PAGES, renderOcrText, validLang, zipOcrText } from "./ocr";
 
 export interface App {
   library: Library;
@@ -855,10 +855,18 @@ function buildRoutes(app: App, origin: Origin) {
       PUT: admin(async (req) => {
         const data = await body(req);
         if (typeof data?.text !== "string") return bad();
-        const progress = app.fullText.ocr.put(param(req, "id"), Number(param(req, "page")), data.text);
+        const boxes = data.boxes === undefined ? [] : cleanBoxes(data.boxes); // the frames of the words, when the recognizer gave them
+        if (!boxes) return bad();
+        const progress = app.fullText.ocr.put(param(req, "id"), Number(param(req, "page")), data.text, boxes);
         return progress ? json(progress) : notFound();
       }),
     },
+    // the frames of the words of a recognized page, for the reader to make the scan selectable: open to whoever may read the book, like its text in the search
+    "/api/ocr/:id/boxes/:page": browse((req) => {
+      const id = param(req, "id");
+      const boxes = app.library.byId(id) ? app.fullText.ocr.boxes(id, wholeNumber(param(req, "page"))) : null;
+      return boxes ? json({ boxes }, 200, { "Cache-Control": "no-store" }) : notFound();
+    }),
     "/api/admin/ocr/:id": {
       DELETE: admin((req) => (sameOrigin(req) ? json({ removed: app.fullText.ocr.remove(param(req, "id")) }) : forbidden())),
     },
