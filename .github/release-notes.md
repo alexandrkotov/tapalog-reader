@@ -1,7 +1,12 @@
 ## English
 
 What's new:
-- **Finding your way in the list of scans.** The window for recognizing scanned pages has a search box (by title or folder), a choice of what to show (all, not recognized, half done, recognized) and an order (by folder, by title, the unrecognized first, the biggest files first; it is remembered). **Select the unrecognized** now ticks only the books on view, so a folder can be picked and recognized on its own, and a line says how many are shown and ticked.
+- **Check the recognized text beside the scan.** **Check the text…** in the window for recognizing scans, and **Check the text beside the scan…** on a PDF's card, open a window with every page as one row: the picture of the scan on the left, the text read from it on the right, scrolling together. Pictures are drawn only near the window, so even a book of a thousand pages opens at once.
+- **Correct it on the spot.** A page is saved by itself a moment after you stop typing (and when you leave it or close the window), a corrected page is marked, and the recognizer never replaces it. **Restore the recognized text** takes a page back to what was read. Search finds the corrected words at once. There is a field to go to a page.
+- **Write a page by hand.** A book that was never recognized opens the same way, with empty pages to type into; nothing is stored until the first page is saved.
+- **Save the book as a file.** **Download Markdown** and **Download text** give the whole text with the number of every page.
+- **A safer Forget.** **Forget the text** now says how many pages you corrected by hand before it deletes them.
+- **Tidier phone.** In the list of scans, the buttons of a book move to their own line instead of squeezing its title.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -15,7 +20,12 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **Удобнее список сканов.** В окне распознавания есть строка поиска (по названию или папке), выбор того, что показывать (все, нераспознанные, наполовину, распознанные), и порядок (по папке, по названию, нераспознанные сверху, крупные файлы сверху; он запоминается). **Выбрать нераспознанные** теперь отмечает только показанные книги, так что можно выбрать папку и распознать её отдельно; строка говорит, сколько книг показано и отмечено.
+- **Проверка распознанного текста рядом со сканом.** **Проверить текст…** в окне распознавания сканов и **Проверить текст рядом со сканом…** на карточке PDF открывают окно, где каждая страница это одна строка: слева картинка скана, справа прочитанный с неё текст, и всё прокручивается вместе. Картинки рисуются только возле окна, поэтому даже книга на тысячу страниц открывается сразу.
+- **Правка на месте.** Страница сохраняется сама через мгновение после последней клавиши (и когда вы уходите с неё или закрываете окно), исправленная страница помечена, а распознавание её не заменяет. **Вернуть распознанное** возвращает страницу к тому, что было прочитано. Поиск находит исправленные слова сразу. Есть поле для перехода к странице.
+- **Страница, написанная вручную.** Книга, которую ещё не распознавали, открывается так же, с пустыми страницами для ввода; пока не сохранена первая страница, ничего не записывается.
+- **Книга как файл.** **Скачать Markdown** и **Скачать текст** отдают весь текст с номером каждой страницы.
+- **Безопаснее «Забыть».** **Забыть текст** теперь говорит, сколько страниц вы исправили вручную, прежде чем их удалить.
+- **Аккуратнее на телефоне.** В списке сканов кнопки книги переходят на отдельную строку и не сдавливают название.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -29,7 +39,12 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **Зручніший список сканів.** У вікні розпізнавання є рядок пошуку (за назвою або текою), вибір того, що показувати (усі, нерозпізнані, наполовину, розпізнані), і порядок (за текою, за назвою, нерозпізнані зверху, великі файли зверху; його запам’ятовано). **Вибрати нерозпізнані** тепер позначає лише показані книги, тож можна вибрати теку й розпізнати її окремо; рядок каже, скільки книг показано й позначено.
+- **Перевірка розпізнаного тексту поруч зі сканом.** **Перевірити текст…** у вікні розпізнавання сканів і **Перевірити текст поруч зі сканом…** на картці PDF відкривають вікно, де кожна сторінка це один рядок: ліворуч картинка скану, праворуч прочитаний із неї текст, і все прокручується разом. Картинки малюються лише поруч із вікном, тому навіть книга на тисячу сторінок відкривається одразу.
+- **Правка на місці.** Сторінка зберігається сама за мить після останньої клавіші (і коли ви йдете з неї чи закриваєте вікно), виправлена сторінка позначена, а розпізнавання її не замінює. **Повернути розпізнане** повертає сторінку до того, що було прочитано. Пошук знаходить виправлені слова одразу. Є поле для переходу до сторінки.
+- **Сторінка, написана вручну.** Книга, яку ще не розпізнавали, відкривається так само, з порожніми сторінками для введення; доки не збережено першу сторінку, нічого не записується.
+- **Книга як файл.** **Завантажити Markdown** і **Завантажити текст** віддають увесь текст із номером кожної сторінки.
+- **Безпечніше «Забути».** **Забути текст** тепер каже, скільки сторінок ви виправили вручну, перш ніж їх видалити.
+- **Охайніше на телефоні.** У списку сканів кнопки книги переходять на окремий рядок і не здавлюють назву.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 
