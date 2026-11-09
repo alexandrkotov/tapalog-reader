@@ -6,6 +6,8 @@ import { openProof } from "./proofWindow";
 import { api, el, openModal, store } from "./ui";
 
 interface Row extends OcrListRow {
+  /** Pages a person has corrected by hand. */
+  edited: number;
   lang: string | null;
 }
 
@@ -92,7 +94,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     list = next;
     rows.clear();
     for (const r of next.books) rows.set(r.id, r);
-    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, lang: null });
+    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, edited: 0, lang: null });
     for (const id of [...checked]) if (!rows.has(id)) checked.delete(id);
   }
 
@@ -121,14 +123,14 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
           boxOf.set(row.id, box);
           const forget = el("button", { type: "button", class: "btn small ocr-forget", textContent: t("ocr.forget"), hidden: row.done === 0, disabled: running });
           forget.addEventListener("click", async () => {
-            if (!confirm(t("ocr.forgetAsk"))) return;
+            if (!confirm(row.edited ? t("ocr.forgetEditedAsk", { n: row.edited }) : t("ocr.forgetAsk"))) return;
             await api(`/api/admin/ocr/${encodeURIComponent(row.id)}`, undefined, "DELETE");
             failedPages.delete(row.id);
             await refresh();
             opts.changed?.();
           });
           const proof = el("button", { type: "button", class: "btn small ocr-proof", textContent: t("ocr.proof"), hidden: row.done === 0 });
-          proof.addEventListener("click", () => void openProof({ id: row.id, title: row.title }));
+          proof.addEventListener("click", () => void openProof({ id: row.id, title: row.title }, { changed: () => void refresh().then(() => opts.changed?.()) }));
           return el("label", { class: "ocr-row" }, box, el("span", { class: "ocr-what" }, el("span", { class: "ocr-title", textContent: row.title }), el("span", { class: "muted small ocr-path", textContent: row.path }), status), proof, forget);
         }),
       );
