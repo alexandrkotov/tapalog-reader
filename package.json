@@ -21,10 +21,12 @@
   },
   "dependencies": {
     "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.4.0/ecm-viewer-engine-0.4.0.tgz",
+    "@pdf-lib/fontkit": "^1.1.1",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/rus": "^1.0.0",
     "fflate": "^0.8.3",
     "foliate-js": "github:johnfactotum/foliate-js#78914aef4466eb960965702401634c2cb348e9b1",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.4.299",
     "qrcode-generator": "^2.0.4",
     "sql.js": "1.15.2",
