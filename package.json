@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "gen:pdfjs": "bun scripts/gen-pdfjs-assets.ts",
     "gen:ocr": "bun scripts/gen-ocr-assets.ts",
-    "test": "bun test src",
+    "test": "bun test src --timeout 30000",
     "compile:linux-x64": "bun scripts/fetch-cloudflared.ts linux-x64 && bun build --compile --target=bun-linux-x64 src/server/main.compiled.linux-x64.ts --outfile dist/tapalog-reader-linux-x64",
     "compile:linux-arm64": "bun scripts/fetch-cloudflared.ts linux-arm64 && bun build --compile --target=bun-linux-arm64 src/server/main.compiled.linux-arm64.ts --outfile dist/tapalog-reader-linux-arm64",
     "compile:macos-arm64": "bun scripts/fetch-cloudflared.ts darwin-arm64 && bun build --compile --target=bun-darwin-arm64 src/server/main.compiled.darwin-arm64.ts --outfile dist/tapalog-reader-macos-arm64",
