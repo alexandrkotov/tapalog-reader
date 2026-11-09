@@ -108,6 +108,26 @@ e2e("the text and figures of a book are made into a new PDF that is only downloa
   await page.close();
 });
 
+e2e("when the library that writes the PDF cannot be fetched the export says so, and the next try fetches it again", async () => {
+  const page = await ctx.newPage();
+  await page.route("**/pdflib/**", (route) => route.abort());
+  await page.goto(inst.url + "/#folder=Scans");
+  await page.waitForSelector(".card:has-text('export') .card-info");
+  await page.click(".card:has-text('export') .card-info");
+  await page.waitForSelector(".card-form");
+  await page.click(".card-proof");
+  await page.waitForSelector(".proof-row:nth-child(1) .proof-canvas");
+  await page.click(".proof-pdf-open");
+  await page.click(".proof-pdf-run");
+  await page.waitForFunction(() => document.querySelector(".proof-pdf-state")?.textContent === "Could not make the PDF");
+  expect(await page.isEnabled(".proof-pdf-run")).toBe(true);
+
+  await page.unroute("**/pdflib/**");
+  const again = await exported(page);
+  expect((await inspectPdf(again.bytes)).pages.length).toBeGreaterThan(0);
+  await page.close();
+});
+
 e2e("a book with nothing to put into a PDF says so instead of making an empty file", async () => {
   const page = await ctx.newPage();
   await page.goto(inst.url + "/#folder=Scans");

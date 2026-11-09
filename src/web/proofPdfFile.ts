@@ -1,13 +1,48 @@
 import fontUrl from "@ecm/viewer-engine/fonts/DejaVuSans.ttf";
-import fontkit from "@pdf-lib/fontkit";
-import { PDFDocument, rgb, type PDFFont, type PDFImage } from "pdf-lib";
+import type FontkitModule from "@pdf-lib/fontkit";
+import type * as PdfLibModule from "pdf-lib";
+import type { PDFDocument, PDFFont, PDFImage } from "pdf-lib";
 import { blocksOf, DEFAULT_STYLE, layoutBook, PAGE_FORMATS, type BookText, type PageFormatName, type Role } from "./proofPdf";
 
 /**
  * Writes the new PDF: the text of the book set in DejaVu Sans (which has the Cyrillic letters; only the letters used are kept in
  * the file) with the figures cut from the scan. The layout is decided by `layoutBook`; this puts it on the sheets. It lives in a
  * file of its own so that the PDF library is fetched only when somebody exports.
+ *
+ * The library is not imported: the program's page is one piece, and two imports would put 1.9 MB into every visit. It comes as the
+ * two ready-made scripts the server holds at /pdflib/ (see scripts/gen-pdflib-assets.ts), added to the page on the first export.
  */
+
+type PdfLib = typeof PdfLibModule;
+type Fontkit = typeof FontkitModule;
+
+let loading: Promise<{ lib: PdfLib; fontkit: Fontkit }> | null = null;
+
+function addScript(name: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `/pdflib/${name}`;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`${name} could not be loaded`));
+    document.head.append(script);
+  });
+}
+
+/** pdf-lib and its font reader, fetched once; when that fails the next export tries again. */
+function loadPdfLib(): Promise<{ lib: PdfLib; fontkit: Fontkit }> {
+  loading ??= Promise.all([addScript("pdf-lib.min.js"), addScript("fontkit.umd.min.js")]).then(
+    () => {
+      const g = globalThis as unknown as { PDFLib?: PdfLib; fontkit?: Fontkit };
+      if (!g.PDFLib || !g.fontkit) throw new Error("the PDF library did not start");
+      return { lib: g.PDFLib, fontkit: g.fontkit };
+    },
+    (e) => {
+      loading = null;
+      throw e;
+    },
+  );
+  return loading;
+}
 
 export interface PdfBook {
   title: string;
@@ -79,6 +114,9 @@ export async function buildBookPdf(book: PdfBook, opts: { format: PageFormatName
     if (opts.signal?.aborted) throw new DOMException("cancelled", "AbortError");
   };
   const format = PAGE_FORMATS[opts.format];
+  const { lib, fontkit } = await loadPdfLib();
+  stop();
+  const { PDFDocument, rgb } = lib;
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   const fontBytes = new Uint8Array(await (await fetch(fontUrl)).arrayBuffer());
