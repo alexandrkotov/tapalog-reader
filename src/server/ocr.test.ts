@@ -116,6 +116,15 @@ test("the frames of a page's words are kept with its reading, replaced by the ne
   expect(ocr.boxes("b", 1)).toBeNull();
   ocr.put("b", 1, "   ", frames("лишнее")); // a page with no text has no words to lay over it
   expect(ocr.boxes("b", 1)).toBeNull();
+  expect(ocr.boxPages("b")).toEqual([3]); // the pages that have frames to show, in order
+  ocr.put("b", 1, "Первая", frames("Первая"));
+  expect(ocr.boxPages("b")).toEqual([1, 3]);
+  ocr.edit("b", 1, "Первая, поправлено");
+  expect(ocr.boxPages("b")).toEqual([3]); // a page written by hand shows none
+  ocr.restore("b", 1);
+  expect(ocr.boxPages("b")).toEqual([1, 3]); // and shows them again when it is taken back
+  ocr.put("b", 1, "   ");
+  expect(ocr.boxPages("nope")).toEqual([]);
 
   // written by hand: the words are no longer the frames', so none are shown; taking the writing back shows them again
   ocr.put("b", 3, "Третья", frames("Третья"));

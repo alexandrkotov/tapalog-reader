@@ -793,12 +793,15 @@ test("the frames of the words of a scanned page come with its text, and whoever 
   const put = (page: number, body: unknown, cookie = adminCookie) => call(lan, `/api/admin/ocr/${pdf}/pages/${page}`, { method: "PUT", body, cookie });
   const frames = (await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).status; // before anything was read
   expect(frames).toBe(404);
+  expect((await call(lan, `/api/ocr/${pdf}/boxes`, { cookie: readerCookie })).body).toEqual({ pages: [] }); // a book with none says so, it is not an error
+  expect((await call(lan, "/api/ocr/nope/boxes", { cookie: readerCookie })).status).toBe(404);
 
   await call(lan, `/api/admin/ocr/${pdf}/start`, { body: { pages: 3, lang: "rus" }, cookie: adminCookie });
   const boxes = [["Лампа", 0.1, 0.2, 0.3, 0.25], ["схема", 0.32, 0.2, 0.5, 0.25]];
   expect((await put(1, { text: "Лампа схема", boxes })).body).toEqual({ done: 1, pages: 3 });
   expect((await put(2, { text: "Без рамок" })).status).toBe(200); // a recognizer that sends no frames still works
 
+  expect((await call(lan, `/api/ocr/${pdf}/boxes`, { cookie: readerCookie })).body).toEqual({ pages: [1] }); // page 2 was read without frames
   // the page's words, to a reader (they are as open as the book's text in the search)
   expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).body).toEqual({ boxes });
   expect((await call(lan, `/api/ocr/${pdf}/boxes/2`, { cookie: readerCookie })).status).toBe(404); // none were sent
@@ -815,6 +818,7 @@ test("the frames of the words of a scanned page come with its text, and whoever 
   // a page written by hand shows no frames, and taking it back shows them again
   await call(lan, `/api/admin/ocr/${pdf}/edit/1`, { method: "PUT", body: { text: "Лампа, схема" }, cookie: adminCookie });
   expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).status).toBe(404);
+  expect((await call(lan, `/api/ocr/${pdf}/boxes`, { cookie: readerCookie })).body).toEqual({ pages: [] });
   await call(lan, `/api/admin/ocr/${pdf}/edit/1`, { method: "DELETE", cookie: adminCookie });
   expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).body).toEqual({ boxes });
 

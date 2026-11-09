@@ -6,6 +6,7 @@ import { addPageImage, type PrintJob } from "../print";
 import type { Crop, Display } from "../display";
 import { clipToCrop, cropFor, intoCrop, outOfCrop, rectIntoCrop, rectOutOfCrop } from "./crop";
 import { createCropEditor } from "./cropEditor";
+import { bookIdOf, createScanText, type ScanText } from "./scanLayer";
 import { readerMode, setReaderMode } from "../readerMode";
 import { pdfDocumentOptions } from "./pdfAssets";
 import { mountThumbs, type Thumbs } from "./thumbs";
@@ -269,6 +270,26 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     info.view = [Math.min(a[0]!, b[0]!), Math.min(a[1]!, b[1]!), Math.max(a[0]!, b[0]!), Math.max(a[1]!, b[1]!)];
   }
 
+  // ---------- the words of a recognized scan ----------
+
+  // laid over the picture in no colour, so that they can be selected and copied; a book that was never recognized asks for nothing more than the list of its pages
+  const bookId = bookIdOf(options.url);
+  const scanText: ScanText | null = bookId
+    ? createScanText({
+        bookId,
+        pageEl: (n) => pdfViewer.getPageView(n - 1)?.div ?? null,
+        cutOf,
+        aspectOf: (n) => {
+          const page = pdfViewer.getPageView(n - 1)?.pdfPage;
+          if (!page) return null;
+          const view = page.getViewport({ scale: 1 }); // the page as the file has it, cut as it is cut
+          return view.width / view.height;
+        },
+        turn: () => turn,
+        pageCount: () => pdfViewer.pagesCount,
+      })
+    : null;
+
   /** Runs a change that moves or resizes the reading area (a row of controls appearing), keeping the spot in the middle of the window. */
   function holdPlace(change: () => void): void {
     if (!pdfViewer.pagesCount) return change();
@@ -302,6 +323,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     const shownAt = pointToShown(view.page, { x: view.cx ?? 0.5, y: view.cy ?? 0.5 });
     centreOn(view.page, shownAt.x, shownAt.y);
     attachRegion();
+    scanText?.refresh();
     if (thumbs) void setThumbs(true, true);
     cropEditor.place();
     scheduleView(0);
@@ -363,6 +385,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     turn = (turn + 90) % 360;
     pdfViewer.pagesRotation = turn; // a fitted page is fitted again by the viewer itself
     attachRegion();
+    scanText?.refresh();
     if (thumbs) void setThumbs(true, true);
     const shownAt = pointToShown(view.page, { x: view.cx ?? 0.5, y: view.cy ?? 0.5 });
     centreOn(view.page, shownAt.x, shownAt.y);
@@ -498,6 +521,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   }
 
   eventBus.on("pagerendered", (e: { pageNumber: number }) => {
+    scanText?.show(e.pageNumber); // the viewer empties a page's element when it draws it again
     if (region && e.pageNumber === region.page) attachRegion();
     if (cropEditor.active()) cropEditor.place();
   });
@@ -690,6 +714,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       removeEventListener("resize", onResize);
       removeEventListener("keydown", onKey);
       cropEditor.destroy();
+      scanText?.destroy();
       resizes.disconnect();
       setFocus(false);
       void task.destroy();

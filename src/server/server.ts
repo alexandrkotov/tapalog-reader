@@ -862,6 +862,11 @@ function buildRoutes(app: App, origin: Origin) {
       }),
     },
     // the frames of the words of a recognized page, for the reader to make the scan selectable: open to whoever may read the book, like its text in the search
+    // which pages have them, so the reader asks for those only (an answer, empty or not, for every book that is in the library)
+    "/api/ocr/:id/boxes": browse((req) => {
+      const id = param(req, "id");
+      return app.library.byId(id) ? json({ pages: app.fullText.ocr.boxPages(id) }, 200, { "Cache-Control": "no-store" }) : notFound();
+    }),
     "/api/ocr/:id/boxes/:page": browse((req) => {
       const id = param(req, "id");
       const boxes = app.library.byId(id) ? app.fullText.ocr.boxes(id, wholeNumber(param(req, "page"))) : null;

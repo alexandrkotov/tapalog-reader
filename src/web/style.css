@@ -208,6 +208,13 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .pdf-frame { flex: 1; min-height: 0; position: relative; }
 .pdf-scroll { position: absolute; inset: 0; overflow: auto; background: #525659; outline: none; }
 .pdf-scroll.selecting { cursor: crosshair; touch-action: none; user-select: none; }
+/* the words of a recognized scan: in no colour over the picture, so they can be selected and copied; what the area tool drags is the page, not them */
+.ocr-layer { position: absolute; inset: 0; overflow: hidden; container-type: size; z-index: 1; }
+.ocr-frame { position: absolute; left: 50%; top: 50%; width: 100cqw; height: 100cqh; container-type: size; transform: translate(-50%, -50%) rotate(var(--turn, 0deg)); }
+.ocr-frame[data-turn="90"], .ocr-frame[data-turn="270"] { width: 100cqh; height: 100cqw; }
+.ocr-line { position: absolute; white-space: pre; font-size: 0; line-height: 0; }
+.ocr-word { display: inline-block; vertical-align: top; transform-origin: 0 0; color: transparent; font-family: sans-serif; white-space: pre; cursor: text; }
+.pdf-scroll.selecting .ocr-layer { pointer-events: none; user-select: none; }
 .pdf-region { position: absolute; z-index: 5; box-sizing: border-box; border: 2px solid #ff9f0a; background: rgba(255, 200, 0, 0.28); mix-blend-mode: multiply; pointer-events: none; }
 .pdf-region-draft { border-style: dashed; }
 

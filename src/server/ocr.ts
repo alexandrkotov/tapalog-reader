@@ -210,6 +210,11 @@ export class OcrText {
     return row && !row.edited ? (JSON.parse(row.data) as OcrBox[]) : null;
   }
 
+  /** The pages of a book that have frames to show (those written by hand have none), so the reader asks for no others. */
+  boxPages(id: string): number[] {
+    return (this.db.query("SELECT b.page FROM ocr_boxes b JOIN ocr_pages p ON p.id = b.id AND p.page = b.page WHERE b.id = ? AND p.edited = 0 ORDER BY b.page").all(id) as { page: number }[]).map((r) => r.page);
+  }
+
   private textOf(row: number | null): string {
     return row ? ((this.db.query("SELECT text FROM ocr_chunks WHERE rowid = ?").get(row) as { text: string } | null)?.text ?? "") : "";
   }
