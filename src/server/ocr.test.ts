@@ -165,6 +165,52 @@ test("pages read without frames can be taken up again: the next start does not c
   expect(ocr.plainPages("nope")).toEqual([]);
 });
 
+test("a page with a text of its own is kept with the book without going into the search of the readings, counts as read, is taken over by a reading, and restoring a corrected one brings the own text back", () => {
+  const ocr = fresh();
+  ocr.start("b", 4, "rus");
+  const own = "Собственный текст страницы, набранный в самом PDF.";
+  expect(ocr.putOwn("b", 1, own)).toEqual({ done: 1, pages: 4 });
+  expect(ocr.pages("b")).toEqual([{ page: 1, text: own, edited: false, own: true }]);
+  expect(find(ocr, "собственный")).toEqual([]); // the book's own index has it: the search must not find it twice
+  expect(ocr.progress("b")).toMatchObject({ done: 1, own: 1, plain: 0, edited: 0 });
+  expect(ocr.totals()).toEqual({ books: 1, pages: 0 }); // not counted among the pages that were read from pictures
+  expect(ocr.start("b", 4, "rus")).toEqual([1]); // a start goes on from it
+  expect(ocr.start("b", 4, "rus", true)).toEqual([1]); // and a second reading has nothing to add to it: it has no pictures' words to lack
+  expect(ocr.boxes("b", 1)).toBeNull();
+
+  // corrected: the writing is what is searched and shown; taken back, the own text is there again, still outside the readings' search
+  ocr.edit("b", 1, "Поправленный текст страницы");
+  expect(ocr.pages("b")).toEqual([{ page: 1, text: "Поправленный текст страницы", edited: true }]);
+  expect(find(ocr, "поправленный")).toEqual(['b:{"page":1}']);
+  expect(ocr.progress("b")).toMatchObject({ done: 1, own: 0, edited: 1 });
+  expect(ocr.restore("b", 1)).toEqual({ page: { page: 1, text: own, edited: false, own: true } });
+  expect(find(ocr, "поправленный")).toEqual([]);
+  expect(ocr.pages("b")).toEqual([{ page: 1, text: own, edited: false, own: true }]);
+  expect(ocr.progress("b")).toMatchObject({ own: 1, edited: 0 });
+
+  // a reading of the picture takes the page over: it is the reader's now
+  ocr.put("b", 1, "Прочитано с картинки");
+  expect(ocr.pages("b")).toEqual([{ page: 1, text: "Прочитано с картинки", edited: false }]);
+  expect(find(ocr, "картинки")).toEqual(['b:{"page":1}']);
+  expect(ocr.progress("b")).toMatchObject({ own: 0 });
+  expect(ocr.totals()).toEqual({ books: 1, pages: 1 });
+
+  // a page written by hand is never replaced by a page's own text, and a page that is not in the book has no place for it
+  ocr.edit("b", 2, "Написано вручную");
+  expect(ocr.putOwn("b", 2, "Чужой текст")).toEqual({ done: 2, pages: 4 });
+  expect(ocr.pages("b", 2, 2)).toEqual([{ page: 2, text: "Написано вручную", edited: true }]);
+  expect(ocr.putOwn("b", 9, "x")).toBeNull();
+  expect(ocr.putOwn("nope", 1, "x")).toBeNull();
+
+  // the text of a page that had been read is replaced by the own one, and its words of frames go
+  ocr.put("b", 3, "Третье чтение", [["Третье", 0.1, 0.1, 0.4, 0.2]]);
+  expect(find(ocr, "третье")).toEqual(['b:{"page":3}']);
+  ocr.putOwn("b", 3, "Собственный текст третьей страницы");
+  expect(ocr.boxes("b", 3)).toBeNull();
+  expect(find(ocr, "третье")).toEqual([]);
+  expect(ocr.pages("b", 3, 3)).toEqual([{ page: 3, text: "Собственный текст третьей страницы", edited: false, own: true }]);
+});
+
 test("a database from before frames keeps its pages and gains the table for them", () => {
   const db = new Database(":memory:");
   db.run("CREATE TABLE ocr_docs (id TEXT PRIMARY KEY, pages INTEGER NOT NULL, lang TEXT NOT NULL, updated INTEGER NOT NULL)");

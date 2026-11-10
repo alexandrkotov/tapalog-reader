@@ -834,6 +834,7 @@ function buildRoutes(app: App, origin: Origin) {
           edited: ocr?.edited ?? 0,
           images: ocr?.images ?? 0,
           plain: ocr?.plain ?? 0,
+          own: ocr?.own ?? 0,
           lang: ocr?.lang ?? null,
         }));
         const status = app.fullText.status();
@@ -856,6 +857,11 @@ function buildRoutes(app: App, origin: Origin) {
       PUT: admin(async (req) => {
         const data = await body(req);
         if (typeof data?.text !== "string") return bad();
+        if (data.own === true) {
+          // the PDF's own text of the page, taken as it is: kept with the book, not put in the search of the readings
+          const own = app.fullText.ocr.putOwn(param(req, "id"), Number(param(req, "page")), data.text);
+          return own ? json(own) : notFound();
+        }
         const boxes = data.boxes === undefined ? [] : cleanBoxes(data.boxes); // the frames of the words, when the recognizer gave them
         if (!boxes) return bad();
         const progress = app.fullText.ocr.put(param(req, "id"), Number(param(req, "page")), data.text, boxes);

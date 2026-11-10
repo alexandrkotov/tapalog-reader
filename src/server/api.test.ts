@@ -833,6 +833,40 @@ test("the frames of the words of a scanned page come with its text, and whoever 
   expect((await call(lan, `/api/ocr/${pdf}/boxes/1`, { cookie: readerCookie })).status).toBe(404);
 });
 
+test("a page that has the PDF's own text is taken as it is: kept with the book and its file, shown to the editor, and not found twice by the search", async () => {
+  const books = (await call(lan, "/api/library", { cookie: adminCookie })).body.books as { id: string; path: string }[];
+  const pdf = books.find((b) => b.path === "sub/three.pdf")!.id;
+  const readerCookie = (await call(lan, "/api/login", { body: { name: "Scanner", password: "scan123" } })).cookie!;
+  const send = (path: string, method: string, body?: unknown, cookie = adminCookie) => call(lan, `/api/admin/ocr/${pdf}${path}`, { method, body, cookie });
+  await call(lan, "/api/admin/fulltext", { body: { enabled: true }, cookie: adminCookie });
+
+  await send("/start", "POST", { pages: 3, lang: "rus" });
+  expect((await send("/pages/1", "PUT", { text: "Собственный текст первой страницы", own: true })).body).toEqual({ done: 1, pages: 3 });
+  await send("/pages/2", "PUT", { text: "Страница из картинки" });
+  expect((await send("/pages/5", "PUT", { text: "x", own: true })).status).toBe(404); // not in the book
+  expect((await send("/pages/1", "PUT", { text: 5, own: true })).status).toBe(400);
+  expect((await send("/pages/1", "PUT", { text: "x", own: true }, readerCookie)).status).toBe(403);
+
+  const items = (await send("/pages", "GET")).body.items;
+  expect(items).toEqual([
+    { page: 1, text: "Собственный текст первой страницы", edited: false, own: true },
+    { page: 2, text: "Страница из картинки", edited: false },
+  ]);
+  const listed = (await call(lan, "/api/admin/ocr", { cookie: adminCookie })).body;
+  expect(listed.books.find((b: { id: string }) => b.id === pdf)).toMatchObject({ done: 2, own: 1, plain: 1 });
+  expect(listed.recognizedPages).toBe(1); // the own text is not among the pages read from pictures
+  expect((await call(lan, "/api/fulltext?q=собственный")).body.books).toEqual([]); // the readings' search has nothing of it; the book's own index finds it
+  expect((await call(lan, `/api/ocr/${pdf}/boxes`, { cookie: readerCookie })).body).toEqual({ pages: [] }); // no frames: the PDF has its own text layer there
+
+  const text = await (await fetch(`${lan}/api/admin/ocr/${pdf}/text?format=md`, { headers: { Cookie: adminCookie } })).text();
+  expect(text).toContain("## Page 1\n\nСобственный текст первой страницы");
+  expect(text).toContain("## Page 2\n\nСтраница из картинки");
+
+  await send("/edit/1", "PUT", { text: "Поправлено" });
+  expect((await send("/edit/1", "DELETE")).body.page).toEqual({ page: 1, text: "Собственный текст первой страницы", edited: false, own: true });
+  await call(lan, `/api/admin/ocr/${pdf}`, { method: "DELETE", cookie: adminCookie }); // as it was
+});
+
 test("the administrator corrects the text of a scanned page, takes the correction back, and saves the book as a file", async () => {
   const books = (await call(lan, "/api/library", { cookie: adminCookie })).body.books as { id: string; path: string; name: string }[];
   const pdf = books.find((b) => b.path === "sub/three.pdf")!.id;

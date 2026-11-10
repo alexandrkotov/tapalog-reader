@@ -64,6 +64,8 @@ export interface OcrProgress {
   images: number;
   /** Pages the recognizer read (not written by hand) that have no frames of words yet: their text cannot be selected in the reader until they are read again. */
   plain: number;
+  /** Pages whose text is the PDF's own, taken as it is (the book's index has it): a book with some text and some scanned pages. */
+  own: number;
   lang: string;
   updated: number;
 }
@@ -73,6 +75,8 @@ export interface OcrPage {
   page: number;
   text: string;
   edited: boolean;
+  /** The text is the PDF's own for this page (taken as it is, not read from the picture) and nobody has corrected it since. Absent otherwise. */
+  own?: true;
 }
 
 export interface OcrRow {
@@ -173,6 +177,8 @@ export class OcrText {
     if (!columns.includes("edited")) db.run("ALTER TABLE ocr_pages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0");
     if (!columns.includes("orig")) db.run("ALTER TABLE ocr_pages ADD COLUMN orig TEXT");
     if (!columns.includes("md")) db.run("ALTER TABLE ocr_pages ADD COLUMN md TEXT");
+    // `own`: the page's text is the PDF's own, kept in `md` and not in ocr_chunks (the book's own index has it, and the search must not find it twice)
+    if (!columns.includes("own")) db.run("ALTER TABLE ocr_pages ADD COLUMN own INTEGER NOT NULL DEFAULT 0");
     db.run("CREATE VIRTUAL TABLE IF NOT EXISTS ocr_chunks USING fts5(text, id UNINDEXED, loc UNINDEXED, tokenize = 'unicode61 remove_diacritics 2')");
   }
 
@@ -210,7 +216,7 @@ export class OcrText {
       if (old?.row) this.db.run("DELETE FROM ocr_chunks WHERE rowid = ?", [old.row]);
       let row: number | null = null;
       if (text) row = Number(this.db.run("INSERT INTO ocr_chunks (text, id, loc) VALUES (?, ?, ?)", [text, id, JSON.stringify({ page })]).lastInsertRowid);
-      this.db.run("INSERT INTO ocr_pages (id, page, row) VALUES (?, ?, ?) ON CONFLICT(id, page) DO UPDATE SET row = excluded.row", [id, page, row]);
+      this.db.run("INSERT INTO ocr_pages (id, page, row) VALUES (?, ?, ?) ON CONFLICT(id, page) DO UPDATE SET row = excluded.row, md = NULL, own = 0", [id, page, row]); // a reading takes over a page that had its own text
       if (text && boxes.length) this.db.run("INSERT INTO ocr_boxes (id, page, data) VALUES (?, ?, ?) ON CONFLICT(id, page) DO UPDATE SET data = excluded.data", [id, page, JSON.stringify(boxes)]);
       else this.db.run("DELETE FROM ocr_boxes WHERE id = ? AND page = ?", [id, page]);
       this.db.run("UPDATE ocr_docs SET updated = ? WHERE id = ?", [Date.now(), id]);
@@ -229,14 +235,34 @@ export class OcrText {
     return (this.db.query("SELECT b.page FROM ocr_boxes b JOIN ocr_pages p ON p.id = b.id AND p.page = b.page WHERE b.id = ? AND p.edited = 0 ORDER BY b.page").all(id) as { page: number }[]).map((r) => r.page);
   }
 
+  /**
+   * Keeps the PDF's own text of a page, taken as it is: it counts as read and is shown and saved with the book, but is not put in the
+   * search of the readings (the book's own index has it). A page a person has written is never replaced. Null when the book was not
+   * started or the page is not in it.
+   */
+  putOwn(id: string, page: number, raw: string): { done: number; pages: number } | null {
+    const doc = this.db.query("SELECT pages FROM ocr_docs WHERE id = ?").get(id) as { pages: number } | null;
+    if (!doc || !Number.isInteger(page) || page < 1 || page > doc.pages) return null;
+    const text = cleanOcrText(raw);
+    this.db.transaction(() => {
+      const old = this.db.query("SELECT row, edited FROM ocr_pages WHERE id = ? AND page = ?").get(id, page) as { row: number | null; edited: number } | null;
+      if (old?.edited) return;
+      if (old?.row) this.db.run("DELETE FROM ocr_chunks WHERE rowid = ?", [old.row]);
+      this.db.run("DELETE FROM ocr_boxes WHERE id = ? AND page = ?", [id, page]);
+      this.db.run("INSERT INTO ocr_pages (id, page, row, own, md) VALUES (?, ?, NULL, 1, ?) ON CONFLICT(id, page) DO UPDATE SET row = NULL, own = 1, md = excluded.md", [id, page, text]);
+      this.db.run("UPDATE ocr_docs SET updated = ? WHERE id = ?", [Date.now(), id]);
+    })();
+    return { done: (this.db.query("SELECT COUNT(*) AS n FROM ocr_pages WHERE id = ?").get(id) as { n: number }).n, pages: doc.pages };
+  }
+
   private textOf(row: number | null): string {
     return row ? ((this.db.query("SELECT text FROM ocr_chunks WHERE rowid = ?").get(row) as { text: string } | null)?.text ?? "") : "";
   }
 
   /** The pages of a book that have an entry (read or written), from `from` to `to`, with their text. */
   pages(id: string, from = 1, to = MAX_PAGES): OcrPage[] {
-    const rows = this.db.query("SELECT page, row, edited, md FROM ocr_pages WHERE id = ? AND page BETWEEN ? AND ? ORDER BY page").all(id, from, to) as { page: number; row: number | null; edited: number; md: string | null }[];
-    return rows.map((r) => ({ page: r.page, text: r.md ?? this.textOf(r.row), edited: r.edited === 1 }));
+    const rows = this.db.query("SELECT page, row, edited, md, own FROM ocr_pages WHERE id = ? AND page BETWEEN ? AND ? ORDER BY page").all(id, from, to) as { page: number; row: number | null; edited: number; md: string | null; own: number }[];
+    return rows.map((r) => ({ page: r.page, text: r.md ?? this.textOf(r.row), edited: r.edited === 1, ...(r.own === 1 && r.edited === 0 ? { own: true as const } : {}) }));
   }
 
   /**
@@ -250,8 +276,8 @@ export class OcrText {
     const text = withoutImages(full);
     const md = hasImages(full) ? full : null; // the index never sees the references to pictures
     this.db.transaction(() => {
-      const old = this.db.query("SELECT row, edited, orig FROM ocr_pages WHERE id = ? AND page = ?").get(id, page) as { row: number | null; edited: number; orig: string | null } | null;
-      const orig = old?.edited ? old.orig : old ? this.textOf(old.row) : null; // the first correction keeps what was read
+      const old = this.db.query("SELECT row, edited, orig, md, own FROM ocr_pages WHERE id = ? AND page = ?").get(id, page) as { row: number | null; edited: number; orig: string | null; md: string | null; own: number } | null;
+      const orig = old?.edited ? old.orig : old ? (old.own ? (old.md ?? "") : this.textOf(old.row)) : null; // the first correction keeps what was read (or the PDF's own text)
       if (old?.row) this.db.run("DELETE FROM ocr_chunks WHERE rowid = ?", [old.row]);
       const row = text ? Number(this.db.run("INSERT INTO ocr_chunks (text, id, loc) VALUES (?, ?, ?)", [text, id, JSON.stringify({ page })]).lastInsertRowid) : null;
       this.db.run("INSERT INTO ocr_pages (id, page, row, edited, orig, md) VALUES (?, ?, ?, 1, ?, ?) ON CONFLICT(id, page) DO UPDATE SET row = excluded.row, edited = 1, orig = excluded.orig, md = excluded.md", [id, page, row, orig, md]);
@@ -266,7 +292,7 @@ export class OcrText {
    * page had never been read (it becomes unread again). Null as the whole answer: the page has no corrections to undo.
    */
   restore(id: string, page: number): { page: OcrPage | null } | null {
-    const old = this.db.query("SELECT row, edited, orig FROM ocr_pages WHERE id = ? AND page = ?").get(id, page) as { row: number | null; edited: number; orig: string | null } | null;
+    const old = this.db.query("SELECT row, edited, orig, own FROM ocr_pages WHERE id = ? AND page = ?").get(id, page) as { row: number | null; edited: number; orig: string | null; own: number } | null;
     if (!old?.edited) return null;
     let result: OcrPage | null = null;
     this.db.transaction(() => {
@@ -274,6 +300,10 @@ export class OcrText {
       if (old.orig === null) {
         this.db.run("DELETE FROM ocr_pages WHERE id = ? AND page = ?", [id, page]);
         this.db.run("DELETE FROM ocr_boxes WHERE id = ? AND page = ?", [id, page]);
+      } else if (old.own) {
+        // the PDF's own text again, kept beside the page and not in the search of the readings
+        this.db.run("UPDATE ocr_pages SET row = NULL, edited = 0, orig = NULL, md = ? WHERE id = ? AND page = ?", [old.orig, id, page]);
+        result = { page, text: old.orig, edited: false, own: true };
       } else {
         const row = old.orig ? Number(this.db.run("INSERT INTO ocr_chunks (text, id, loc) VALUES (?, ?, ?)", [old.orig, id, JSON.stringify({ page })]).lastInsertRowid) : null;
         this.db.run("UPDATE ocr_pages SET row = ?, edited = 0, orig = NULL, md = NULL WHERE id = ? AND page = ?", [row, id, page]);
@@ -338,8 +368,8 @@ export class OcrText {
 
   /** The reading of every book that has begun. */
   all(): Map<string, OcrProgress> {
-    const rows = this.db.query("SELECT d.id, d.pages, d.lang, d.updated, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id) AS done, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.edited = 1) AS edited, (SELECT COUNT(*) FROM ocr_images i WHERE i.id = d.id) AS images, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.edited = 0 AND p.row IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ocr_boxes b WHERE b.id = p.id AND b.page = p.page)) AS plain FROM ocr_docs d").all() as (OcrProgress & { id: string })[];
-    return new Map(rows.map((r) => [r.id, { pages: r.pages, done: r.done, edited: r.edited, images: r.images, plain: r.plain, lang: r.lang, updated: r.updated }]));
+    const rows = this.db.query("SELECT d.id, d.pages, d.lang, d.updated, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id) AS done, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.edited = 1) AS edited, (SELECT COUNT(*) FROM ocr_images i WHERE i.id = d.id) AS images, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.edited = 0 AND p.row IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ocr_boxes b WHERE b.id = p.id AND b.page = p.page)) AS plain, (SELECT COUNT(*) FROM ocr_pages p WHERE p.id = d.id AND p.own = 1 AND p.edited = 0) AS own FROM ocr_docs d").all() as (OcrProgress & { id: string })[];
+    return new Map(rows.map((r) => [r.id, { pages: r.pages, done: r.done, edited: r.edited, images: r.images, plain: r.plain, own: r.own, lang: r.lang, updated: r.updated }]));
   }
 
   /** Forgets everything read from a book; how many pages that was. */
@@ -356,7 +386,7 @@ export class OcrText {
   }
 
   totals(): { books: number; pages: number } {
-    const row = this.db.query("SELECT (SELECT COUNT(*) FROM ocr_docs) AS books, (SELECT COUNT(*) FROM ocr_pages) AS pages").get() as { books: number; pages: number };
+    const row = this.db.query("SELECT (SELECT COUNT(*) FROM ocr_docs) AS books, (SELECT COUNT(*) FROM ocr_pages WHERE own = 0) AS pages").get() as { books: number; pages: number };
     return row;
   }
 
