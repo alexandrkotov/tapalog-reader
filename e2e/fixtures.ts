@@ -160,3 +160,55 @@ export async function scanPictures(browser: import("playwright-core").Browser, p
   await shot.close();
   return pictures;
 }
+
+/** A PDF of mixed pages: some are typeset (their lines are text in the file), some are pictures (JPEG), as in a book part of which was scanned. */
+export function mixedPdf(pages: ({ lines: string[] } | { picture: Uint8Array })[], w: number, h: number): Uint8Array {
+  const parts: (string | Uint8Array)[] = [];
+  const offsets: number[] = [];
+  let length = 0;
+  const add = (part: string | Uint8Array) => {
+    parts.push(part);
+    length += typeof part === "string" ? Buffer.byteLength(part, "latin1") : part.length;
+  };
+  const object = (n: number, body: string | (string | Uint8Array)[]) => {
+    offsets[n] = length;
+    add(`${n} 0 obj\n`);
+    for (const piece of Array.isArray(body) ? body : [body]) add(piece);
+    add("\nendobj\n");
+  };
+  // objects: 1 catalog, 2 page list, 3 font, then each page's own (page, content and, for a picture, the image)
+  const ids: number[] = [];
+  let next = 4;
+  for (const p of pages) {
+    ids.push(next);
+    next += "picture" in p ? 3 : 2;
+  }
+  add("%PDF-1.4\n");
+  object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  object(2, `<< /Type /Pages /Kids [${ids.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`);
+  object(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  pages.forEach((p, i) => {
+    const id = ids[i]!;
+    if ("picture" in p) {
+      const content = `q ${w} 0 0 ${h} 0 0 cm /Im0 Do Q`;
+      object(id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Contents ${id + 1} 0 R /Resources << /XObject << /Im0 ${id + 2} 0 R >> >> >>`);
+      object(id + 1, `<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+      object(id + 2, [`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.picture.length} >>\nstream\n`, p.picture, "\nendstream"]);
+    } else {
+      const content = `BT /F1 36 Tf 80 ${h - 160} Td 60 TL ${p.lines.map((l) => `(${l}) '`).join(" ")} ET`;
+      object(id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Contents ${id + 1} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`);
+      object(id + 1, `<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+    }
+  });
+  const size = next;
+  const xref = length;
+  add(`xref\n0 ${size}\n0000000000 65535 f \n${Array.from({ length: size - 1 }, (_, i) => `${String(offsets[i + 1]).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  const out = new Uint8Array(length);
+  let at = 0;
+  for (const part of parts) {
+    const bytes = typeof part === "string" ? Buffer.from(part, "latin1") : part;
+    out.set(bytes, at);
+    at += bytes.length;
+  }
+  return out;
+}
