@@ -84,7 +84,7 @@ e2e("the window for checking shows each scanned page beside its text, draws only
   await page.$eval(".proof-pages", (s) => (s.scrollTop = 0));
   await page.waitForSelector(".proof-row:nth-child(1) .proof-canvas");
 
-  await page.click(".proof .modal-head .icon-btn");
+  await page.click(".proof .modal-head .icon-btn:last-child"); // the × (the button before it makes the window bigger)
   await page.waitForFunction(() => !document.querySelector(".proof"));
   expect(errors).toEqual([]);
   await page.close();

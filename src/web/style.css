@@ -77,8 +77,30 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .ocr-show, .ocr-sort { flex: 1 1 200px; min-width: 0; }
 .ocr-count { margin: 6px 0; }
 /* the window for checking the text: a scan and its text, row by row */
-.modal.proof { width: min(1400px, 100%); }
-.proof .modal-body { height: calc(88vh - 54px); min-height: 0; gap: 8px; }
+.modal.proof { width: min(1400px, 100%); height: min(88vh, calc(100vh - 48px)); display: flex; flex-direction: column; }
+.proof .modal-body { flex: 1 1 auto; min-height: 0; gap: 8px; }
+/* a window that can be stretched by its frame or made as big as the screen allows, with 24px left around it (GAP in modalSize.ts) */
+.modal-backdrop.sizable { align-items: center; padding: 24px; }
+.modal.sizable { position: relative; }
+.modal.sizable .modal-head { user-select: none; }
+.modal-head .modal-expand { margin-left: auto; margin-right: 4px; display: inline-flex; align-items: center; justify-content: center; }
+.modal-head .modal-expand + .icon-btn { margin-left: 0; }
+.modal-grip { position: absolute; z-index: 2; touch-action: none; }
+.modal-grip[data-grip="n"], .modal-grip[data-grip="s"] { left: 14px; right: 14px; height: 8px; cursor: ns-resize; }
+.modal-grip[data-grip="e"], .modal-grip[data-grip="w"] { top: 14px; bottom: 14px; width: 8px; cursor: ew-resize; }
+.modal-grip[data-grip="n"] { top: -4px; }
+.modal-grip[data-grip="s"] { bottom: -4px; }
+.modal-grip[data-grip="e"] { right: -4px; }
+.modal-grip[data-grip="w"] { left: -4px; }
+.modal-grip[data-grip="nw"], .modal-grip[data-grip="ne"], .modal-grip[data-grip="sw"], .modal-grip[data-grip="se"] { width: 16px; height: 16px; }
+.modal-grip[data-grip="nw"] { top: -4px; left: -4px; cursor: nwse-resize; }
+.modal-grip[data-grip="se"] { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.modal-grip[data-grip="ne"] { top: -4px; right: -4px; cursor: nesw-resize; }
+.modal-grip[data-grip="sw"] { bottom: -4px; left: -4px; cursor: nesw-resize; }
+@media (max-width: 700px) {
+  .modal-grip, .modal-head .modal-expand { display: none; }
+  .modal-backdrop.sizable { padding: 12px; }
+}
 .proof-stats { margin: 0; }
 .proof-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; }
 .proof-jump { display: flex; align-items: center; gap: 8px; }

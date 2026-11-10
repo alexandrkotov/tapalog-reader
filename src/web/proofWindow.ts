@@ -1,5 +1,6 @@
 import type * as Pdfjs from "pdfjs-dist/build/pdf.min.mjs";
 import { lang, t } from "./i18n";
+import { makeResizable, type Resizable } from "./modalResize";
 import { pdfDocumentOptions } from "./readers/pdfAssets";
 import { api, ApiError, el, formatBytes, openModal, store } from "./ui";
 
@@ -74,6 +75,10 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   let touched = false;
   let observer: IntersectionObserver | null = null;
   let task: Pdfjs.PDFDocumentLoadingTask | null = null;
+  /** The window's size (it can be stretched), the watch on the list's width and the wait before the scans are drawn again for it. */
+  let sizing: Resizable | null = null;
+  let sizeWatch: ResizeObserver | null = null;
+  let sharpenTimer: ReturnType<typeof setTimeout> | undefined;
   const slots = new Map<number, Slot>();
   const unsaved = () => [...slots.values()].some((s) => s.inflight || s.text.value !== s.sent);
   const warn = (e: BeforeUnloadEvent) => {
@@ -94,12 +99,17 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     removeEventListener("keydown", onEscape, true);
     pdfAbort?.abort();
     observer?.disconnect();
+    sizeWatch?.disconnect();
+    clearTimeout(sharpenTimer);
+    sizing?.dispose();
     void task?.destroy();
     for (const slot of slots.values()) if (slot.text.value !== slot.sent) void save(slot); // what was typed last is not lost with the window
     if (touched) opts.changed?.();
   };
   const modal = openModal(t("proof.title", { title: book.title }), finish);
-  modal.body.closest(".modal")?.classList.add("proof");
+  const box = modal.body.closest<HTMLElement>(".modal");
+  box?.classList.add("proof");
+  if (box) sizing = makeResizable(box, { key: "tapalog.proofSize", expandLabel: t("proof.expand"), restoreLabel: t("proof.restoreSize"), scroller: () => modal.body.querySelector<HTMLElement>(".proof-pages") });
   const say = (text: string) => modal.body.replaceChildren(el("p", { class: "muted", textContent: text }));
   say(t("card.loading"));
 
@@ -510,8 +520,24 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   const drawing = new Set<number>();
   const wanted = new Set<number>();
 
-  async function draw(n: number): Promise<void> {
-    if (canvases.has(n) || drawing.has(n)) return;
+  /** How wide a page's picture should be to look sharp where it is now. */
+  const neededWidth = (scan: HTMLElement) => Math.min(Math.round(scan.clientWidth * (devicePixelRatio || 1)), MAX_CANVAS_WIDTH);
+  /** A drawn page whose picture is much smaller (blurred) or much bigger (heavy) than the room it has now. */
+  const stale = (n: number) => {
+    const canvas = canvases.get(n);
+    const need = neededWidth(slots.get(n)!.scan);
+    return !!canvas && need > 0 && (canvas.width < need * 0.85 || canvas.width > need * 1.3);
+  };
+  /** After the window has been stretched, draws the pages again at the size they have now (the old picture stays until the new one is ready). */
+  const sharpen = () => {
+    clearTimeout(sharpenTimer);
+    sharpenTimer = setTimeout(() => {
+      for (const n of [...canvases.keys()]) if (!closed && wanted.has(n) && stale(n)) void draw(n, true);
+    }, 250);
+  };
+
+  async function draw(n: number, again = false): Promise<void> {
+    if ((canvases.has(n) && !again) || drawing.has(n)) return;
     const scan = slots.get(n)!.scan;
     drawing.add(n);
     try {
@@ -532,9 +558,12 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
         canvas.width = canvas.height = 0;
         return;
       }
+      const old = canvases.get(n);
       scan.replaceChildren(canvas);
       scan.style.aspectRatio = String(canvas.width / canvas.height);
+      if (old) old.width = old.height = 0;
       canvases.set(n, canvas);
+      if (stale(n)) sharpen(); // the window changed again while this page was being drawn
     } catch {
       if (!closed) {
         scan.className = "proof-scan proof-failed";
@@ -569,4 +598,6 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     { root: scroller, rootMargin: AHEAD },
   );
   for (const row of scroller.children) observer.observe(row);
+  sizeWatch = new ResizeObserver(sharpen);
+  sizeWatch.observe(scroller);
 }
