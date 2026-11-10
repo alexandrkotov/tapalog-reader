@@ -1,8 +1,8 @@
 ## English
 
 What's new:
-- **Books with pages of both kinds.** A PDF often has some pages typeset (they have text in the file) and others scanned. When you recognize such a book, the pages that already have their own text are now taken as they are and only the pictures are read, which is faster and leaves the exact text of the file untouched. The window has a checkbox for it (on by default, remembered), says how many pages of each book were taken, and the book for checking, export and search has all the pages. Turn the checkbox off to read every page from its picture as before.
-- **Checking such pages.** A page taken from the file is shown in the checking window like any other and can be corrected; **Restore the recognized text** brings back the text the file had. It is searched once, not twice, and has no words over the picture, since the reader can already select its own text.
+- **Big books with a few scanned pages are offered by themselves.** The window for recognizing scans used to list only books with next to no text. Now it also lists a PDF with at least 3 pages (and a tenth of the book) that have no text of their own, and says in its row how many: "3 of 27 pages have no text". Running it reads only those pages and takes the rest as they are.
+- **Pages are counted in advance.** The index now remembers how many pages each PDF has and how many of them have text. PDFs indexed before are measured once in the background, and search is not interrupted. The number of pages is known before anything is read, so the list can be ordered by it: **Order: most pages first**.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -16,8 +16,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **Книги со страницами обоих видов.** В PDF часто одни страницы набраны (текст есть в файле), а другие отсканированы. Теперь при распознавании такой книги страницы, у которых уже есть свой текст, берутся как есть, а читаются только картинки: это быстрее и не трогает точный текст файла. В окне для этого есть галочка (включена по умолчанию, запоминается), оно говорит, сколько страниц каждой книги взято как есть, а книга для проверки, экспорта и поиска содержит все страницы. Выключите галочку, чтобы читать каждую страницу с картинки, как раньше.
-- **Проверка таких страниц.** Страница, взятая из файла, показана в окне проверки как любая другая и её можно исправить; **Вернуть распознанный текст** возвращает текст, который был в файле. Она ищется один раз, а не дважды, и слов поверх картинки у неё нет: читалка и так умеет выделять собственный текст.
+- **Большие книги с несколькими сканированными страницами предлагаются сами.** Раньше окно распознавания сканов показывало только книги, в которых почти нет текста. Теперь в нём есть и PDF, где не меньше 3 страниц (и десятая часть книги) без собственного текста, а в строке сказано, сколько их: «3 из 27 стр. без текста». Запуск читает только эти страницы, остальные берёт как есть.
+- **Страницы считаются заранее.** Индекс теперь запоминает, сколько страниц в каждом PDF и сколько из них с текстом. Те PDF, что были проиндексированы раньше, один раз измеряются в фоне, поиск при этом не прерывается. Число страниц известно до начала распознавания, поэтому список можно упорядочить по нему: **Порядок: больше страниц сверху**.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -31,8 +31,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **Книги зі сторінками обох видів.** У PDF часто одні сторінки набрані (текст є у файлі), а інші відскановані. Тепер під час розпізнавання такої книги сторінки, що вже мають власний текст, беруться як є, а читаються лише картинки: це швидше й не чіпає точний текст файлу. У вікні для цього є прапорець (увімкнений за замовчуванням, запам'ятовується), воно каже, скільки сторінок кожної книги взято як є, а книга для перевірки, експорту та пошуку містить усі сторінки. Вимкніть прапорець, щоб читати кожну сторінку з картинки, як раніше.
-- **Перевірка таких сторінок.** Сторінка, взята з файлу, показана у вікні перевірки як будь-яка інша, і її можна виправити; **Повернути розпізнаний текст** повертає текст, який був у файлі. Вона шукається один раз, а не двічі, і слів поверх картинки в неї немає: читалка й так уміє виділяти власний текст.
+- **Великі книги з кількома відсканованими сторінками пропонуються самі.** Раніше вікно розпізнавання сканів показувало лише книги, у яких майже немає тексту. Тепер у ньому є й PDF, де не менше 3 сторінок (і десята частина книги) без власного тексту, а в рядку сказано, скільки їх: «3 з 27 стор. без тексту». Запуск читає лише ці сторінки, решту бере як є.
+- **Сторінки рахуються заздалегідь.** Індекс тепер запам'ятовує, скільки сторінок у кожному PDF і скільки з них має текст. Ті PDF, що були проіндексовані раніше, один раз вимірюються у фоні, пошук при цьому не переривається. Кількість сторінок відома до початку розпізнавання, тому список можна впорядкувати за нею: **Порядок: більше сторінок зверху**.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 
