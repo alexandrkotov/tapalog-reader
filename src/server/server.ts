@@ -20,6 +20,8 @@ import type { FullText } from "./fulltext";
 import { mimeOf } from "./formats";
 import { APP_NAME, PING } from "./instance";
 import { Plugins, PLUGIN_API } from "./plugins";
+import { BRIDGE_FILE } from "./pluginBridgeAsset";
+import { PLUGIN_HOST_CSP, PLUGIN_HOST_PAGE } from "./pluginHost";
 import type { BookRow, Library } from "./library";
 import { OCR_ASSETS } from "./ocrAssets.generated";
 import { PDFLIB_ASSETS } from "./pdflibAssets.generated";
@@ -294,7 +296,20 @@ function buildRoutes(app: App, origin: Origin) {
       } catch {
         /* a broken escape in the address: not found */
       }
-      return found ? new Response(Bun.file(found.path), { headers: { "Content-Type": found.type, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache" } }) : notFound();
+      // an isolated plugin's frame fetches its files as a stranger (its origin is opaque), so they carry the CORS header; the files of the others are read by the page itself
+      return found ? new Response(Bun.file(found.path), { headers: { "Content-Type": found.type, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache", ...(found.isolated ? { "Access-Control-Allow-Origin": "*" } : {}) } }) : notFound();
+    },
+    // the page an isolated plugin runs in (a sandboxed frame), and the script that connects it to the reader
+    "/plugin-host/*": (req: Request) => {
+      let name = "";
+      try {
+        name = decodeURIComponent(new URL(req.url).pathname.slice("/plugin-host/".length));
+      } catch {
+        return notFound();
+      }
+      if (name === "bridge.js") return new Response(Bun.file(BRIDGE_FILE), { headers: { "Content-Type": "text/javascript", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*" } });
+      if (!app.plugins.plugins.some((p) => p.id === name && p.isolated)) return notFound();
+      return new Response(PLUGIN_HOST_PAGE, { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": PLUGIN_HOST_CSP, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache" } });
     },
     "/api/plugins": () => json({ api: PLUGIN_API, plugins: app.plugins.describe() }),
     "/api/admin/plugins": { GET: admin(() => json({ api: PLUGIN_API, dir: app.plugins.dir, plugins: app.plugins.describe(), problems: app.plugins.problems })) },

@@ -20,8 +20,12 @@ import { formatOf } from "./formats";
  * A manifest says which one it was written for with "api" (1 when it says nothing). Changes that only add something (a new field
  * in the context, an optional export) keep the number; a change that could break a plugin written for the old one raises it, and
  * a plugin that asks for a number above the program's is skipped with the reason, rather than failing in somebody's reader.
+ *
+ * API 2 adds isolated plugins ("isolated": true in the manifest, which needs "api": 2): the reader runs in a sandboxed frame that
+ * cannot reach the program's page, cookies or login, and is given the book's bytes by `context.file()` instead of an address
+ * (see pluginHost.ts and pluginBridge.js). Plugins written for API 1 run in the page as before.
  */
-export const PLUGIN_API = 1;
+export const PLUGIN_API = 2;
 
 export interface Plugin {
   id: string;
@@ -38,6 +42,8 @@ export interface Plugin {
   shareableView: boolean;
   /** Whether the module also exports `cover(context)`, which draws the book's cover thumbnail. */
   cover: boolean;
+  /** Whether it runs in a sandboxed frame (API 2) rather than in the page. */
+  isolated: boolean;
   dir: string;
 }
 
@@ -116,6 +122,8 @@ export class Plugins {
     if (m.api !== undefined && (typeof m.api !== "number" || !Number.isInteger(m.api) || m.api < 1)) throw new Error('"api" must be a whole number from 1');
     const api = typeof m.api === "number" ? m.api : 1;
     if (api > PLUGIN_API) throw new Error(`it is written for plugin API ${api}, and this program has ${PLUGIN_API}: a newer version of the program is needed`);
+    if (m.isolated !== undefined && typeof m.isolated !== "boolean") throw new Error('"isolated" must be true or false');
+    if (m.isolated === true && api < 2) throw new Error('"isolated" needs "api": 2');
     if (typeof m.name !== "string" || !m.name.trim() || m.name.length > 60) throw new Error('"name" is missing or too long');
     if (m.version !== undefined && (typeof m.version !== "string" || m.version.length > 20)) throw new Error('"version" must be a short text');
     if (!Array.isArray(m.formats) || !m.formats.length || m.formats.length > 10) throw new Error('"formats" must list one to ten formats');
@@ -136,12 +144,12 @@ export class Plugins {
     }
     if (!inside(m.reader) || ![".js", ".mjs"].includes(extname(m.reader))) throw new Error('"reader" must be a .js or .mjs file inside the plugin folder');
     if (!existsSync(join(abs, ...m.reader.split("/")))) throw new Error(`the reader file ${m.reader} is missing`);
-    return { id: m.id, name: m.name.trim(), version: typeof m.version === "string" ? m.version : "", api, exts, mime, reader: m.reader, shareableView: m.shareableView === true, cover: m.cover === true, dir: abs };
+    return { id: m.id, name: m.name.trim(), version: typeof m.version === "string" ? m.version : "", api, exts, mime, reader: m.reader, shareableView: m.shareableView === true, cover: m.cover === true, isolated: m.isolated === true, dir: abs };
   }
 
   /** What the page needs to know to use a plugin. */
   describe() {
-    return this.plugins.map((p) => ({ id: p.id, name: p.name, version: p.version, api: p.api, exts: p.exts, reader: `/plugins/${p.id}/${p.reader}`, shareableView: p.shareableView, cover: p.cover }));
+    return this.plugins.map((p) => ({ id: p.id, name: p.name, version: p.version, api: p.api, exts: p.exts, reader: `/plugins/${p.id}/${p.reader}`, shareableView: p.shareableView, cover: p.cover, isolated: p.isolated }));
   }
 
   /** The library's names of the formats whose plugin draws covers. */
@@ -155,7 +163,7 @@ export class Plugins {
   }
 
   /** The file for a request path inside a plugin, or null: only real files inside that plugin's folder are ever served. */
-  file(id: string, rest: string[]): { path: string; type: string } | null {
+  file(id: string, rest: string[]): { path: string; type: string; isolated: boolean } | null {
     const plugin = this.plugins.find((p) => p.id === id);
     if (!plugin || !rest.length || !rest.every((part) => part && part !== "." && part !== ".." && !part.includes("\\") && !part.includes("\0") && !part.includes(":"))) return null;
     const path = join(plugin.dir, ...rest);
@@ -163,7 +171,7 @@ export class Plugins {
       const real = realpathSync(path);
       const root = realpathSync(plugin.dir);
       if (!real.startsWith(root + sep) || !statSync(real).isFile()) return null; // a link pointing out of the folder is not followed
-      return { path: real, type: TYPES[extname(real).slice(1).toLowerCase()] ?? "application/octet-stream" };
+      return { path: real, type: TYPES[extname(real).slice(1).toLowerCase()] ?? "application/octet-stream", isolated: plugin.isolated };
     } catch {
       return null;
     }

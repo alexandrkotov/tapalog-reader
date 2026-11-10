@@ -19,7 +19,7 @@ before(async () => {
   plugins = mkdtempSync(join(tmpdir(), "reader-e2e-plugins-"));
   cpSync(join(import.meta.dir, "..", "plugins-example", "text-lines"), join(plugins, "text-lines"), { recursive: true });
   mkdirSync(join(plugins, "from-the-future"));
-  writeFileSync(join(plugins, "from-the-future", "plugin.json"), JSON.stringify({ id: "from-the-future", name: "From the future", api: 2, formats: [{ ext: "fut" }], reader: "reader.js" }));
+  writeFileSync(join(plugins, "from-the-future", "plugin.json"), JSON.stringify({ id: "from-the-future", name: "From the future", api: 3, formats: [{ ext: "fut" }], reader: "reader.js" }));
   writeFileSync(join(plugins, "from-the-future", "reader.js"), "export function mount() {}");
   inst = await startServer({ "Notes.lines": NOTES, "Plain.txt": "an ordinary text book, read by the built-in reader" }, { TAPALOG_PLUGINS: plugins });
   await setup(inst);
@@ -68,9 +68,9 @@ e2e("a book in a format only a plugin knows is listed, read by the plugin and sh
 e2e("the administrator can see which plugins are installed", async () => {
   const ctx = await signedIn(browser, inst);
   const listed = await api<{ api: number; plugins: { id: string; exts: string[]; api: number }[]; problems: { folder: string; problem: string }[] }>(ctx, inst, "/api/admin/plugins");
-  expect(listed.api).toBe(1);
+  expect(listed.api).toBe(2);
   expect(listed.plugins.map((p) => [p.id, p.exts, p.api])).toEqual([["text-lines", ["lines"], 1]]);
-  expect(listed.problems).toEqual([{ folder: "from-the-future", problem: "it is written for plugin API 2, and this program has 1: a newer version of the program is needed" }]);
+  expect(listed.problems).toEqual([{ folder: "from-the-future", problem: "it is written for plugin API 3, and this program has 2: a newer version of the program is needed" }]);
 
   const page = await ctx.newPage();
   const errors = watchErrors(page);
@@ -79,8 +79,8 @@ e2e("the administrator can see which plugins are installed", async () => {
   await page.click("button:has-text('Settings')");
   await page.waitForSelector("text=Reader plugins");
   await page.waitForSelector("li:text-is('Text lines (example) 1.0.0 (.lines) · API 1')");
-  await page.waitForSelector("text=This program gives plugins version 1 of the plugin contract");
-  await page.waitForSelector("text=from-the-future: it is written for plugin API 2"); // a plugin for a newer contract is skipped, with the reason
+  await page.waitForSelector("text=This program gives plugins version 2 of the plugin contract");
+  await page.waitForSelector("text=from-the-future: it is written for plugin API 3"); // a plugin for a newer contract is skipped, with the reason
   expect(errors).toEqual([]);
   await ctx.close();
 });

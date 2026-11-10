@@ -70,6 +70,8 @@ try {
       const res = await fetch(`${root}/pdflib/${asset}`);
       check(res.ok && (await res.arrayBuffer()).byteLength > 400_000, `/pdflib/${asset} is embedded`);
     }
+    const bridge = await fetch(`${root}/plugin-host/bridge.js`);
+    check(bridge.ok && (await bridge.text()).includes("need-file"), "/plugin-host/bridge.js (the script of isolated plugins) is embedded");
     const book = await fetch(`${root}/api/file/${library_[0]!.id}`);
     check((await book.text()) === "hello from the smoke test", "the book file is served");
     const status = (await (await fetch(`${root}/api/status`)).json()) as { writable?: boolean };

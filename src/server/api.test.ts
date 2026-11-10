@@ -46,6 +46,9 @@ beforeAll(async () => {
   writeFileSync(join(pluginsDir, "demo", "plugin.json"), JSON.stringify({ id: "demo", name: "Demo reader", version: "1.2.3", formats: [{ ext: ["demo", "dmo"], mime: "application/x-demo" }], reader: "reader.js", shareableView: true }));
   writeFileSync(join(pluginsDir, "demo", "reader.js"), "export function mount() {}\n");
   writeFileSync(join(pluginsDir, "demo", "assets", "data.txt"), "plugin data");
+  mkdirSync(join(pluginsDir, "sealed"));
+  writeFileSync(join(pluginsDir, "sealed", "plugin.json"), JSON.stringify({ id: "sealed", name: "Sealed reader", api: 2, isolated: true, formats: [{ ext: "seal" }], reader: "reader.js" }));
+  writeFileSync(join(pluginsDir, "sealed", "reader.js"), "export function mount() {}\n");
   writeFileSync(join(pluginsDir, "secret.txt"), "not for the web");
   mkdirSync(join(pluginsDir, "broken"));
   writeFileSync(join(pluginsDir, "broken", "plugin.json"), "{ nope");
@@ -628,14 +631,23 @@ test("saved source sites are the administrator's to manage", async () => {
 
 test("installed plugins are listed and their files served (also to a share link's page), and only their own files", async () => {
   const list = (await call(lan, "/api/plugins", { cookie: adminCookie })).body;
-  expect(list).toEqual({ api: 1, plugins: [{ id: "demo", name: "Demo reader", version: "1.2.3", api: 1, exts: ["demo", "dmo"], reader: "/plugins/demo/reader.js", shareableView: true, cover: false }] });
+  expect(list).toEqual({
+    api: 2,
+    plugins: [
+      { id: "demo", name: "Demo reader", version: "1.2.3", api: 1, exts: ["demo", "dmo"], reader: "/plugins/demo/reader.js", shareableView: true, cover: false, isolated: false },
+      { id: "sealed", name: "Sealed reader", version: "", api: 2, exts: ["seal"], reader: "/plugins/sealed/reader.js", shareableView: false, cover: false, isolated: true },
+    ],
+  });
 
-  expect((await call(lan, "/api/plugins", { cookie: "" })).body.plugins).toHaveLength(1); // no login needed: the page of a share link reads it too
+  expect((await call(lan, "/api/plugins", { cookie: "" })).body.plugins).toHaveLength(2); // no login needed: the page of a share link reads it too
   const reader = await fetch(lan + "/plugins/demo/reader.js");
   expect(reader.status).toBe(200);
   expect(reader.headers.get("content-type")).toBe("text/javascript");
   expect(reader.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(reader.headers.get("access-control-allow-origin")).toBeNull(); // read by the page itself
   expect(await reader.text()).toContain("export function mount");
+  // an isolated plugin's frame is a stranger to the program: its files can be read across origins
+  expect((await fetch(lan + "/plugins/sealed/reader.js")).headers.get("access-control-allow-origin")).toBe("*");
   expect(await (await fetch(lan + "/plugins/demo/assets/data.txt", { headers: { Cookie: adminCookie } })).text()).toBe("plugin data");
 
   for (const path of ["/plugins/demo/../secret.txt", "/plugins/demo/%2e%2e/secret.txt", "/plugins/demo/..%2fsecret.txt", "/plugins/demo/assets", "/plugins/demo/", "/plugins/demo", "/plugins/nope/reader.js", "/plugins/broken/plugin.json", "/plugins/demo/%00", "/plugins/demo/%E0%A4%A"]) {
@@ -648,6 +660,30 @@ test("installed plugins are listed and their files served (also to a share link'
   const admin = (await call(lan, "/api/admin/plugins", { cookie: adminCookie })).body;
   expect(admin.dir).toBe(pluginsDir);
   expect(admin.problems).toEqual([{ folder: "broken", problem: "plugin.json is not valid JSON" }]);
+});
+
+test("an isolated plugin gets a page of its own that is a sandbox, the script that connects it to the reader, and nothing else under /plugin-host/", async () => {
+  const page = await fetch(lan + "/plugin-host/sealed");
+  expect(page.status).toBe(200);
+  expect(page.headers.get("content-type")).toStartWith("text/html");
+  const csp = page.headers.get("content-security-policy") ?? "";
+  expect(csp).toContain("sandbox allow-scripts"); // the same sandbox even when the address is opened by hand
+  expect(csp).not.toContain("allow-same-origin");
+  expect(csp).toContain("frame-ancestors 'self'");
+  expect(csp).toContain("default-src 'none'");
+  expect(await page.text()).toContain('src="/plugin-host/bridge.js"');
+
+  const bridge = await fetch(lan + "/plugin-host/bridge.js");
+  expect(bridge.status).toBe(200);
+  expect(bridge.headers.get("content-type")).toBe("text/javascript");
+  expect(bridge.headers.get("access-control-allow-origin")).toBe("*"); // read by a frame whose origin is opaque
+  expect(await bridge.text()).toContain("need-file");
+
+  // a plugin that is not isolated, one that does not exist, and odd names have no such page
+  for (const path of ["/plugin-host/demo", "/plugin-host/nope", "/plugin-host/", "/plugin-host", "/plugin-host/%E0%A4%A", "/plugin-host/sealed/x", "/plugin-host/..%2fsealed"]) {
+    const res = await fetch(lan + path);
+    expect([path, res.status]).toEqual([path, 404]);
+  }
 });
 
 test("a book's card is read by anyone who can browse and changed by the administrator only; the shelf, the search and the tag list follow", async () => {

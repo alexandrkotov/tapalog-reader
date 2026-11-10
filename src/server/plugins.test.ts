@@ -38,7 +38,7 @@ test("a good manifest becomes a plugin, with its extensions in lower case and th
   const p = install({ demo: good({ version: "2.0", shareableView: true, formats: [{ ext: ["DEMO", "dm"], mime: "application/x-demo" }, { ext: "demo2", mime: "application/x-other" }] }) });
   expect(p.problems).toEqual([]);
   expect(p.plugins[0]).toMatchObject({ id: "demo", name: "Demo", version: "2.0", exts: ["demo", "dm", "demo2"], mime: "application/x-demo", reader: "reader.js", shareableView: true });
-  expect(p.describe()).toEqual([{ id: "demo", name: "Demo", version: "2.0", exts: ["demo", "dm", "demo2"], api: 1, reader: "/plugins/demo/reader.js", shareableView: true, cover: false }]);
+  expect(p.describe()).toEqual([{ id: "demo", name: "Demo", version: "2.0", exts: ["demo", "dm", "demo2"], api: 1, reader: "/plugins/demo/reader.js", shareableView: true, cover: false, isolated: false }]);
 });
 
 test("a bad manifest skips that plugin only, and says why", () => {
@@ -129,14 +129,33 @@ test("a manifest says which version of the plugin contract it was written for: n
     old: good({ id: "old", formats: [{ ext: "ol" }] }),
     named: good({ id: "named", api: 1, formats: [{ ext: "nm" }] }),
     future: good({ id: "future", api: PLUGIN_API + 1, formats: [{ ext: "fu" }] }),
+    two: good({ id: "two", api: 2, formats: [{ ext: "tw" }] }),
     zero: good({ id: "zero", api: 0, formats: [{ ext: "ze" }] }),
     half: good({ id: "half", api: 1.5, formats: [{ ext: "ha" }] }),
     text: good({ id: "text", api: "1", formats: [{ ext: "tx" }] }),
   });
-  expect(PLUGIN_API).toBe(1);
-  expect(p.plugins.map((x) => [x.id, x.api])).toEqual([["named", 1], ["old", 1]]);
-  expect(p.describe().every((x) => x.api === 1)).toBe(true);
+  expect(PLUGIN_API).toBe(2);
+  expect(p.plugins.map((x) => [x.id, x.api])).toEqual([["named", 1], ["old", 1], ["two", 2]]);
   const why = Object.fromEntries(p.problems.map((x) => [x.folder, x.problem]));
   expect(why.future).toBe(`it is written for plugin API ${PLUGIN_API + 1}, and this program has ${PLUGIN_API}: a newer version of the program is needed`);
   for (const folder of ["zero", "half", "text"]) expect(why[folder]).toContain('"api"');
+});
+
+test("a plugin can ask to run isolated, in a sandboxed frame, but only when it is written for the API that has them", () => {
+  const p = install({
+    sealed: good({ id: "sealed", api: 2, isolated: true, formats: [{ ext: "se" }] }),
+    open: good({ id: "open", api: 2, isolated: false, formats: [{ ext: "op" }] }),
+    plain: good({ id: "plain", formats: [{ ext: "pl" }] }),
+    old: good({ id: "old", api: 1, isolated: true, formats: [{ ext: "ol" }] }),
+    unversioned: good({ id: "unversioned", isolated: true, formats: [{ ext: "un" }] }),
+    odd: good({ id: "odd", api: 2, isolated: "yes", formats: [{ ext: "od" }] }),
+  });
+  expect(p.plugins.map((x) => [x.id, x.isolated])).toEqual([["open", false], ["plain", false], ["sealed", true]]);
+  expect(p.describe().find((x) => x.id === "sealed")).toMatchObject({ api: 2, isolated: true });
+  const why = Object.fromEntries(p.problems.map((x) => [x.folder, x.problem]));
+  expect(why.old).toBe('"isolated" needs "api": 2');
+  expect(why.unversioned).toBe('"isolated" needs "api": 2');
+  expect(why.odd).toBe('"isolated" must be true or false');
+  expect(p.file("sealed", ["reader.js"])?.isolated).toBe(true);
+  expect(p.file("plain", ["reader.js"])?.isolated).toBe(false);
 });
