@@ -40,5 +40,6 @@ test("sorting: by path, by title (numbers by value), the unrecognized first, the
   expect(sortRows(rows, "title").map((r) => r.title)).toEqual(["Авиамодели 2", "Авиамодели 10", "Летающие крылья", "Механизмы, 1965", "Справочник токаря"]);
   expect(ids("unread")).toEqual(["d", "b", "e", "c", "a"]); // new ones by path, then the half done, then the done
   expect(ids("size")).toEqual(["c", "a", "d", "b", "e"]);
+  expect(ids("pages")).toEqual(["a", "e", "c", "d", "b"]); // 1062, 449, 200 pages, then the ones whose pages are not known, by path
   expect(rows.map((r) => r.id)).toEqual(["a", "b", "c", "d", "e"]);
 });

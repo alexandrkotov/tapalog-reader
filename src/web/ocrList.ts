@@ -4,17 +4,17 @@ export interface OcrListRow {
   title: string;
   path: string;
   size: number;
-  /** Null until the recognition of the book has begun: only then is the number of pages known. */
+  /** Null while the number of pages is not known (the index has not counted them, and no page has been read). */
   pages: number | null;
   done: number;
 }
 
 /** "unread": not finished (not begun, or stopped half way). */
 export type OcrShow = "all" | "unread" | "partial" | "done";
-export type OcrSort = "path" | "title" | "unread" | "size";
+export type OcrSort = "path" | "title" | "unread" | "size" | "pages";
 
 export const OCR_SHOWS: readonly OcrShow[] = ["all", "unread", "partial", "done"];
-export const OCR_SORTS: readonly OcrSort[] = ["path", "title", "unread", "size"];
+export const OCR_SORTS: readonly OcrSort[] = ["path", "title", "unread", "size", "pages"];
 
 export type OcrState = "new" | "partial" | "done";
 
@@ -46,7 +46,7 @@ export function filterRows<T extends OcrListRow>(rows: readonly T[], query: stri
 const collate = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const RANK: Record<OcrState, number> = { new: 0, partial: 1, done: 2 };
 
-/** A sorted copy: by folder and name, by title, the unrecognized first (then half done, then done), or the biggest files first. Ties fall back to the path, so the order is always the same. */
+/** A sorted copy: by folder and name, by title, the unrecognized first (then half done, then done), the biggest files first, or the books with most pages first (those whose pages are not known last). Ties fall back to the path, so the order is always the same. */
 export function sortRows<T extends OcrListRow>(rows: readonly T[], sort: OcrSort): T[] {
   const byPath = (a: T, b: T) => collate.compare(a.path, b.path);
   const compare: Record<OcrSort, (a: T, b: T) => number> = {
@@ -54,6 +54,7 @@ export function sortRows<T extends OcrListRow>(rows: readonly T[], sort: OcrSort
     title: (a, b) => collate.compare(a.title, b.title) || byPath(a, b),
     unread: (a, b) => RANK[stateOf(a)] - RANK[stateOf(b)] || byPath(a, b),
     size: (a, b) => b.size - a.size || byPath(a, b),
+    pages: (a, b) => (b.pages ?? -1) - (a.pages ?? -1) || byPath(a, b),
   };
   return [...rows].sort(compare[sort]);
 }

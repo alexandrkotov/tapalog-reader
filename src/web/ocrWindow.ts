@@ -14,6 +14,8 @@ interface Row extends OcrListRow {
   plain: number;
   /** Pages kept as the PDF has them (its own text), not read from the picture. */
   own: number;
+  /** Pages of the file that have text of their own, as the index counted them; null when it has not. */
+  textPages: number | null;
   lang: string | null;
 }
 
@@ -100,7 +102,9 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     if (locked.has(row.id)) return t("ocr.row.locked");
     const failed = failedPages.get(row.id) ?? 0;
     const base = row.pages === null || row.done === 0 ? t("ocr.row.new") : row.done >= row.pages ? t("ocr.row.done", { pages: row.pages }) : t("ocr.row.partial", { done: row.done, pages: row.pages });
-    const notes = [...(row.own ? [t("ocr.row.own", { n: row.own })] : []), ...(row.plain ? [t("ocr.row.plain", { n: row.plain })] : []), ...(failed ? [t("ocr.row.failed", { n: failed })] : [])];
+    const pages = row.pages ?? 0;
+    const blank = row.textPages !== null && row.textPages > 0 && row.done < pages ? pages - row.textPages : 0; // a book of mixed pages: how many of its pages are pictures
+    const notes = [...(blank > 0 ? [t("ocr.row.blank", { n: blank, pages })] : []), ...(row.own ? [t("ocr.row.own", { n: row.own })] : []), ...(row.plain ? [t("ocr.row.plain", { n: row.plain })] : []), ...(failed ? [t("ocr.row.failed", { n: failed })] : [])];
     return [base, ...notes].join(" · ");
   };
 
@@ -108,7 +112,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     list = next;
     rows.clear();
     for (const r of next.books) rows.set(r.id, r);
-    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, edited: 0, images: 0, plain: 0, own: 0, lang: null });
+    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, edited: 0, images: 0, plain: 0, own: 0, textPages: null, lang: null });
     for (const id of [...checked]) if (!rows.has(id)) checked.delete(id);
   }
 
