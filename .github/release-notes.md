@@ -1,9 +1,8 @@
 ## English
 
 What's new:
-- **Select and copy text on a scanned page.** In the reader, the words recognized on a scan lie over the picture in no colour: double-click a word, drag over a line or a page, copy it, or find it with the browser's own search. Each word sits where it is on the page and follows the turning and the cropping of the pages. The PDF itself is never changed.
-- **Books recognized before.** Until now only the text of a page was kept, so the words of those books cannot be selected yet. The window for recognizing scans says how many pages of a book lack them; **Select those without selectable text** ticks such books and turns on **Also read again the pages recognized before**, and the run reads again only those pages. What you corrected by hand is left alone, and a page you wrote shows no words over it, because its words are no longer the ones found. The words take about 5 KB a page.
-- **A little faster for several books.** The readers of the recognition are made once for a whole run instead of for each book, which saves about a second per book.
+- **Books with pages of both kinds.** A PDF often has some pages typeset (they have text in the file) and others scanned. When you recognize such a book, the pages that already have their own text are now taken as they are and only the pictures are read, which is faster and leaves the exact text of the file untouched. The window has a checkbox for it (on by default, remembered), says how many pages of each book were taken, and the book for checking, export and search has all the pages. Turn the checkbox off to read every page from its picture as before.
+- **Checking such pages.** A page taken from the file is shown in the checking window like any other and can be corrected; **Restore the recognized text** brings back the text the file had. It is searched once, not twice, and has no words over the picture, since the reader can already select its own text.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -17,9 +16,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **Выделять и копировать текст на странице скана.** В читалке слова, распознанные на скане, лежат поверх картинки бесцветными: слово можно выделить двойным щелчком, строку или страницу протянуть мышью, скопировать или найти поиском самого браузера. Каждое слово стоит там, где оно на странице, и следует за поворотом и обрезкой страниц. Сам PDF не меняется.
-- **Книги, распознанные раньше.** До сих пор сохранялся только текст страницы, поэтому слова этих книг выделить пока нельзя. Окно распознавания сканов говорит, на скольких страницах книги их нет; **Выбрать те, где текст не выделяется** отмечает такие книги и включает **Заново прочитать и страницы, распознанные раньше**, а запуск читает заново только эти страницы. Исправленное вручную не трогается, а у страницы, написанной вами, слов поверх нет: её слова уже не те, что были найдены. Слова занимают около 5 КБ на страницу.
-- **Чуть быстрее для нескольких книг.** «Читатели» распознавания создаются один раз на весь запуск, а не на каждую книгу: это экономит около секунды на книгу.
+- **Книги со страницами обоих видов.** В PDF часто одни страницы набраны (текст есть в файле), а другие отсканированы. Теперь при распознавании такой книги страницы, у которых уже есть свой текст, берутся как есть, а читаются только картинки: это быстрее и не трогает точный текст файла. В окне для этого есть галочка (включена по умолчанию, запоминается), оно говорит, сколько страниц каждой книги взято как есть, а книга для проверки, экспорта и поиска содержит все страницы. Выключите галочку, чтобы читать каждую страницу с картинки, как раньше.
+- **Проверка таких страниц.** Страница, взятая из файла, показана в окне проверки как любая другая и её можно исправить; **Вернуть распознанный текст** возвращает текст, который был в файле. Она ищется один раз, а не дважды, и слов поверх картинки у неё нет: читалка и так умеет выделять собственный текст.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -33,9 +31,8 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **Виділяти й копіювати текст на сторінці скану.** У читалці слова, розпізнані на скані, лежать поверх картинки безбарвними: слово можна виділити подвійним клацанням, рядок або сторінку протягнути мишею, скопіювати або знайти пошуком самого браузера. Кожне слово стоїть там, де воно на сторінці, і слідує за поворотом та обрізкою сторінок. Сам PDF не змінюється.
-- **Книги, розпізнані раніше.** Досі зберігався тільки текст сторінки, тому слова цих книг виділити поки не можна. Вікно розпізнавання сканів каже, на скількох сторінках книги їх немає; **Вибрати ті, де текст не виділяється** позначає такі книги й вмикає **Заново прочитати й сторінки, розпізнані раніше**, а запуск читає заново лише ці сторінки. Виправлене вручну не чіпається, а на сторінці, написаній вами, слів поверх немає: її слова вже не ті, що були знайдені. Слова займають близько 5 КБ на сторінку.
-- **Трохи швидше для кількох книг.** «Читачі» розпізнавання створюються один раз на весь запуск, а не на кожну книгу: це заощаджує близько секунди на книгу.
+- **Книги зі сторінками обох видів.** У PDF часто одні сторінки набрані (текст є у файлі), а інші відскановані. Тепер під час розпізнавання такої книги сторінки, що вже мають власний текст, беруться як є, а читаються лише картинки: це швидше й не чіпає точний текст файлу. У вікні для цього є прапорець (увімкнений за замовчуванням, запам'ятовується), воно каже, скільки сторінок кожної книги взято як є, а книга для перевірки, експорту та пошуку містить усі сторінки. Вимкніть прапорець, щоб читати кожну сторінку з картинки, як раніше.
+- **Перевірка таких сторінок.** Сторінка, взята з файлу, показана у вікні перевірки як будь-яка інша, і її можна виправити; **Повернути розпізнаний текст** повертає текст, який був у файлі. Вона шукається один раз, а не двічі, і слів поверх картинки в неї немає: читалка й так уміє виділяти власний текст.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 

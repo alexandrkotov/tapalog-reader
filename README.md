@@ -21,7 +21,7 @@ Early, but everything below works. Each line leads to the page that describes it
 - Download a book by link, find duplicates
 
 **Scanned books** — [guide/scans.md](guide/scans.md)
-- Recognize a scanned PDF in your browser (Russian, English; nothing leaves the computer), check and correct the text beside the scan, cut figures out, make a new PDF from the result, and select and copy words right on the scan
+- Recognize a scanned PDF in your browser (Russian, English; nothing leaves the computer), check and correct the text beside the scan, cut figures out, make a new PDF from the result, select and copy words right on the scan, and in a book with typeset and scanned pages read only the scans
 
 **Access and sharing** — [guide/access.md](guide/access.md)
 - Accounts, share links with a QR code, internet access through a Cloudflare tunnel, backup and restore, English, Russian and Ukrainian, light and dark themes
