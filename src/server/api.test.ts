@@ -1022,6 +1022,20 @@ test("the scripts that write a PDF are served from a fixed list, to anybody, wit
   expect((await fetch(`${lan}/pdflib/`)).status).toBe(404);
 });
 
+test("the visual editor of the text is served from a fixed list, to anybody, with no way to reach other files", async () => {
+  for (const [name, type, least] of [["editor.js", "text/javascript", 400_000], ["katex.css", "text/css", 10_000], ["fonts/KaTeX_Main-Regular.woff2", "font/woff2", 10_000]] as const) {
+    const res = await fetch(`${lan}/editor/${name}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain(type);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(least);
+  }
+  expect((await fetch(`${lan}/editor/fonts/KaTeX_Main-Regular.ttf`)).status).toBe(404);
+  expect((await fetch(`${lan}/editor/..%2Fpackage.json`)).status).toBe(404);
+  expect((await fetch(`${lan}/editor/fonts/..%2F..%2Fpackage.json`)).status).toBe(404);
+  expect((await fetch(`${lan}/editor/`)).status).toBe(404);
+});
+
 test("the engine that reads pictures is served from a fixed list, to anybody, with no way to reach other files", async () => {
   for (const [name, type, least] of [["worker.min.js", "text/javascript", 10_000], ["tesseract.min.js", "text/javascript", 10_000], ["core/tesseract-core-simd-lstm.wasm.js", "text/javascript", 1_000_000], ["lang/rus.traineddata.gz", "application/octet-stream", 1_000_000], ["lang/eng.traineddata.gz", "application/octet-stream", 1_000_000]] as const) {
     const res = await fetch(`${lan}/ocr/${name}`);

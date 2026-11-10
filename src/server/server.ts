@@ -24,6 +24,7 @@ import { BRIDGE_FILE } from "./pluginBridgeAsset";
 import { PLUGIN_HOST_CSP, PLUGIN_HOST_PAGE } from "./pluginHost";
 import type { BookRow, Library } from "./library";
 import { OCR_ASSETS } from "./ocrAssets.generated";
+import { EDITOR_ASSETS } from "./editorAssets.generated";
 import { PDFLIB_ASSETS } from "./pdflibAssets.generated";
 import { PDFJS_ASSETS } from "./pdfjsAssets.generated";
 import { RESET_FILE, type Recovery } from "./recovery";
@@ -134,6 +135,15 @@ function servePdflibAsset(req: Request): Response {
   const path = Object.hasOwn(PDFLIB_ASSETS, name) ? PDFLIB_ASSETS[name] : undefined; // a fixed list again
   if (!path) return notFound();
   return new Response(Bun.file(path), { headers: { "Content-Type": "text/javascript", "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" } });
+}
+
+/** The visual editor of the text of a page: one script, a style sheet and fonts (see scripts/gen-editor-assets.ts). */
+function serveEditorAsset(req: Request): Response {
+  const name = decodeURIComponent(new URL(req.url).pathname.slice("/editor/".length));
+  const path = Object.hasOwn(EDITOR_ASSETS, name) ? EDITOR_ASSETS[name] : undefined; // a fixed list again
+  if (!path) return notFound();
+  const type = name.endsWith(".js") ? "text/javascript" : name.endsWith(".css") ? "text/css" : "font/woff2";
+  return new Response(Bun.file(path), { headers: { "Content-Type": type, "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" } });
 }
 
 const param = (req: Bun.BunRequest, name: string) => req.params[name] ?? "";
@@ -287,6 +297,7 @@ function buildRoutes(app: App, origin: Origin) {
     "/pdfjs/*": servePdfjsAsset,
     "/ocr/*": serveOcrAsset, // open like /pdfjs/*: no library data in it
     "/pdflib/*": servePdflibAsset, // and so is this
+    "/editor/*": serveEditorAsset, // and this
     // files of the installed plugins: readers and what they load. Open like /pdfjs/*, because the page of a share link needs them too and they hold no library data
     "/plugins/*": (req: Request) => {
       const [, , id = "", ...rest] = new URL(req.url).pathname.split("/");

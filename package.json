@@ -11,6 +11,7 @@
     "gen:pdfjs": "bun scripts/gen-pdfjs-assets.ts",
     "gen:ocr": "bun scripts/gen-ocr-assets.ts",
     "gen:pdflib": "bun scripts/gen-pdflib-assets.ts",
+    "gen:editor": "bun scripts/gen-editor-assets.ts",
     "gen:capabilities": "bun scripts/gen-capabilities-en.ts",
     "test": "bun test src --timeout 30000",
     "compile:linux-x64": "bun scripts/fetch-cloudflared.ts linux-x64 && bun build --compile --target=bun-linux-x64 src/server/main.compiled.linux-x64.ts --outfile dist/tapalog-reader-linux-x64",
@@ -23,6 +24,8 @@
   },
   "dependencies": {
     "@ecm/viewer-engine": "https://github.com/alexandrkotov/electronic-catalog-maker/releases/download/viewer-engine-v0.4.0/ecm-viewer-engine-0.4.0.tgz",
+    "@milkdown/kit": "^7.23.0",
+    "@milkdown/plugin-math": "^7.5.9",
     "@pdf-lib/fontkit": "^1.1.1",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/rus": "^1.0.0",

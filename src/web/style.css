@@ -142,6 +142,27 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .proof-label { font-weight: 600; font-size: 14px; white-space: nowrap; }
 .proof-badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--hover); border: 1px solid var(--border); }
 .proof-text { flex: 1 1 0; min-height: 0; width: 100%; resize: none; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; line-height: 1.5; }
+/* the text of a page is shown by the visual editor (class "visual" on the list) or as the plain text in the textarea */
+.proof-pages.visual .proof-text, .proof-pages:not(.visual) .proof-editor { display: none; }
+.proof-editor { position: relative; flex: 1 1 0; min-height: 0; overflow: auto; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); line-height: 1.5; }
+.proof-editor:focus-within { border-color: var(--accent); }
+.proof-editor.empty::before { content: attr(data-placeholder); position: absolute; left: 10px; top: 8px; color: var(--muted); pointer-events: none; }
+.proof-editor .ProseMirror { outline: none; min-height: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.proof-editor .ProseMirror p { margin: 0 0 0.6em; }
+.proof-editor .ProseMirror h1, .proof-editor .ProseMirror h2, .proof-editor .ProseMirror h3, .proof-editor .ProseMirror h4 { margin: 0.8em 0 0.4em; line-height: 1.25; }
+.proof-editor .ProseMirror h1 { font-size: 1.5em; }
+.proof-editor .ProseMirror h2 { font-size: 1.3em; }
+.proof-editor .ProseMirror h3 { font-size: 1.15em; }
+.proof-editor .ProseMirror ul, .proof-editor .ProseMirror ol { margin: 0 0 0.6em; padding-left: 1.6em; }
+.proof-editor .ProseMirror li > p { margin: 0 0 0.3em; }
+.proof-editor .ProseMirror blockquote { margin: 0 0 0.6em; padding-left: 0.9em; border-left: 3px solid var(--border); color: var(--muted); }
+.proof-editor .ProseMirror code { padding: 0 4px; border-radius: 4px; background: var(--hover); font-size: 0.92em; }
+.proof-editor .ProseMirror pre { margin: 0 0 0.6em; padding: 8px 10px; border-radius: 6px; background: var(--hover); overflow: auto; }
+.proof-editor .ProseMirror pre code { padding: 0; background: none; }
+.proof-editor .ProseMirror hr { border: 0; border-top: 1px solid var(--border); margin: 0.8em 0; }
+.proof-editor .ProseMirror img { max-width: 100%; height: auto; vertical-align: middle; border-radius: 4px; }
+.proof-editor .ProseMirror img.ProseMirror-selectednode { outline: 2px solid var(--accent); }
+.proof-editor .ProseMirror [data-type="math_block"] { display: block; margin: 0.4em 0 0.8em; text-align: center; overflow-x: auto; }
 @media (max-width: 760px) {
   .proof-row { grid-template-columns: minmax(0, 1fr); }
   .proof-side { min-height: 45vh; }

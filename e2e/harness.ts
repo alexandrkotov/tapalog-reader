@@ -81,8 +81,18 @@ export async function setup(inst: Instance, account = ADMIN): Promise<void> {
 }
 
 /** A browser context already signed in as `account` (through the API, not the form). */
-export async function signedIn(browser: Browser, inst: Instance, account = ADMIN, viewport = { width: 1200, height: 800 }, offerTour = false): Promise<BrowserContext> {
+export async function signedIn(browser: Browser, inst: Instance, account = ADMIN, viewport = { width: 1200, height: 800 }, offerTour = false, visualEditor = false): Promise<BrowserContext> {
   const ctx = await browser.newContext({ viewport, acceptDownloads: true });
+  if (!visualEditor) {
+    // the text of a page is edited in the plain textarea unless a test asks for the visual editor (a choice the page made earlier stays)
+    await ctx.addInitScript(() => {
+      try {
+        if (localStorage.getItem("tapalog.proofEditor") === null) localStorage.setItem("tapalog.proofEditor", "source");
+      } catch {
+        /* nothing to write to */
+      }
+    });
+  }
   if (!offerTour) {
     // the first-visit offer of the quick tour stays out of the way (the script runs in every frame, and a sandboxed one has no storage)
     await ctx.addInitScript(() => {

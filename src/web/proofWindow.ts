@@ -2,6 +2,7 @@ import type * as Pdfjs from "pdfjs-dist/build/pdf.min.mjs";
 import { lang, t } from "./i18n";
 import { makeResizable, type Resizable } from "./modalResize";
 import { figureScale, MAX_ATTEMPTS, MAX_PNG_BYTES, scrollStep } from "./proofFigure";
+import { createPageEditor, type PageEditor } from "./pageEditor";
 import { pdfDocumentOptions } from "./readers/pdfAssets";
 import { api, ApiError, el, formatBytes, openModal, store } from "./ui";
 
@@ -54,6 +55,11 @@ interface Slot {
   n: number;
   scan: HTMLElement;
   text: HTMLTextAreaElement;
+  /** Where the visual editor of the text stands while the page is near the window; the textarea always holds the text, whichever of the two is shown. */
+  host: HTMLElement;
+  editor: PageEditor | null;
+  /** Counts the starts of the editor, so that one that is late (the page has been left, or the mode changed) is dropped. */
+  mounts: number;
   state: HTMLElement;
   /** The pictures cut from this page, as small pictures under its heading, to put into the text again or to delete. */
   figs: HTMLElement;
@@ -106,7 +112,11 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     clearTimeout(sharpenTimer);
     sizing?.dispose();
     void task?.destroy();
-    for (const slot of slots.values()) if (slot.text.value !== slot.sent) void save(slot); // what was typed last is not lost with the window
+    for (const slot of slots.values()) {
+      if (slot.text.value !== slot.sent) void save(slot); // what was typed last is not lost with the window
+      void slot.editor?.destroy();
+      slot.editor = null;
+    }
     if (touched) opts.changed?.();
   };
   const modal = openModal(t("proof.title", { title: book.title }), finish);
@@ -214,7 +224,8 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     slot.inflight = true;
     try {
       const result = await api<{ page: PageItem | null }>(url(slot.n), undefined, "DELETE");
-      slot.text.value = slot.sent = result.page?.text ?? "";
+      slot.sent = result.page?.text ?? "";
+      setText(slot, slot.sent);
       slot.text.placeholder = result.page ? "" : t("proof.unread");
       touched = true;
       counts.edited = Math.max(0, counts.edited - 1);
@@ -328,6 +339,64 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     clearTimeout(hintTimer);
     hintTimer = setTimeout(() => (hint.textContent = t("proof.figure.hint")), 3500);
   };
+  // the text of a page is edited as it is shown (bold, headings, formulas, the figures in place) or as the plain text it is kept as; remembered like the size of the window
+  const sourceButton = el("button", { type: "button", class: "btn small proof-source", textContent: t("proof.source"), title: t("proof.sourceHint") });
+  let visual = store.get("tapalog.proofEditor") !== "source";
+  const showMode = () => {
+    scroller.classList.toggle("visual", visual);
+    sourceButton.classList.toggle("primary", !visual);
+    sourceButton.setAttribute("aria-pressed", String(!visual));
+  };
+  sourceButton.addEventListener("click", () => {
+    visual = !visual;
+    store.set("tapalog.proofEditor", visual ? "visual" : "source");
+    showMode();
+    for (const slot of slots.values()) {
+      if (visual && wanted.has(slot.n)) void mountEditor(slot);
+      if (!visual) unmountEditor(slot);
+    }
+  });
+  /** Sets the text of a page from outside the editor (a page taken back, a figure taken out), and the editor with it. */
+  function setText(slot: Slot, value: string): void {
+    slot.text.value = value;
+    slot.editor?.set(value);
+    slot.host.classList.toggle("empty", value === "");
+  }
+  /** Starts the editor on a page that is near the window; the text goes on being kept in the textarea, so nothing is lost when the editor goes. */
+  async function mountEditor(slot: Slot): Promise<void> {
+    if (!visual || slot.editor || closed) return;
+    const mount = ++slot.mounts;
+    const started = slot.text.value;
+    try {
+      const editor = await createPageEditor(slot.host, started, {
+        resolveImage: (src) => (/^images\/p\d+-\d+\.png$/.test(src) ? `${base}/${src}` : src),
+        onChange: (text) => {
+          slot.text.value = text;
+          slot.host.classList.toggle("empty", text === "");
+          slot.text.dispatchEvent(new Event("input")); // saved like anything typed
+        },
+      });
+      if (closed || !visual || mount !== slot.mounts || !wanted.has(slot.n)) {
+        void editor.destroy(); // the page was left, or the mode changed, while the editor was starting
+        return;
+      }
+      slot.editor = editor;
+      if (slot.text.value !== started) editor.set(slot.text.value); // changed meanwhile (a figure put in)
+      slot.host.classList.toggle("empty", slot.text.value === "");
+    } catch {
+      if (closed) return;
+      visual = false; // the editor could not be loaded: the plain text is there, as it was
+      showMode();
+      flashHint(t("proof.editorFailed"));
+    }
+  }
+  function unmountEditor(slot: Slot): void {
+    slot.mounts++;
+    const editor = slot.editor;
+    slot.editor = null;
+    if (!editor) return;
+    void editor.destroy().then(() => slot.host.replaceChildren());
+  }
   // "the page whole in the window": remembered like the size of the window
   const fitButton = el("button", { type: "button", class: "btn small proof-fit", textContent: t("proof.fit"), title: t("proof.fitHint") });
   let fit = false;
@@ -359,6 +428,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     hint.hidden = !on;
   };
   figureButton.addEventListener("click", () => selectMode(!selecting));
+  showMode();
   const byPage = new Map(list.items.map((item) => [item.page, item]));
   for (let n = 1; n <= list.pages; n++) {
     const item = byPage.get(n);
@@ -371,9 +441,12 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const wholeButton = el("button", { type: "button", class: "btn small proof-whole", textContent: t("proof.figure.whole"), title: t("proof.figure.wholeHint") });
     const head = el("div", { class: "proof-head" }, el("span", { class: "proof-label", textContent: t("proof.page", { n }) }), badge, el("span", { class: "proof-gap" }), state, restoreButton, wholeButton);
     const figs = el("div", { class: "proof-figs" });
-    const row = el("section", { class: "proof-row" }, scan, el("div", { class: "proof-side" }, head, figs, text));
+    const host = el("div", { class: "proof-editor" });
+    host.dataset.placeholder = item ? "" : t("proof.unread");
+    host.classList.toggle("empty", !item?.text);
+    const row = el("section", { class: "proof-row" }, scan, el("div", { class: "proof-side" }, head, figs, text, host));
     row.dataset.page = String(n);
-    const slot: Slot = { n, scan, text, state, figs, badge, restore: restoreButton, sent: item?.text ?? "", edited: !!item?.edited, inflight: false, timer: null };
+    const slot: Slot = { n, scan, text, host, editor: null, mounts: 0, state, figs, badge, restore: restoreButton, sent: item?.text ?? "", edited: !!item?.edited, inflight: false, timer: null };
     slots.set(n, slot);
     text.addEventListener("input", () => {
       if (slot.timer) clearTimeout(slot.timer);
@@ -386,6 +459,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
       slot.timer = setTimeout(() => void save(slot), SAVE_AFTER);
     });
     text.addEventListener("blur", () => void save(slot));
+    host.addEventListener("focusout", () => void save(slot));
     restoreButton.addEventListener("click", () => void restore(slot));
     wholeButton.addEventListener("click", () => void cutFigure(slot, { x: 0, y: 0, w: 1, h: 1 })); // the page as one figure: no frame to draw, however tall the window is
     scroller.append(row);
@@ -397,7 +471,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const row = scroller.children[Math.min(Math.max(n, 1), list.pages) - 1] as HTMLElement | undefined;
     if (row) scroller.scrollTo({ top: row.offsetTop });
   });
-  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, fitButton, figureButton, ...downloads, zipButton, pdfButton)), pdfPanel, hint, scroller);
+  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, sourceButton, fitButton, figureButton, ...downloads, zipButton, pdfButton)), pdfPanel, hint, scroller);
   for (const image of list.images) {
     const slot = slots.get(image.page);
     if (slot) addThumb(slot, image.name);
@@ -447,6 +521,10 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const field = slot.text;
     const [, page, number] = /^p0*(\d+)-(\d+)\.png$/.exec(name) ?? [];
     const ref = `![${t("proof.figure.alt", { n: `${page}.${number}` })}](images/${name})`;
+    if (slot.editor) {
+      slot.editor.insert(ref); // at the cursor of the editor; the textarea follows
+      return;
+    }
     const at = Math.min(field.selectionStart, field.value.length);
     const end = Math.min(field.selectionEnd, field.value.length);
     const before = field.value.slice(0, at);
@@ -465,7 +543,8 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const insert = el("button", { type: "button", class: "btn small proof-fig-insert", textContent: t("proof.figure.insert"), title: t("proof.figure.insertTitle") });
     insert.addEventListener("click", () => {
       insertFigure(slot, name);
-      slot.text.focus({ preventScroll: true });
+      if (slot.editor) slot.editor.focus();
+      else slot.text.focus({ preventScroll: true });
     });
     const remove = el("button", { type: "button", class: "btn small proof-fig-delete", textContent: "×", title: t("proof.figure.delete") });
     remove.setAttribute("aria-label", t("proof.figure.delete"));
@@ -486,7 +565,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
         if (!other) continue;
         const typedSince = other.text.value !== other.sent; // typed while the request was on its way: keep it, without the reference
         other.sent = page.text;
-        other.text.value = typedSince ? withoutReference(other.text.value, name) : page.text;
+        setText(other, typedSince ? withoutReference(other.text.value, name) : page.text);
         if (other.text.value !== other.sent) other.text.dispatchEvent(new Event("input"));
       }
       fig.remove();
@@ -653,9 +732,11 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
         if (entry.isIntersecting) {
           wanted.add(n);
           void draw(n);
+          void mountEditor(slots.get(n)!);
         } else {
           wanted.delete(n);
           release(n);
+          unmountEditor(slots.get(n)!);
         }
       }
     },
