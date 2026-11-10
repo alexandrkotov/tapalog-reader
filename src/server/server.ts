@@ -19,7 +19,7 @@ import { ecatmCover } from "./ecatmCover";
 import type { FullText } from "./fulltext";
 import { mimeOf } from "./formats";
 import { APP_NAME, PING } from "./instance";
-import { Plugins } from "./plugins";
+import { Plugins, PLUGIN_API } from "./plugins";
 import type { BookRow, Library } from "./library";
 import { OCR_ASSETS } from "./ocrAssets.generated";
 import { PDFLIB_ASSETS } from "./pdflibAssets.generated";
@@ -296,8 +296,8 @@ function buildRoutes(app: App, origin: Origin) {
       }
       return found ? new Response(Bun.file(found.path), { headers: { "Content-Type": found.type, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache" } }) : notFound();
     },
-    "/api/plugins": () => json({ plugins: app.plugins.describe() }),
-    "/api/admin/plugins": { GET: admin(() => json({ dir: app.plugins.dir, plugins: app.plugins.describe(), problems: app.plugins.problems })) },
+    "/api/plugins": () => json({ api: PLUGIN_API, plugins: app.plugins.describe() }),
+    "/api/admin/plugins": { GET: admin(() => json({ api: PLUGIN_API, dir: app.plugins.dir, plugins: app.plugins.describe(), problems: app.plugins.problems })) },
 
     // ----- who am I -----
     "/api/me": (req: Request, server: Server<unknown>) => {

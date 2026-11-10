@@ -15,11 +15,20 @@ import { formatOf } from "./formats";
  * A plugin is code that runs in every reader's browser, so plugins are put in the folder by the person
  * who runs the server and by nobody else: nothing here installs or downloads one. The server only
  * lists them and serves their files read-only. Built-in formats keep their own readers.
+ *
+ * The contract between the program and a plugin (what `mount` and `cover` are given and may return) has a version, PLUGIN_API.
+ * A manifest says which one it was written for with "api" (1 when it says nothing). Changes that only add something (a new field
+ * in the context, an optional export) keep the number; a change that could break a plugin written for the old one raises it, and
+ * a plugin that asks for a number above the program's is skipped with the reason, rather than failing in somebody's reader.
  */
+export const PLUGIN_API = 1;
+
 export interface Plugin {
   id: string;
   name: string;
   version: string;
+  /** The version of the plugin contract it was written for (see PLUGIN_API). */
+  api: number;
   /** Lower-case extensions without the dot, the first one being the format's name in the library. */
   exts: string[];
   mime: string;
@@ -104,6 +113,9 @@ export class Plugins {
     const m = raw as Record<string, unknown>;
     if (typeof m.id !== "string" || !ID.test(m.id)) throw new Error('"id" must be lower-case letters, digits and dashes');
     if (m.id !== folder) throw new Error(`"id" (${m.id}) must be the name of the folder (${folder})`);
+    if (m.api !== undefined && (typeof m.api !== "number" || !Number.isInteger(m.api) || m.api < 1)) throw new Error('"api" must be a whole number from 1');
+    const api = typeof m.api === "number" ? m.api : 1;
+    if (api > PLUGIN_API) throw new Error(`it is written for plugin API ${api}, and this program has ${PLUGIN_API}: a newer version of the program is needed`);
     if (typeof m.name !== "string" || !m.name.trim() || m.name.length > 60) throw new Error('"name" is missing or too long');
     if (m.version !== undefined && (typeof m.version !== "string" || m.version.length > 20)) throw new Error('"version" must be a short text');
     if (!Array.isArray(m.formats) || !m.formats.length || m.formats.length > 10) throw new Error('"formats" must list one to ten formats');
@@ -124,12 +136,12 @@ export class Plugins {
     }
     if (!inside(m.reader) || ![".js", ".mjs"].includes(extname(m.reader))) throw new Error('"reader" must be a .js or .mjs file inside the plugin folder');
     if (!existsSync(join(abs, ...m.reader.split("/")))) throw new Error(`the reader file ${m.reader} is missing`);
-    return { id: m.id, name: m.name.trim(), version: typeof m.version === "string" ? m.version : "", exts, mime, reader: m.reader, shareableView: m.shareableView === true, cover: m.cover === true, dir: abs };
+    return { id: m.id, name: m.name.trim(), version: typeof m.version === "string" ? m.version : "", api, exts, mime, reader: m.reader, shareableView: m.shareableView === true, cover: m.cover === true, dir: abs };
   }
 
   /** What the page needs to know to use a plugin. */
   describe() {
-    return this.plugins.map((p) => ({ id: p.id, name: p.name, version: p.version, exts: p.exts, reader: `/plugins/${p.id}/${p.reader}`, shareableView: p.shareableView, cover: p.cover }));
+    return this.plugins.map((p) => ({ id: p.id, name: p.name, version: p.version, api: p.api, exts: p.exts, reader: `/plugins/${p.id}/${p.reader}`, shareableView: p.shareableView, cover: p.cover }));
   }
 
   /** The library's names of the formats whose plugin draws covers. */

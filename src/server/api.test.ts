@@ -628,7 +628,7 @@ test("saved source sites are the administrator's to manage", async () => {
 
 test("installed plugins are listed and their files served (also to a share link's page), and only their own files", async () => {
   const list = (await call(lan, "/api/plugins", { cookie: adminCookie })).body;
-  expect(list).toEqual({ plugins: [{ id: "demo", name: "Demo reader", version: "1.2.3", exts: ["demo", "dmo"], reader: "/plugins/demo/reader.js", shareableView: true, cover: false }] });
+  expect(list).toEqual({ api: 1, plugins: [{ id: "demo", name: "Demo reader", version: "1.2.3", api: 1, exts: ["demo", "dmo"], reader: "/plugins/demo/reader.js", shareableView: true, cover: false }] });
 
   expect((await call(lan, "/api/plugins", { cookie: "" })).body.plugins).toHaveLength(1); // no login needed: the page of a share link reads it too
   const reader = await fetch(lan + "/plugins/demo/reader.js");

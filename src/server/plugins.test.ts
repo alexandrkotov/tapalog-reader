@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatOf, mimeOf, registerFormats } from "./formats";
 import { COVER_FORMATS, registerCoverFormats } from "./covers";
-import { Plugins } from "./plugins";
+import { Plugins, PLUGIN_API } from "./plugins";
 import { removeDir } from "./testutil";
 
 const base = mkdtempSync(join(tmpdir(), "reader-plugins-"));
@@ -38,7 +38,7 @@ test("a good manifest becomes a plugin, with its extensions in lower case and th
   const p = install({ demo: good({ version: "2.0", shareableView: true, formats: [{ ext: ["DEMO", "dm"], mime: "application/x-demo" }, { ext: "demo2", mime: "application/x-other" }] }) });
   expect(p.problems).toEqual([]);
   expect(p.plugins[0]).toMatchObject({ id: "demo", name: "Demo", version: "2.0", exts: ["demo", "dm", "demo2"], mime: "application/x-demo", reader: "reader.js", shareableView: true });
-  expect(p.describe()).toEqual([{ id: "demo", name: "Demo", version: "2.0", exts: ["demo", "dm", "demo2"], reader: "/plugins/demo/reader.js", shareableView: true, cover: false }]);
+  expect(p.describe()).toEqual([{ id: "demo", name: "Demo", version: "2.0", exts: ["demo", "dm", "demo2"], api: 1, reader: "/plugins/demo/reader.js", shareableView: true, cover: false }]);
 });
 
 test("a bad manifest skips that plugin only, and says why", () => {
@@ -122,4 +122,21 @@ test("a plugin that says it draws covers makes its formats eligible for covers, 
   registerCoverFormats([]);
   expect(COVER_FORMATS.has("djvu")).toBe(false);
   registerFormats([]);
+});
+
+test("a manifest says which version of the plugin contract it was written for: none means the first, and a newer one than the program's is skipped with the reason", () => {
+  const p = install({
+    old: good({ id: "old", formats: [{ ext: "ol" }] }),
+    named: good({ id: "named", api: 1, formats: [{ ext: "nm" }] }),
+    future: good({ id: "future", api: PLUGIN_API + 1, formats: [{ ext: "fu" }] }),
+    zero: good({ id: "zero", api: 0, formats: [{ ext: "ze" }] }),
+    half: good({ id: "half", api: 1.5, formats: [{ ext: "ha" }] }),
+    text: good({ id: "text", api: "1", formats: [{ ext: "tx" }] }),
+  });
+  expect(PLUGIN_API).toBe(1);
+  expect(p.plugins.map((x) => [x.id, x.api])).toEqual([["named", 1], ["old", 1]]);
+  expect(p.describe().every((x) => x.api === 1)).toBe(true);
+  const why = Object.fromEntries(p.problems.map((x) => [x.folder, x.problem]));
+  expect(why.future).toBe(`it is written for plugin API ${PLUGIN_API + 1}, and this program has ${PLUGIN_API}: a newer version of the program is needed`);
+  for (const folder of ["zero", "half", "text"]) expect(why[folder]).toContain('"api"');
 });
