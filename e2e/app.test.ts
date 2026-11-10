@@ -54,6 +54,19 @@ e2e("the library folder is chosen by browsing the computer's folders, not by typ
   await page.goto(inst.url + "/");
   await page.waitForSelector(".shelf");
   await page.click("button:has-text('Settings')");
+  // the folder in use is in the field, so there is nothing to change yet and no button for it; the rescan is in the row below, with the search for duplicates, and a hint says how a folder is chosen
+  expect(await page.locator(".modal input[type=text]").first().inputValue()).toBe(inst.lib);
+  expect(await page.isVisible("button:has-text('Rescan now')")).toBe(true);
+  expect(await page.isVisible("button:has-text('Change folder')")).toBe(false);
+  expect(await page.textContent(".modal .section:has-text('Library folder') p.muted")).toBe("Choose a folder with Browse (or type its path) and press Change folder: the library switches to it.");
+  expect(await page.isVisible(".modal .row:has(button:has-text('Rescan now')):has(button:has-text('Find duplicates'))")).toBe(true);
+  // a path typed in the field that is not the one in use offers the change, and typing it back takes the offer away; the rescan stays
+  await page.fill(".modal input[type=text]", join(inst.lib, "Docs"));
+  expect(await page.isVisible("button:has-text('Change folder')")).toBe(true);
+  expect(await page.isVisible("button:has-text('Rescan now')")).toBe(true);
+  await page.fill(".modal input[type=text]", inst.lib);
+  expect(await page.isVisible("button:has-text('Change folder')")).toBe(false);
+  expect(await page.isVisible("button:has-text('Rescan now')")).toBe(true);
   await page.click("button:has-text('Browse')");
   await page.waitForFunction((lib) => document.querySelector(".folder-where")?.textContent === lib, inst.lib); // starts at the current library, once the list has come in
   await page.click(".folder-list button:has-text('Docs')");
@@ -65,7 +78,8 @@ e2e("the library folder is chosen by browsing the computer's folders, not by typ
   await page.waitForFunction((lib) => document.querySelector(".folder-where")?.textContent === lib, join(inst.lib, "Docs"));
   await page.click("button:has-text('Choose this folder')");
   expect(await page.locator(".modal input[type=text]").first().inputValue()).toBe(join(inst.lib, "Docs"));
-  await page.click("button:has-text('Use this folder')");
+  expect(await page.isVisible("button:has-text('Change folder')")).toBe(true); // a folder was picked: now the library can be switched to it
+  await page.click("button:has-text('Change folder')");
   await page.waitForFunction(() => !document.querySelector(".tree")?.textContent?.includes("Comics")); // the library is Docs now
   expect(errors).toEqual([]);
   await ctx.close();

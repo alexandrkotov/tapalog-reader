@@ -75,14 +75,17 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
     if (s.tunnel.state === "starting") timer = setTimeout(() => void api<Settings>("/api/admin/settings").then(render), 1500);
 
     // library
-    const path = el("input", { type: "text", value: s.libraryPath ?? "" });
+    const current = s.libraryPath ?? "";
+    const path = el("input", { type: "text", value: current });
     const libError = el("div", { class: "error" });
     const browseFolder = el("button", { type: "button", class: "btn", textContent: t("folder.browse") });
     browseFolder.addEventListener("click", async () => {
       const picked = await pickFolder(path.value.trim());
       if (picked) path.value = picked;
+      sync();
     });
-    const useFolder = el("button", { type: "button", class: "btn", textContent: t("library.button") });
+    // the button that switches the library to the path in the field is there only when that path is not the one in use
+    const useFolder = el("button", { type: "button", class: "btn primary", textContent: t("admin.library.change"), hidden: true });
     useFolder.addEventListener("click", async () => {
       libError.textContent = "";
       try {
@@ -96,6 +99,15 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
     rescan.addEventListener("click", async () => {
       await api("/api/rescan", {});
       onLibraryChanged();
+    });
+    function sync(): void {
+      const typed = path.value.trim();
+      const changed = typed !== "" && typed !== current;
+      useFolder.hidden = !changed;
+    }
+    path.addEventListener("input", sync);
+    path.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !useFolder.hidden) useFolder.click();
     });
 
     const duplicates = el("button", { type: "button", class: "btn", textContent: t("dup.button") });
@@ -194,7 +206,7 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
     );
 
     modal.body.replaceChildren(
-      section(t("admin.library"), el("div", { class: "row" }, path, browseFolder, useFolder, rescan), libError, el("div", { class: "row" }, duplicates)),
+      section(t("admin.library"), el("div", { class: "row" }, path, browseFolder, useFolder), el("p", { class: "muted small", textContent: t("admin.library.hint") }), libError, el("div", { class: "row" }, rescan, duplicates)),
       section(t("admin.access"), radio("open", t("admin.access.open")), radio("login", t("admin.access.login")), el("label", { class: "choice" }, registration, t("admin.register"))),
       section(t("admin.internet"), el("label", { class: "choice" }, internet, s.mode === "internet" ? t("admin.internet.on") : t("admin.internet.off")), tunnelStatus, note(t("admin.internet.note"))),
       section(t("admin.fulltext"), indexBox),
