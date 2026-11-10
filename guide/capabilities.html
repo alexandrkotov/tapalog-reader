@@ -7,7 +7,7 @@
 <meta property="og:site_name" content="Tapalog Reader">
 <meta property="og:title" content="Tapalog Reader: не читалка, а комбайн для книг">
 <meta property="og:description" content="Папка книг становится веб-библиотекой: читалки, сканы с вычиткой, ссылки, плагины. Один файл для Windows, Linux и macOS.">
-<meta property="og:url" content="https://alexandrkotov.github.io/tapalog-reader/guide/capabilities.html">
+<meta property="og:url" content="https://alexandrkotov.github.io/tapalog-reader/guide/capabilities.html?theme=light">
 <meta property="og:image" content="https://alexandrkotov.github.io/tapalog-reader/guide/og-image.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
@@ -430,13 +430,30 @@
     document.getElementById("foot").innerHTML = L.foot.map((s) => "<span>" + esc(s) + "</span>").join("");
     document.getElementById("b-ru").setAttribute("aria-pressed", String(lang === "ru"));
     document.getElementById("b-en").setAttribute("aria-pressed", String(lang === "en"));
-    try { localStorage.setItem("tr-lang", lang); } catch (e) { /* the choice is only a convenience */ }
   }
 
-  let start = "ru";
-  try { start = localStorage.getItem("tr-lang") === "en" ? "en" : "ru"; } catch (e) { /* the default stays */ }
-  document.getElementById("b-ru").addEventListener("click", () => render("ru"));
-  document.getElementById("b-en").addEventListener("click", () => render("en"));
+  // The page opens in the language of its own file (capabilities.html is Russian, capabilities.en.html English), so that a link
+  // always shows what its preview promised. The address can say otherwise: ?lang=en or ?lang=ru, ?theme=dark or ?theme=light
+  // (both together too). Without a theme the system's is used.
+  const query = new URLSearchParams(location.search);
+  const theme = query.get("theme");
+  if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
+
+  let start = document.documentElement.lang === "en" ? "en" : "ru";
+  const asked = query.get("lang");
+  if (asked === "ru" || asked === "en") start = asked;
+
+  /** A choice made with the buttons goes into the address, so that it can be copied and sent. */
+  function choose(lang) {
+    render(lang);
+    try {
+      const next = new URLSearchParams(location.search);
+      next.set("lang", lang);
+      history.replaceState(null, "", "?" + next + location.hash);
+    } catch (e) { /* the page works without it */ }
+  }
+  document.getElementById("b-ru").addEventListener("click", () => choose("ru"));
+  document.getElementById("b-en").addEventListener("click", () => choose("en"));
   render(start);
 </script>
 </html>

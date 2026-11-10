@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Tapalog Reader: not just a reader, a combine for books. Readers, a library, scans with proofreading, sharing and access, plugins. One file for Windows, Linux and macOS.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Tapalog Reader">
+<meta property="og:title" content="Tapalog Reader: not just a reader, a combine for books">
+<meta property="og:description" content="A folder of books becomes a web library: readers, scans with proofreading, share links, plugins. One file for Windows, Linux and macOS.">
+<meta property="og:url" content="https://alexandrkotov.github.io/tapalog-reader/guide/capabilities.en.html?theme=light">
+<meta property="og:image" content="https://alexandrkotov.github.io/tapalog-reader/guide/og-image.en.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Not just a reader: a combine for books. Reading, library, scans, access, plugins">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="ru_RU">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tapalog Reader: not just a reader, a combine for books">
+<meta name="twitter:description" content="A folder of books becomes a web library: readers, scans with proofreading, share links, plugins.">
+<meta name="twitter:image" content="https://alexandrkotov.github.io/tapalog-reader/guide/og-image.en.png">
+<title>Tapalog Reader Capabilities</title>
+<style>
+  /* Layout: a masthead with the thesis and the facts, a map of six capability groups, then one diagram of how the single file works with its surroundings. */
+  :root {
+    --bg: #f2f5f4;
+    --surface: #ffffff;
+    --surface-2: #e9eeec;
+    --fg: #13201f;
+    --muted: #546664;
+    --line: #d3dbd9;
+    --hub: #0f766e;
+    --hub-tint: #dff1ee;
+    --read: #1d4ed8;
+    --lib: #15803d;
+    --scan: #b45309;
+    --access: #be123c;
+    --plug: #6d28d9;
+    --tech: #3f4f4d;
+    --font-display: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --font-body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c1413;
+      --surface: #131f1e;
+      --surface-2: #1b2b29;
+      --fg: #e5eeec;
+      --muted: #94a9a6;
+      --line: #263634;
+      --hub: #2dd4bf;
+      --hub-tint: #12302d;
+      --read: #8bb0ff;
+      --lib: #66d392;
+      --scan: #f2b252;
+      --access: #ff94ab;
+      --plug: #bba2ff;
+      --tech: #a8bbb8;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c1413;
+    --surface: #131f1e;
+    --surface-2: #1b2b29;
+    --fg: #e5eeec;
+    --muted: #94a9a6;
+    --line: #263634;
+    --hub: #2dd4bf;
+    --hub-tint: #12302d;
+    --read: #8bb0ff;
+    --lib: #66d392;
+    --scan: #f2b252;
+    --access: #ff94ab;
+    --plug: #bba2ff;
+    --tech: #a8bbb8;
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    padding-block: 28px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+  h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+
+  /* masthead */
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: 0.02em; display: flex; align-items: center; gap: 10px; }
+  .brand i { display: inline-block; width: 14px; height: 18px; background: var(--hub); border-radius: 1px 4px 4px 1px; box-shadow: 4px 0 0 -1px var(--surface), 5px 0 0 0 var(--hub); }
+  .lang { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .lang button { font: 500 13px var(--font-body); color: var(--muted); background: transparent; border: 0; padding: 6px 12px; cursor: pointer; }
+  .lang button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+  .lang button:focus-visible { outline: 2px solid var(--hub); outline-offset: -2px; }
+  .head { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 36px 48px; align-items: end; }
+  .head h1 { font-size: clamp(34px, 5.4vw, 60px); line-height: 1.04; font-weight: 700; letter-spacing: -0.02em; }
+  .head h1 em { font-style: normal; color: var(--hub); }
+  .lead { margin: 18px 0 0; color: var(--muted); font-size: 17px; max-width: 54ch; }
+  .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line); }
+  .fact { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .fact:nth-child(odd) { padding-right: 16px; }
+  .fact b { display: block; font: 700 30px/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+  .fact span { color: var(--muted); font-size: 13px; }
+
+  /* map */
+  .sec-title { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .sec-title h2 { font-size: 26px; letter-spacing: -0.01em; }
+  .sec-title p { margin: 0; color: var(--muted); font-size: 14px; }
+  .map { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .group { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 20px 20px 8px; min-width: 0; --c: var(--hub); }
+  .group[data-g="read"] { --c: var(--read); }
+  .group[data-g="lib"] { --c: var(--lib); }
+  .group[data-g="scan"] { --c: var(--scan); }
+  .group[data-g="access"] { --c: var(--access); }
+  .group[data-g="plug"] { --c: var(--plug); }
+  .group[data-g="tech"] { --c: var(--tech); }
+  .group h3 { font-size: 20px; color: var(--c); display: flex; align-items: center; gap: 10px; }
+  .group h3::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
+  .group .sub { margin: 6px 0 12px; color: var(--muted); font-size: 13.5px; }
+  .group ul { list-style: none; margin: 0; padding: 0; }
+  .group li { padding: 9px 0; border-top: 1px solid var(--line); min-width: 0; }
+  .group li b { font-weight: 600; }
+  .group li span { color: var(--muted); }
+
+  /* how it works */
+  .diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; overflow-x: auto; }
+  .diagram svg { display: block; min-width: 900px; width: 100%; height: auto; }
+  .diagram text { font-family: var(--font-body); fill: var(--fg); font-size: 13px; }
+  .diagram .t { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+  .diagram .m { fill: var(--muted); font-size: 12.5px; }
+  .diagram .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+  .diagram .hub { fill: var(--hub-tint); stroke: var(--hub); stroke-width: 2; }
+  .diagram .tile { fill: var(--surface); stroke: var(--hub); stroke-width: 1; opacity: 0.95; }
+  .diagram .adm { fill: var(--surface); stroke: var(--scan); stroke-width: 1.5; }
+  .diagram .plg { fill: var(--surface); stroke: var(--plug); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .diagram .net { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .diagram .arr { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+  .diagram .arr.dash { stroke-dasharray: 5 4; }
+  .diagram marker path { fill: var(--muted); }
+  .legend { margin: 14px 0 0; color: var(--muted); font-size: 13.5px; max-width: 78ch; }
+
+  footer { border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); font-size: 13px; display: flex; gap: 8px 24px; flex-wrap: wrap; }
+
+  @media (max-width: 960px) { .map { grid-template-columns: repeat(2, minmax(0, 1fr)); } .head { grid-template-columns: 1fr; } }
+  @media (max-width: 620px) { .map { grid-template-columns: 1fr; } .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><i></i><span>Tapalog Reader</span></div>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" id="b-ru" aria-pressed="true">Русский</button>
+      <button type="button" id="b-en" aria-pressed="false">English</button>
+    </div>
+  </div>
+
+  <header class="head">
+    <div>
+      <h1 data-k="h1"></h1>
+      <p class="lead" data-k="lead"></p>
+    </div>
+    <div class="facts" id="facts"></div>
+  </header>
+
+  <section>
+    <div class="sec-title"><h2 data-k="mapTitle"></h2><p data-k="mapNote"></p></div>
+    <div class="map" id="map"></div>
+  </section>
+
+  <section>
+    <div class="sec-title"><h2 data-k="howTitle"></h2><p data-k="howNote"></p></div>
+    <div class="diagram">
+      <svg viewBox="0 0 1080 540" role="img" aria-labelledby="dg-t">
+        <title id="dg-t" data-k="dgTitle"></title>
+        <defs>
+          <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+        </defs>
+
+        <!-- readers -->
+        <rect class="box" x="20" y="40" width="250" height="150" rx="6"/>
+        <text class="t" x="38" y="68" data-k="dg.readers"></text>
+        <text class="m" x="38" y="96" data-k="dg.r1"></text>
+        <text class="m" x="38" y="116" data-k="dg.r2"></text>
+        <text class="m" x="38" y="136" data-k="dg.r3"></text>
+        <text class="m" x="38" y="164" data-k="dg.r4"></text>
+
+        <!-- internet -->
+        <rect class="net" x="20" y="260" width="250" height="70" rx="6"/>
+        <text class="t" x="38" y="288" data-k="dg.net"></text>
+        <text class="m" x="38" y="310" data-k="dg.net2"></text>
+
+        <!-- the single file -->
+        <rect class="hub" x="360" y="20" width="380" height="310" rx="8"/>
+        <text class="t" x="380" y="48" data-k="dg.hub"></text>
+        <text class="m" x="380" y="66" data-k="dg.hub2"></text>
+        <g>
+          <rect class="tile" x="376" y="82" width="170" height="58" rx="4"/><text x="390" y="106" data-k="dg.t1"></text><text class="m" x="390" y="126" data-k="dg.t1b"></text>
+          <rect class="tile" x="556" y="82" width="170" height="58" rx="4"/><text x="570" y="106" data-k="dg.t2"></text><text class="m" x="570" y="126" data-k="dg.t2b"></text>
+          <rect class="tile" x="376" y="152" width="170" height="58" rx="4"/><text x="390" y="176" data-k="dg.t3"></text><text class="m" x="390" y="196" data-k="dg.t3b"></text>
+          <rect class="tile" x="556" y="152" width="170" height="58" rx="4"/><text x="570" y="176" data-k="dg.t4"></text><text class="m" x="570" y="196" data-k="dg.t4b"></text>
+          <rect class="tile" x="376" y="222" width="170" height="58" rx="4"/><text x="390" y="246" data-k="dg.t5"></text><text class="m" x="390" y="266" data-k="dg.t5b"></text>
+          <rect class="tile" x="556" y="222" width="170" height="58" rx="4"/><text x="570" y="246" data-k="dg.t6"></text><text class="m" x="570" y="266" data-k="dg.t6b"></text>
+        </g>
+        <text class="m" x="380" y="308" data-k="dg.hubFoot"></text>
+
+        <!-- folders -->
+        <rect class="box" x="810" y="40" width="250" height="110" rx="6"/>
+        <text class="t" x="828" y="68" data-k="dg.books"></text>
+        <text class="m" x="828" y="94" data-k="dg.b1"></text>
+        <text class="m" x="828" y="114" data-k="dg.b2"></text>
+        <text class="m" x="828" y="134" data-k="dg.b3"></text>
+        <rect class="box" x="810" y="180" width="250" height="150" rx="6"/>
+        <text class="t" x="828" y="208" data-k="dg.data"></text>
+        <text class="m" x="828" y="234" data-k="dg.d1"></text>
+        <text class="m" x="828" y="254" data-k="dg.d2"></text>
+        <text class="m" x="828" y="274" data-k="dg.d3"></text>
+        <text class="m" x="828" y="294" data-k="dg.d4"></text>
+
+        <!-- the administrator's browser -->
+        <rect class="adm" x="360" y="400" width="380" height="120" rx="6"/>
+        <text class="t" x="380" y="428" data-k="dg.admin"></text>
+        <text class="m" x="380" y="454" data-k="dg.a1"></text>
+        <text class="m" x="380" y="474" data-k="dg.a2"></text>
+        <text class="m" x="380" y="494" data-k="dg.a3"></text>
+
+        <!-- plugins -->
+        <rect class="plg" x="810" y="400" width="250" height="120" rx="6"/>
+        <text class="t" x="828" y="428" data-k="dg.plug"></text>
+        <text class="m" x="828" y="454" data-k="dg.p1"></text>
+        <text class="m" x="828" y="474" data-k="dg.p2"></text>
+
+        <!-- arrows -->
+        <path class="arr" d="M272 105 H358" marker-start="url(#a)" marker-end="url(#a)"/>
+        <path class="arr dash" d="M145 192 V258" marker-end="url(#a)"/>
+        <path class="arr dash" d="M272 295 H358" marker-end="url(#a)"/>
+        <path class="arr" d="M742 95 H808" marker-start="url(#a)" marker-end="url(#a)"/>
+        <path class="arr" d="M742 255 H808" marker-start="url(#a)" marker-end="url(#a)"/>
+        <path class="arr" d="M550 332 V398" marker-start="url(#a)" marker-end="url(#a)"/>
+        <path class="arr dash" d="M808 460 H775 V310 H742" marker-end="url(#a)"/>
+        <text class="m" x="315" y="92" text-anchor="middle" data-k="dg.l1"></text>
+        <text class="m" x="562" y="368" data-k="dg.l2"></text>
+        <text class="m" x="156" y="228" data-k="dg.l3"></text>
+      </svg>
+    </div>
+    <p class="legend" data-k="legend"></p>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+  const T = {
+    ru: {
+      h1: "Не читалка, а <em>комбайн</em> для книг",
+      lead: "Один исполняемый файл превращает папку с книгами в веб-библиотеку: читает PDF, EPUB и комиксы, распознаёт сканы, помогает вычитать текст, раздаёт книги по ссылке и принимает плагины. Устанавливать на стороне читателя ничего не нужно.",
+      mapTitle: "Что он умеет",
+      mapNote: "Шесть групп возможностей, каждая описана в руководстве.",
+      howTitle: "Как это устроено",
+      howNote: "Всё работает вокруг одного файла и двух папок.",
+      dgTitle: "Схема: читатели, один файл программы, папка книг, папка данных, браузер администратора и плагины",
+      legend: "Сплошные стрелки: обычный обмен. Пунктир: то, что включается по желанию. Тяжёлую работу (обложки, распознавание, экспорт PDF) делает браузер администратора: на сервере нет декодера картинок, и ничего не уходит с компьютера.",
+      "dg.readers": "Читатели", "dg.r1": "телефон, компьютер, планшет", "dg.r2": "по адресу или по ссылке", "dg.r3": "со своим входом или без него", "dg.r4": "ничего не устанавливают",
+      "dg.net": "Интернет", "dg.net2": "туннель Cloudflare",
+      "dg.hub": "Tapalog Reader", "dg.hub2": "один файл, страница внутри",
+      "dg.t1": "Читалки", "dg.t1b": "PDF, EPUB, CBZ, TXT…",
+      "dg.t2": "Библиотека", "dg.t2b": "карточки и поиск",
+      "dg.t3": "Закладки", "dg.t3b": "проекты и место",
+      "dg.t4": "Аккаунты", "dg.t4b": "ссылки с QR-кодом",
+      "dg.t5": "Копии", "dg.t5b": "сохранить и вернуть",
+      "dg.t6": "Плагины", "dg.t6b": "API и изоляция",
+      "dg.hubFoot": "Windows, Linux, macOS",
+      "dg.books": "Папка книг", "dg.b1": "ваши файлы как есть", "dg.b2": "узнаются по содержимому", "dg.b3": "меняются в режиме правки",
+      "dg.data": "Папка данных", "dg.d1": "закладки и проекты", "dg.d2": "поисковый индекс", "dg.d3": "текст сканов и рисунки", "dg.d4": "обложки и настройки",
+      "dg.admin": "Браузер администратора", "dg.a1": "обложки, распознавание сканов,", "dg.a2": "проверка текста, рисунки,", "dg.a3": "новый PDF",
+      "dg.plug": "Плагины", "dg.p1": "папка рядом с программой", "dg.p2": "в странице или в sandbox",
+      "dg.l1": "файлы", "dg.l2": "текст, рисунки, обложки", "dg.l3": "по желанию",
+      facts: [["7", "форматов читается сразу, остальные плагинами"], ["3", "языка интерфейса: русский, английский, украинский"], ["3", "системы: Windows, Linux, macOS"], ["1", "файл, без установки на стороне читателя"]],
+      foot: ["Лицензия MIT", "Сопутствующий проект: Tapalog, каталоги .ecatm"],
+      groups: [
+        { g: "read", name: "Чтение", sub: "Читалки встроены в страницу; адрес всегда хранит точное место.", items: [
+          ["PDF", "pdf.js: поворот, обрезка полей, режим чтения, печатные номера страниц"],
+          ["EPUB, FB2, MOBI, AZW3", "оглавление, поиск, выделение, настройки текста"],
+          ["Комиксы CBZ и текст TXT", "кодировка определяется сама"],
+          ["Каталоги .ecatm", "в том же движке, что и в Tapalog"],
+          ["Закладки и «Мои проекты»", "места и заметки из разных книг в одной подборке"],
+          ["Продолжить чтение", "книга открывается там, где остановились"],
+          ["Превью страниц, печать, PDF", "и светлая, тёмная или системная тема"],
+        ] },
+        { g: "lib", name: "Библиотека", sub: "Папка с книгами становится полкой, а не базой, которую надо вести.", items: [
+          ["Книги узнаются по содержимому", "переименование и перенос не ломают закладки и ссылки"],
+          ["Обложки и карточки", "название, автор, год, серия, теги и менеджер тегов"],
+          ["Полка", "обложки или список, порядок, фильтры по формату, тегу, автору"],
+          ["Поиск", "по названию и внутри книг, страница результатов с местом"],
+          ["Режим правки", "переименование и перенос настоящих файлов"],
+          ["Загрузка по ссылке", "в том числе из Google Drive, без дублей"],
+          ["Поиск дубликатов", "точных и похожих, с корзиной"],
+        ] },
+        { g: "scan", name: "Сканы", sub: "Из картинок страниц получается текст, который можно искать, править и забрать.", items: [
+          ["Распознавание в браузере", "Tesseract, русский и английский, ничего не уходит с компьютера"],
+          ["Смешанные PDF", "страницы со своим текстом берутся как есть, читаются только картинки"],
+          ["Вычитка", "скан слева, текст справа, автосохранение, возврат к распознанному"],
+          ["Рисунки", "рамкой вырезаются из скана и вставляются в текст"],
+          ["Выгрузка", "Markdown, ZIP с рисунками, текст и новый PDF формата A4 или A5"],
+          ["Текст поверх скана", "слова выделяются и копируются прямо на странице"],
+        ] },
+        { g: "access", name: "Доступ и обмен", sub: "Книгами можно поделиться, не раздавая саму библиотеку.", items: [
+          ["Аккаунты", "администратор и читатели, у каждого свои закладки и проекты"],
+          ["Ссылки с QR-кодом", "на книгу и на место в ней, со сроком действия"],
+          ["Интернет", "через туннель Cloudflare, без настройки роутера"],
+          ["Резервная копия", "один файл, восстановление и на новом компьютере"],
+          ["Три языка", "русский, английский, украинский, переключаются на лету"],
+          ["Настройки администратора", "папка, индекс, плагины, остановка сервера"],
+        ] },
+        { g: "plug", name: "Плагины", sub: "Новый формат добавляется папкой, без пересборки программы.", items: [
+          ["Читалка для формата", "например DjVu, к программе не прилагается из-за лицензии"],
+          ["Обложки плагина", "рисует сам плагин, как для встроенных форматов"],
+          ["Версия API", "плагин для более новой версии пропускается с причиной"],
+          ["Изоляция", "плагин может работать в sandbox-фрейме: без cookie, страницы и входа"],
+          ["Пример и руководство", "два маленьких образца и правила совместимости"],
+        ] },
+        { g: "tech", name: "Под капотом", sub: "Всё нужное уже внутри файла.", items: [
+          ["Bun", "сервер и сборка в один исполняемый файл"],
+          ["SQLite", "поиск по тексту книг и вся память программы"],
+          ["pdf.js, foliate-js", "читалки, загружаются по требованию"],
+          ["Tesseract.js, pdf-lib", "распознавание и сборка PDF, в браузере"],
+          ["Проверка", "Windows, macOS и Linux проверяются при каждой сборке"],
+        ] },
+      ],
+    },
+    en: {
+      h1: "Not just a reader: a <em>combine</em> for books",
+      lead: "One executable turns a folder of books into a web library: it reads PDF, EPUB and comics, recognizes scans, helps proofread the text, shares books by link and takes plugins. Nothing is installed on the reading side.",
+      mapTitle: "What it does",
+      mapNote: "Six groups of capabilities, each described in the guide.",
+      howTitle: "How it fits together",
+      howNote: "Everything works around one file and two folders.",
+      dgTitle: "Diagram: readers, the one program file, the books folder, the data folder, the administrator's browser and plugins",
+      legend: "Solid arrows: everyday traffic. Dashed: what is turned on by choice. The heavy work (covers, recognizing scans, writing PDF) is done by the administrator's browser: the server has no image decoder, and nothing leaves the computer.",
+      "dg.readers": "Readers", "dg.r1": "phone, computer, tablet", "dg.r2": "by an address or a link", "dg.r3": "with their own login or without", "dg.r4": "nothing to install",
+      "dg.net": "Internet", "dg.net2": "Cloudflare tunnel",
+      "dg.hub": "Tapalog Reader", "dg.hub2": "one file, the page inside",
+      "dg.t1": "Readers", "dg.t1b": "PDF, EPUB, CBZ, TXT…",
+      "dg.t2": "Library", "dg.t2b": "cards and search",
+      "dg.t3": "Bookmarks", "dg.t3b": "projects and place",
+      "dg.t4": "Accounts", "dg.t4b": "links, QR codes",
+      "dg.t5": "Backups", "dg.t5b": "save and restore",
+      "dg.t6": "Plugins", "dg.t6b": "API and isolation",
+      "dg.hubFoot": "Windows, Linux, macOS",
+      "dg.books": "Books folder", "dg.b1": "your files as they are", "dg.b2": "known by their content", "dg.b3": "changed in edit mode",
+      "dg.data": "Data folder", "dg.d1": "bookmarks and projects", "dg.d2": "the search index", "dg.d3": "scan text and figures", "dg.d4": "covers and settings",
+      "dg.admin": "Administrator's browser", "dg.a1": "covers, recognizing scans,", "dg.a2": "proofreading, figures,", "dg.a3": "a new PDF",
+      "dg.plug": "Plugins", "dg.p1": "a folder beside the program", "dg.p2": "in the page or in a sandbox",
+      "dg.l1": "files", "dg.l2": "text, figures, covers", "dg.l3": "optional",
+      facts: [["7", "formats read out of the box, the rest by plugins"], ["3", "interface languages: Russian, English, Ukrainian"], ["3", "systems: Windows, Linux, macOS"], ["1", "file, nothing installed on the reading side"]],
+      foot: ["MIT licence", "Companion to Tapalog, .ecatm catalogs"],
+      groups: [
+        { g: "read", name: "Reading", sub: "The readers are built into the page; the address always holds the exact place.", items: [
+          ["PDF", "pdf.js: rotate, crop margins, reading mode, printed page numbers"],
+          ["EPUB, FB2, MOBI, AZW3", "contents, search, selection, text settings"],
+          ["CBZ comics and TXT text", "the encoding is found by itself"],
+          [".ecatm catalogs", "in the same engine as in Tapalog"],
+          ["Bookmarks and My projects", "places and notes from many books gathered in one collection"],
+          ["Continue reading", "a book opens where you stopped"],
+          ["Page previews, print, PDF", "and a light, dark or system theme"],
+        ] },
+        { g: "lib", name: "Library", sub: "A folder of books becomes a shelf, not a catalogue you have to keep up.", items: [
+          ["Books are known by content", "renaming or moving does not break bookmarks or links"],
+          ["Covers and cards", "title, author, year, series, tags and a tag manager"],
+          ["The shelf", "covers or a list, order, filters by format, tag, author"],
+          ["Search", "by name and inside books, a results page with the place"],
+          ["Edit mode", "rename and move the real files"],
+          ["Download by link", "Google Drive included, no duplicates"],
+          ["Finding duplicates", "exact and similar, with a trash"],
+        ] },
+        { g: "scan", name: "Scans", sub: "Page pictures become text you can search, correct and take away.", items: [
+          ["Recognizing in the browser", "Tesseract, Russian and English, nothing leaves the computer"],
+          ["Mixed PDFs", "pages with their own text are taken as they are, only pictures are read"],
+          ["Proofreading", "scan on the left, text on the right, autosave, back to what was read"],
+          ["Figures", "cut out of the scan with a frame and put into the text"],
+          ["Export", "Markdown, a ZIP with figures, text and a new PDF in A4 or A5"],
+          ["Text over the scan", "words can be selected and copied right on the page"],
+        ] },
+        { g: "access", name: "Access and sharing", sub: "Books can be shared without handing out the library.", items: [
+          ["Accounts", "an administrator and readers, each with their own bookmarks and projects"],
+          ["Share links with a QR code", "to a book and to a place in it, with an expiry"],
+          ["The internet", "through a Cloudflare tunnel, no router setup"],
+          ["Backup", "one file, restored on a new computer too"],
+          ["Three languages", "Russian, English, Ukrainian, switched on the fly"],
+          ["Administrator settings", "folder, index, plugins, stopping the server"],
+        ] },
+        { g: "plug", name: "Plugins", sub: "A new format is added as a folder, without rebuilding the program.", items: [
+          ["A reader for a format", "DjVu, for example, which is not shipped because of its licence"],
+          ["Plugin covers", "drawn by the plugin, as for the built-in formats"],
+          ["API version", "a plugin for a newer version is skipped, with the reason"],
+          ["Isolation", "a plugin can run in a sandboxed frame: no cookies, page or login"],
+          ["Example and guide", "two small samples and the compatibility rules"],
+        ] },
+        { g: "tech", name: "Under the hood", sub: "Everything it needs is already inside the file.", items: [
+          ["Bun", "the server and the build into one executable"],
+          ["SQLite", "search in the books' text and all the program's memory"],
+          ["pdf.js, foliate-js", "the readers, loaded on demand"],
+          ["Tesseract.js, pdf-lib", "recognizing and writing PDF, in the browser"],
+          ["Checks", "Windows, macOS and Linux are tested on every build"],
+        ] },
+      ],
+    },
+  };
+
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+  function render(lang) {
+    const L = T[lang];
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-k]").forEach((node) => {
+      const text = L[node.dataset.k];
+      if (text === undefined) return;
+      if (node.tagName === "H1") node.innerHTML = text;
+      else node.textContent = text;
+    });
+    document.getElementById("facts").innerHTML = L.facts.map(([n, d]) => '<div class="fact"><b>' + esc(n) + "</b><span>" + esc(d) + "</span></div>").join("");
+    document.getElementById("map").innerHTML = L.groups
+      .map((g) => '<article class="group" data-g="' + g.g + '"><h3>' + esc(g.name) + '</h3><p class="sub">' + esc(g.sub) + "</p><ul>" + g.items.map(([a, b]) => "<li><b>" + esc(a) + "</b> <span>" + esc(b) + "</span></li>").join("") + "</ul></article>")
+      .join("");
+    document.getElementById("foot").innerHTML = L.foot.map((s) => "<span>" + esc(s) + "</span>").join("");
+    document.getElementById("b-ru").setAttribute("aria-pressed", String(lang === "ru"));
+    document.getElementById("b-en").setAttribute("aria-pressed", String(lang === "en"));
+  }
+
+  // The page opens in the language of its own file (capabilities.html is Russian, capabilities.en.html English), so that a link
+  // always shows what its preview promised. The address can say otherwise: ?lang=en or ?lang=ru, ?theme=dark or ?theme=light
+  // (both together too). Without a theme the system's is used.
+  const query = new URLSearchParams(location.search);
+  const theme = query.get("theme");
+  if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
+
+  let start = document.documentElement.lang === "en" ? "en" : "ru";
+  const asked = query.get("lang");
+  if (asked === "ru" || asked === "en") start = asked;
+
+  /** A choice made with the buttons goes into the address, so that it can be copied and sent. */
+  function choose(lang) {
+    render(lang);
+    try {
+      const next = new URLSearchParams(location.search);
+      next.set("lang", lang);
+      history.replaceState(null, "", "?" + next + location.hash);
+    } catch (e) { /* the page works without it */ }
+  }
+  document.getElementById("b-ru").addEventListener("click", () => choose("ru"));
+  document.getElementById("b-en").addEventListener("click", () => choose("en"));
+  render(start);
+</script>
+</html>

@@ -11,6 +11,7 @@
     "gen:pdfjs": "bun scripts/gen-pdfjs-assets.ts",
     "gen:ocr": "bun scripts/gen-ocr-assets.ts",
     "gen:pdflib": "bun scripts/gen-pdflib-assets.ts",
+    "gen:capabilities": "bun scripts/gen-capabilities-en.ts",
     "test": "bun test src --timeout 30000",
     "compile:linux-x64": "bun scripts/fetch-cloudflared.ts linux-x64 && bun build --compile --target=bun-linux-x64 src/server/main.compiled.linux-x64.ts --outfile dist/tapalog-reader-linux-x64",
     "compile:linux-arm64": "bun scripts/fetch-cloudflared.ts linux-arm64 && bun build --compile --target=bun-linux-arm64 src/server/main.compiled.linux-arm64.ts --outfile dist/tapalog-reader-linux-arm64",
