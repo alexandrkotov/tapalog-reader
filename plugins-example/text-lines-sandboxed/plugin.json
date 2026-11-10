@@ -1,0 +1,11 @@
+{
+  "id": "text-lines-sandboxed",
+  "name": "Text lines, sandboxed (example)",
+  "version": "1.0.0",
+  "api": 2,
+  "isolated": true,
+  "formats": [{ "ext": ["slines"], "mime": "text/plain" }],
+  "reader": "reader.js",
+  "shareableView": true,
+  "cover": true
+}
