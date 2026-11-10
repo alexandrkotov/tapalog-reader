@@ -41,6 +41,11 @@ const AHEAD = "1500px 0px";
 const SAVE_AFTER = 1000;
 /** After a failure (the server or the network) the page is tried again after this. */
 const RETRY_AFTER = 3000;
+/** Gives a scan the proportions of its page; --aspect lets the style sheet size it to the room it has. */
+function setAspect(scan: HTMLElement, ratio: number): void {
+  scan.style.aspectRatio = String(ratio);
+  scan.style.setProperty("--aspect", String(ratio));
+}
 /** A frame smaller than this (in screen pixels) is a click. */
 const MIN_FRAME = 16;
 
@@ -323,6 +328,28 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     clearTimeout(hintTimer);
     hintTimer = setTimeout(() => (hint.textContent = t("proof.figure.hint")), 3500);
   };
+  // "the page whole in the window": remembered like the size of the window
+  const fitButton = el("button", { type: "button", class: "btn small proof-fit", textContent: t("proof.fit"), title: t("proof.fitHint") });
+  let fit = false;
+  /** The list's height is what a page may be as tall as when it is shown whole. */
+  function setFitHeight(): void {
+    scroller.style.setProperty("--fit-h", `${scroller.clientHeight}px`);
+  }
+  function setFit(on: boolean): void {
+    const ratio = scroller.scrollHeight > 0 ? scroller.scrollTop / scroller.scrollHeight : 0; // the rows take a new height: stay at the same place of the book
+    fit = on;
+    scroller.classList.toggle("fit", on);
+    fitButton.classList.toggle("primary", on);
+    fitButton.setAttribute("aria-pressed", String(on));
+    setFitHeight();
+    if (ratio > 0) scroller.scrollTop = ratio * scroller.scrollHeight;
+    sharpen(); // the scans now have another size
+  }
+  fitButton.setAttribute("aria-pressed", "false");
+  fitButton.addEventListener("click", () => {
+    setFit(!fit);
+    store.set("tapalog.proofFit", fit ? "1" : "0");
+  });
   let selecting = false;
   const selectMode = (on: boolean) => {
     selecting = on;
@@ -336,7 +363,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   for (let n = 1; n <= list.pages; n++) {
     const item = byPage.get(n);
     const scan = el("div", { class: "proof-scan" });
-    scan.style.aspectRatio = String(aspect);
+    setAspect(scan, aspect);
     const text = el("textarea", { class: "proof-text", value: item?.text ?? "", spellcheck: false, placeholder: item ? "" : t("proof.unread") });
     const badge = el("span", { class: "proof-badge", textContent: t("proof.edited"), hidden: !item?.edited });
     const state = el("span", { class: "muted small proof-state" });
@@ -370,7 +397,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const row = scroller.children[Math.min(Math.max(n, 1), list.pages) - 1] as HTMLElement | undefined;
     if (row) scroller.scrollTo({ top: row.offsetTop });
   });
-  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, figureButton, ...downloads, zipButton, pdfButton)), pdfPanel, hint, scroller);
+  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, fitButton, figureButton, ...downloads, zipButton, pdfButton)), pdfPanel, hint, scroller);
   for (const image of list.images) {
     const slot = slots.get(image.page);
     if (slot) addThumb(slot, image.name);
@@ -596,7 +623,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
       }
       const old = canvases.get(n);
       scan.replaceChildren(canvas);
-      scan.style.aspectRatio = String(canvas.width / canvas.height);
+      setAspect(scan, canvas.width / canvas.height);
       if (old) old.width = old.height = 0;
       canvases.set(n, canvas);
       if (stale(n)) sharpen(); // the window changed again while this page was being drawn
@@ -635,6 +662,10 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     { root: scroller, rootMargin: AHEAD },
   );
   for (const row of scroller.children) observer.observe(row);
-  sizeWatch = new ResizeObserver(sharpen);
+  sizeWatch = new ResizeObserver(() => {
+    setFitHeight();
+    sharpen();
+  });
   sizeWatch.observe(scroller);
+  if (store.get("tapalog.proofFit") === "1") setFit(true);
 }

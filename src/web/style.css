@@ -112,6 +112,11 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .proof-restore[hidden], .proof-badge[hidden] { display: none; }
 .proof-pages { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 4px; }
 .proof-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: stretch; flex: none; }
+/* "the page whole in the window": the scan is as tall as the list lets it (--fit-h is the list's height, --aspect the page's), the text beside it as tall as the scan */
+@media (min-width: 761px) {
+  .proof-pages.fit .proof-scan { width: min(100%, calc(var(--fit-h, 600px) * var(--aspect, 0.77))); justify-self: center; align-self: start; }
+}
+@media (max-width: 760px) { .proof-fit { display: none; } }
 .proof-scan { position: relative; min-width: 0; background: #fff; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .proof-canvas { display: block; width: 100%; height: auto; }
 .proof-pages.selecting .proof-scan { cursor: crosshair; touch-action: none; user-select: none; }
