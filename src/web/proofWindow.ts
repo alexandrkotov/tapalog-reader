@@ -1,6 +1,7 @@
 import type * as Pdfjs from "pdfjs-dist/build/pdf.min.mjs";
 import { lang, t } from "./i18n";
 import { makeResizable, type Resizable } from "./modalResize";
+import { figureScale, MAX_ATTEMPTS, MAX_PNG_BYTES, scrollStep } from "./proofFigure";
 import { pdfDocumentOptions } from "./readers/pdfAssets";
 import { api, ApiError, el, formatBytes, openModal, store } from "./ui";
 
@@ -40,9 +41,6 @@ const AHEAD = "1500px 0px";
 const SAVE_AFTER = 1000;
 /** After a failure (the server or the network) the page is tried again after this. */
 const RETRY_AFTER = 3000;
-/** A figure is cut from the PDF at up to this many pixels per point and no more than this many pixels on its longer side. */
-const FIGURE_MAX_SCALE = 4;
-const FIGURE_MAX_SIDE = 3200;
 /** A frame smaller than this (in screen pixels) is a click. */
 const MIN_FRAME = 16;
 
@@ -343,7 +341,8 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const badge = el("span", { class: "proof-badge", textContent: t("proof.edited"), hidden: !item?.edited });
     const state = el("span", { class: "muted small proof-state" });
     const restoreButton = el("button", { type: "button", class: "btn small proof-restore", textContent: t("proof.restore"), hidden: !item?.edited });
-    const head = el("div", { class: "proof-head" }, el("span", { class: "proof-label", textContent: t("proof.page", { n }) }), badge, el("span", { class: "proof-gap" }), state, restoreButton);
+    const wholeButton = el("button", { type: "button", class: "btn small proof-whole", textContent: t("proof.figure.whole"), title: t("proof.figure.wholeHint") });
+    const head = el("div", { class: "proof-head" }, el("span", { class: "proof-label", textContent: t("proof.page", { n }) }), badge, el("span", { class: "proof-gap" }), state, restoreButton, wholeButton);
     const figs = el("div", { class: "proof-figs" });
     const row = el("section", { class: "proof-row" }, scan, el("div", { class: "proof-side" }, head, figs, text));
     row.dataset.page = String(n);
@@ -361,6 +360,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     });
     text.addEventListener("blur", () => void save(slot));
     restoreButton.addEventListener("click", () => void restore(slot));
+    wholeButton.addEventListener("click", () => void cutFigure(slot, { x: 0, y: 0, w: 1, h: 1 })); // the page as one figure: no frame to draw, however tall the window is
     scroller.append(row);
   }
 
@@ -386,16 +386,20 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     try {
       const page = await doc.getPage(slot.n);
       const size = page.getViewport({ scale: 1 });
-      const scale = Math.min(FIGURE_MAX_SCALE, FIGURE_MAX_SIDE / Math.max(frame.w * size.width, frame.h * size.height));
-      const viewport = page.getViewport({ scale });
-      const canvas = el("canvas");
-      canvas.width = Math.max(1, Math.round(frame.w * viewport.width));
-      canvas.height = Math.max(1, Math.round(frame.h * viewport.height));
-      await page.render({ canvas, viewport, transform: [1, 0, 0, 1, -frame.x * viewport.width, -frame.y * viewport.height] }).promise;
+      let png: Blob | null = null;
+      // the sharpest picture the limits allow; if the PNG is bigger than the server takes (a whole page of a colour scan can be), again smaller
+      for (let attempt = 0; attempt < MAX_ATTEMPTS && (!png || png.size > MAX_PNG_BYTES); attempt++) {
+        const viewport = page.getViewport({ scale: figureScale(frame, size, attempt) });
+        const canvas = el("canvas");
+        canvas.width = Math.max(1, Math.round(frame.w * viewport.width));
+        canvas.height = Math.max(1, Math.round(frame.h * viewport.height));
+        await page.render({ canvas, viewport, transform: [1, 0, 0, 1, -frame.x * viewport.width, -frame.y * viewport.height] }).promise;
+        png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+        canvas.width = canvas.height = 0;
+        if (!png) break;
+      }
       page.cleanup();
-      const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-      canvas.width = canvas.height = 0;
-      if (!png) throw new Error("no picture");
+      if (!png || png.size > MAX_PNG_BYTES) throw new Error("no picture");
       await ensureStarted();
       const res = await fetch(`${base}/images?page=${slot.n}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "image/png" }, body: png });
       if (!res.ok) throw new ApiError(res.status, res.statusText);
@@ -467,10 +471,46 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     }
   }
 
-  let drag: { slot: Slot; scan: HTMLElement; canvas: HTMLCanvasElement; pointer: number; x0: number; y0: number; box: HTMLElement } | null = null;
+  /**
+   * The frame being drawn. Its first corner is kept as shares of the picture, not as a place on the screen, because the list
+   * scrolls under the pointer while the frame is drawn; `x` and `y` are where the pointer is now.
+   */
+  let drag: { slot: Slot; scan: HTMLElement; canvas: HTMLCanvasElement; pointer: number; fx: number; fy: number; x: number; y: number; box: HTMLElement; tick: number } | null = null;
   const stopDrag = () => {
-    drag?.box.remove();
+    if (!drag) return;
+    cancelAnimationFrame(drag.tick);
+    drag.box.remove();
+    const n = drag.slot.n;
     drag = null;
+    if (!wanted.has(n)) release(n); // it was kept drawn while it was being framed, though the list had scrolled away
+  };
+  /** The frame in pixels of the picture on the screen, kept inside the page. */
+  const frameNow = () => {
+    const d = drag!;
+    const rect = d.canvas.getBoundingClientRect();
+    const x0 = rect.left + d.fx * rect.width;
+    const y0 = rect.top + d.fy * rect.height;
+    const x1 = Math.min(Math.max(d.x, rect.left), rect.right);
+    const y1 = Math.min(Math.max(d.y, rect.top), rect.bottom);
+    return { left: Math.min(x0, x1) - rect.left, top: Math.min(y0, y1) - rect.top, width: Math.abs(x1 - x0), height: Math.abs(y1 - y0), page: rect };
+  };
+  const showFrame = () => {
+    const d = drag!;
+    const f = frameNow();
+    const scan = d.scan.getBoundingClientRect();
+    Object.assign(d.box.style, { left: `${f.left + f.page.left - scan.left}px`, top: `${f.top + f.page.top - scan.top}px`, width: `${f.width}px`, height: `${f.height}px` });
+  };
+  /** While the pointer is at the edge of the list (or beyond it) the list scrolls, so that a frame can reach what is out of sight. */
+  const follow = () => {
+    if (!drag) return;
+    const edge = scroller.getBoundingClientRect();
+    const step = scrollStep(drag.y, edge.top, edge.bottom);
+    if (step) {
+      const was = scroller.scrollTop;
+      scroller.scrollTop += step;
+      if (scroller.scrollTop !== was) showFrame();
+    }
+    drag.tick = requestAnimationFrame(follow);
   };
   scroller.addEventListener("pointerdown", (e) => {
     if (!selecting || drag || (e.pointerType === "mouse" && e.button !== 0)) return;
@@ -483,26 +523,22 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const box = el("div", { class: "proof-rect" });
     scan.append(box);
     scan.setPointerCapture(e.pointerId);
-    drag = { slot, scan, canvas, pointer: e.pointerId, x0: Math.min(Math.max(e.clientX, rect.left), rect.right), y0: Math.min(Math.max(e.clientY, rect.top), rect.bottom), box };
+    const fx = (Math.min(Math.max(e.clientX, rect.left), rect.right) - rect.left) / rect.width;
+    const fy = (Math.min(Math.max(e.clientY, rect.top), rect.bottom) - rect.top) / rect.height;
+    drag = { slot, scan, canvas, pointer: e.pointerId, fx, fy, x: e.clientX, y: e.clientY, box, tick: 0 };
+    drag.tick = requestAnimationFrame(follow);
   });
-  /** The frame in pixels of the picture on the screen, kept inside the page. */
-  const frameOf = (e: PointerEvent) => {
-    const d = drag!;
-    const rect = d.canvas.getBoundingClientRect();
-    const x1 = Math.min(Math.max(e.clientX, rect.left), rect.right);
-    const y1 = Math.min(Math.max(e.clientY, rect.top), rect.bottom);
-    return { left: Math.min(d.x0, x1) - rect.left, top: Math.min(d.y0, y1) - rect.top, width: Math.abs(x1 - d.x0), height: Math.abs(y1 - d.y0), page: rect };
-  };
   scroller.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.pointer) return;
-    const f = frameOf(e);
-    const offset = drag.canvas.getBoundingClientRect();
-    const scan = drag.scan.getBoundingClientRect();
-    Object.assign(drag.box.style, { left: `${f.left + offset.left - scan.left}px`, top: `${f.top + offset.top - scan.top}px`, width: `${f.width}px`, height: `${f.height}px` });
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    showFrame();
   });
   scroller.addEventListener("pointerup", (e) => {
     if (!drag || e.pointerId !== drag.pointer) return;
-    const f = frameOf(e);
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    const f = frameNow();
     const { slot } = drag;
     stopDrag();
     if (f.width < MIN_FRAME || f.height < MIN_FRAME) return; // a click, not a frame
@@ -575,6 +611,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   }
 
   function release(n: number): void {
+    if (drag?.slot.n === n) return; // being framed: let go of it when the frame is done (stopDrag)
     const canvas = canvases.get(n);
     if (!canvas) return;
     canvas.width = canvas.height = 0; // the memory goes back at once
