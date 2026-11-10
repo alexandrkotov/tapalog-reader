@@ -7,6 +7,10 @@ any browser on your network. Nothing to install on the reading side.
 Companion to [Tapalog](https://tapalog.com/) (Electronic Catalog Maker): `.ecatm`
 catalogs open in the same viewer engine, [`@ecm/viewer-engine`](https://github.com/alexandrkotov/electronic-catalog-maker).
 
+![How Tapalog Reader fits together: readers, one program file, the books and data folders, the administrator's browser, plugins](guide/overview.svg)
+
+The same as a page with every capability by group, in Russian and English: [guide/capabilities.html](guide/capabilities.html) (a web page; open the file in a browser after downloading the repository).
+
 ## What it does
 
 Early, but everything below works. Each line leads to the page that describes it.

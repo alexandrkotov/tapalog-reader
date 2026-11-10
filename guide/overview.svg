@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 540" width="1080" height="540" role="img" aria-labelledby="dg-t">
+        <title id="dg-t">Diagram: readers, the one program file, the books folder, the data folder, the administrator's browser and plugins</title>
+        <style>
+    svg { --bg: #ffffff; --surface: #ffffff; --surface-2: #e9eeec; --fg: #13201f; --muted: #546664; --line: #d3dbd9; --hub: #0f766e; --hub-tint: #dff1ee; --scan: #b45309; --plug: #6d28d9; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg: #131f1e; --surface: #131f1e; --surface-2: #1b2b29; --fg: #e5eeec; --muted: #94a9a6; --line: #263634; --hub: #2dd4bf; --hub-tint: #12302d; --scan: #f2b252; --plug: #bba2ff; }
+    }
+    text { font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; fill: var(--fg); font-size: 13px; }
+    .t { font-weight: 700; font-size: 16px; }
+    .m { fill: var(--muted); font-size: 12.5px; }
+    .bg { fill: var(--bg); }
+    .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+    .hub { fill: var(--hub-tint); stroke: var(--hub); stroke-width: 2; }
+    .tile { fill: var(--surface); stroke: var(--hub); stroke-width: 1; }
+    .adm { fill: var(--surface); stroke: var(--scan); stroke-width: 1.5; }
+    .plg { fill: var(--surface); stroke: var(--plug); stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .net { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .arr { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+    .dash { stroke-dasharray: 5 4; }
+    marker path { fill: var(--muted); }
+  </style>
+  <rect class="bg" x="0" y="0" width="1080" height="540" rx="8"/>
+  <defs>
+          <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+        </defs>
+
+        <!-- readers -->
+        <rect class="box" x="20" y="40" width="250" height="150" rx="6"/>
+        <text class="t" x="38" y="68">Readers</text>
+        <text class="m" x="38" y="96">phone, computer, tablet</text>
+        <text class="m" x="38" y="116">by an address or a link</text>
+        <text class="m" x="38" y="136">with their own login or without</text>
+        <text class="m" x="38" y="164">nothing to install</text>
+
+        <!-- internet -->
+        <rect class="net" x="20" y="260" width="250" height="70" rx="6"/>
+        <text class="t" x="38" y="288">Internet</text>
+        <text class="m" x="38" y="310">Cloudflare tunnel</text>
+
+        <!-- the single file -->
+        <rect class="hub" x="360" y="20" width="380" height="310" rx="8"/>
+        <text class="t" x="380" y="48">Tapalog Reader</text>
+        <text class="m" x="380" y="66">one file, the page inside</text>
+        <g>
+          <rect class="tile" x="376" y="82" width="170" height="58" rx="4"/><text x="390" y="106">Readers</text><text class="m" x="390" y="126">PDF, EPUB, CBZ, TXT…</text>
+          <rect class="tile" x="556" y="82" width="170" height="58" rx="4"/><text x="570" y="106">Library</text><text class="m" x="570" y="126">cards and search</text>
+          <rect class="tile" x="376" y="152" width="170" height="58" rx="4"/><text x="390" y="176">Bookmarks</text><text class="m" x="390" y="196">projects and place</text>
+          <rect class="tile" x="556" y="152" width="170" height="58" rx="4"/><text x="570" y="176">Accounts</text><text class="m" x="570" y="196">links, QR codes</text>
+          <rect class="tile" x="376" y="222" width="170" height="58" rx="4"/><text x="390" y="246">Backups</text><text class="m" x="390" y="266">save and restore</text>
+          <rect class="tile" x="556" y="222" width="170" height="58" rx="4"/><text x="570" y="246">Plugins</text><text class="m" x="570" y="266">API and isolation</text>
+        </g>
+        <text class="m" x="380" y="308">Windows, Linux, macOS</text>
+
+        <!-- folders -->
+        <rect class="box" x="810" y="40" width="250" height="110" rx="6"/>
+        <text class="t" x="828" y="68">Books folder</text>
+        <text class="m" x="828" y="94">your files as they are</text>
+        <text class="m" x="828" y="114">known by their content</text>
+        <text class="m" x="828" y="134">changed in edit mode</text>
+        <rect class="box" x="810" y="180" width="250" height="150" rx="6"/>
+        <text class="t" x="828" y="208">Data folder</text>
+        <text class="m" x="828" y="234">bookmarks and projects</text>
+        <text class="m" x="828" y="254">the search index</text>
+        <text class="m" x="828" y="274">scan text and figures</text>
+        <text class="m" x="828" y="294">covers and settings</text>
+
+        <!-- the administrator's browser -->
+        <rect class="adm" x="360" y="400" width="380" height="120" rx="6"/>
+        <text class="t" x="380" y="428">Administrator's browser</text>
+        <text class="m" x="380" y="454">covers, recognizing scans,</text>
+        <text class="m" x="380" y="474">proofreading, figures,</text>
+        <text class="m" x="380" y="494">a new PDF</text>
+
+        <!-- plugins -->
+        <rect class="plg" x="810" y="400" width="250" height="120" rx="6"/>
+        <text class="t" x="828" y="428">Plugins</text>
+        <text class="m" x="828" y="454">a folder beside the program</text>
+        <text class="m" x="828" y="474">in the page or in a sandbox</text>
+
+        <!-- arrows -->
+        <path class="arr" d="M272 105 H358" marker-start="url(#a)" marker-end="url(#a)"/>
+        <path class="arr dash" d="M145 192 V258" marker-end="url(#a)"/>
+        <path class="arr dash" d="M272 295 H358" marker-end="url(#a)"/>
+        <path class="arr" d="M742 95 H808" marker-start="url(#a)" marker-end="url(#a)"/>
+        <path class="arr" d="M742 255 H808" marker-start="url(#a)" marker-end="url(#a)"/>
+        <path class="arr" d="M550 332 V398" marker-start="url(#a)" marker-end="url(#a)"/>
+        <path class="arr dash" d="M808 460 H775 V310 H742" marker-end="url(#a)"/>
+        <text class="m" x="315" y="92" text-anchor="middle">files</text>
+        <text class="m" x="562" y="368">text, figures, covers</text>
+        <text class="m" x="156" y="228">optional</text>
+      </svg>
