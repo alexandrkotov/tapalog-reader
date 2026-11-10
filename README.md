@@ -7,7 +7,7 @@ any browser on your network. Nothing to install on the reading side.
 Companion to [Tapalog](https://tapalog.com/) (Electronic Catalog Maker): `.ecatm`
 catalogs open in the same viewer engine, [`@ecm/viewer-engine`](https://github.com/alexandrkotov/electronic-catalog-maker).
 
-**Download:** ready-made executables for Windows, Linux and macOS are on the [Releases](https://github.com/alexandrkotov/tapalog-reader/releases) page (the executables are not code-signed; see [Releases and CI](#releases-and-ci) for what the first start looks like).
+**Download:** ready-made executables for Windows, Linux and macOS are attached to the [latest release](https://github.com/alexandrkotov/tapalog-reader/releases/latest) (the executables are not code-signed; see [Releases and CI](#releases-and-ci) for what the first start looks like).
 
 ![How Tapalog Reader fits together: readers, one program file, the books and data folders, the administrator's browser, plugins](guide/overview.svg)
 

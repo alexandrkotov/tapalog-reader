@@ -171,7 +171,7 @@
     <div>
       <h1 data-k="h1"></h1>
       <p class="lead" data-k="lead"></p>
-      <p class="actions"><a class="btn" href="https://github.com/alexandrkotov/tapalog-reader/releases" data-k="dl"></a><a class="alt" href="https://github.com/alexandrkotov/tapalog-reader" data-k="src"></a><span class="note" data-k="dlNote"></span></p>
+      <p class="actions"><a class="btn" href="https://github.com/alexandrkotov/tapalog-reader/releases/latest" data-k="dl"></a><a class="alt" href="https://github.com/alexandrkotov/tapalog-reader" data-k="src"></a><span class="note" data-k="dlNote"></span></p>
     </div>
     <div class="facts" id="facts"></div>
   </header>
@@ -437,7 +437,7 @@
     document.getElementById("map").innerHTML = L.groups
       .map((g) => '<article class="group" data-g="' + g.g + '"><h3>' + esc(g.name) + '</h3><p class="sub">' + esc(g.sub) + "</p><ul>" + g.items.map(([a, b]) => "<li><b>" + esc(a) + "</b> <span>" + esc(b) + "</span></li>").join("") + "</ul></article>")
       .join("");
-    document.getElementById("foot").innerHTML = L.foot.map((s) => "<span>" + esc(s) + "</span>").join("") + '<a href="https://github.com/alexandrkotov/tapalog-reader/releases">' + esc(L.dl) + '</a><a href="https://github.com/alexandrkotov/tapalog-reader">' + esc(L.src) + "</a>";
+    document.getElementById("foot").innerHTML = L.foot.map((s) => "<span>" + esc(s) + "</span>").join("") + '<a href="https://github.com/alexandrkotov/tapalog-reader/releases/latest">' + esc(L.dl) + '</a><a href="https://github.com/alexandrkotov/tapalog-reader">' + esc(L.src) + "</a>";
     document.getElementById("b-ru").setAttribute("aria-pressed", String(lang === "ru"));
     document.getElementById("b-en").setAttribute("aria-pressed", String(lang === "en"));
   }
