@@ -1,7 +1,7 @@
 ## English
 
 What's new:
-- **Plugins have a version of their contract with the program.** A plugin's `plugin.json` can say which version of the plugin API it was written for (`"api": 1`; plugins that say nothing are version 1, so existing ones go on working). The plugin is told the version it is given, **Settings → Plugins** shows the program's version and each plugin's, and a plugin written for a newer version than the program's is skipped with the reason shown there instead of failing in somebody's reader. The rules of compatibility are in the plugin guide.
+- **Isolated plugins.** A plugin can now ask to run in a sandboxed frame (`"api": 2` and `"isolated": true` in its `plugin.json`). The frame has no way to reach the program's page, cookies or login, cannot open windows or navigate the page, and reaches no site except the program's own address as a stranger; the plugin gets the book's bytes from `await context.file()` and draws into its own document, and covers are drawn in a hidden frame the same way. Plugins that say nothing run in the page as before (plugin API 1 goes on working), and the plugin guide says how to move one over. A new example, `text-lines-sandboxed`, comes with the program.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -15,7 +15,7 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **У плагинов появилась версия их соглашения с программой.** В `plugin.json` плагина можно указать, для какой версии API плагинов он написан (`"api": 1`; у плагинов без этого поля версия 1, так что существующие продолжают работать). Плагину сообщается версия, которую он получает, **Настройки → Плагины** показывают версию программы и каждого плагина, а плагин, написанный для более новой версии, пропускается с причиной там же, вместо того чтобы ломаться в чьей-то читалке. Правила совместимости описаны в руководстве по плагинам.
+- **Изолированные плагины.** Плагин теперь может попросить запуск в изолированном фрейме (`"api": 2` и `"isolated": true` в его `plugin.json`). Фрейм не может добраться до страницы программы, её cookie и входа, не может открывать окна и уводить страницу, и достаёт только до собственного адреса программы как чужой; плагин получает байты книги из `await context.file()` и рисует в собственном документе, а обложки так же рисуются в скрытом фрейме. Плагины, которые ничего не говорят, работают в странице, как раньше (API плагинов 1 продолжает работать), а в руководстве по плагинам сказано, как перевести плагин. В поставку добавлен новый пример `text-lines-sandboxed`.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -29,7 +29,7 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **У плагінів з'явилася версія їхньої угоди з програмою.** У `plugin.json` плагіна можна вказати, для якої версії API плагінів його написано (`"api": 1`; у плагінів без цього поля версія 1, тож наявні продовжують працювати). Плагіну повідомляється версія, яку він отримує, **Налаштування → Плагіни** показують версію програми та кожного плагіна, а плагін, написаний для новішої версії, пропускається з причиною там-таки, замість того щоб ламатися в чиїйсь читалці. Правила сумісності описано в посібнику з плагінів.
+- **Ізольовані плагіни.** Плагін тепер може попросити запуск в ізольованому фреймі (`"api": 2` і `"isolated": true` у його `plugin.json`). Фрейм не може дістатися сторінки програми, її cookie і входу, не може відкривати вікна й відводити сторінку, і сягає лише власної адреси програми як чужий; плагін отримує байти книги з `await context.file()` і малює у власному документі, а обкладинки так само малюються у прихованому фреймі. Плагіни, що нічого не кажуть, працюють у сторінці, як раніше (API плагінів 1 продовжує працювати), а в посібнику з плагінів сказано, як перенести плагін. До поставки додано новий приклад `text-lines-sandboxed`.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 

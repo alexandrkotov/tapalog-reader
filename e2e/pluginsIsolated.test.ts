@@ -41,6 +41,24 @@ export async function mount(host, context) {
 }
 `;
 
+/** A plugin that does its work in a worker, started the way the guide says: its script fetched from the plugin's folder, wrapped in a Blob. */
+const WORKER_READER = `
+export async function mount(host) {
+  const script = await (await fetch(new URL("worker.js", import.meta.url))).text();
+  const worker = new Worker(URL.createObjectURL(new Blob([script], { type: "text/javascript" })));
+  const answer = await new Promise((resolve, reject) => {
+    worker.onmessage = (e) => resolve(e.data);
+    worker.onerror = (e) => reject(new Error(e.message));
+    worker.postMessage(20);
+  });
+  const pre = document.createElement("pre");
+  pre.id = "out";
+  pre.textContent = "worker says " + answer;
+  host.replaceChildren(pre);
+  return { destroy: () => worker.terminate() };
+}
+`;
+
 before(async () => {
   browser = await launch();
   // the isolated example that comes with the repository, a hostile one, and one whose reader breaks
@@ -51,7 +69,11 @@ before(async () => {
     writeFileSync(join(plugins, id, "plugin.json"), JSON.stringify({ id, name: id, api: 2, isolated: true, formats: [{ ext }], reader: "reader.js" }));
     writeFileSync(join(plugins, id, "reader.js"), reader);
   }
-  inst = await startServer({ "Notes.slines": NOTES, "Case.trap": TRAP_BOOK, "Bad.breaks": "x" }, { TAPALOG_PLUGINS: plugins });
+  mkdirSync(join(plugins, "works"));
+  writeFileSync(join(plugins, "works", "plugin.json"), JSON.stringify({ id: "works", name: "works", api: 2, isolated: true, formats: [{ ext: "works" }], reader: "reader.js" }));
+  writeFileSync(join(plugins, "works", "reader.js"), WORKER_READER);
+  writeFileSync(join(plugins, "works", "worker.js"), "onmessage = (e) => postMessage(e.data * 2 + 2);");
+  inst = await startServer({ "Notes.slines": NOTES, "Case.trap": TRAP_BOOK, "Bad.breaks": "a book whose reader breaks", "Job.works": "a book for the worker" }, { TAPALOG_PLUGINS: plugins });
   await setup(inst);
 });
 after(async () => {
@@ -148,5 +170,13 @@ e2e("a plugin that breaks while opening is told to the reader like any other, an
   await page.waitForSelector("text=The reader plugin could not open this book");
   await page.waitForSelector("text=the plugin broke while opening");
   expect(page.frames().some((f) => f.url().includes("/plugin-host/"))).toBe(false);
+  await ctx.close();
+});
+
+e2e("an isolated plugin can still do its work in a worker made from its own script, as the guide says", async () => {
+  const ctx = await signedIn(browser, inst);
+  const page = await ctx.newPage();
+  await page.goto(`${inst.url}/#book=${await bookId(ctx, inst, "Job.works")}`);
+  expect(await inFrame(page, async (frame) => (await frame.waitForSelector("#out", { timeout: 30_000 }), frame.textContent("#out")))).toBe("worker says 42");
   await ctx.close();
 });
