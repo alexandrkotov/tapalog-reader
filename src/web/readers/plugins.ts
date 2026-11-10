@@ -2,6 +2,7 @@ import { t } from "../i18n";
 import { isDark, onTheme } from "../theme";
 import { api } from "../ui";
 import type { Reader, ReaderSpec } from "./mount";
+import { mountIsolated } from "./pluginFrame";
 
 /** What the server says about an installed plugin (see src/server/plugins.ts). */
 export interface PluginInfo {
@@ -17,6 +18,8 @@ export interface PluginInfo {
   shareableView: boolean;
   /** Whether the module exports `cover(context)` too. */
   cover: boolean;
+  /** Whether it runs in a sandboxed frame (API 2) instead of in the page: then `context.url` is replaced by `context.file()`. */
+  isolated: boolean;
 }
 
 /** What a plugin's `cover(context)` is given: the book's file and the size the cover will be shown at (it is scaled to fit anyway). */
@@ -79,6 +82,7 @@ export function pluginModule(plugin: PluginInfo): Promise<PluginModule> {
 
 /** Mounts the plugin's reader for the book. */
 export async function mountPlugin(host: HTMLElement, plugin: PluginInfo, spec: ReaderSpec): Promise<Reader> {
+  if (plugin.isolated) return mountIsolated(host, plugin, spec); // its module is loaded in its own frame, not here
   const module = await pluginModule(plugin);
   if (typeof module.mount !== "function") throw new Error(`${plugin.name}: the reader has no mount function`);
   const reader = await module.mount(host, {

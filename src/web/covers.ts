@@ -1,4 +1,5 @@
 import { api, ApiError } from "./ui";
+import { coverFromFrame } from "./readers/pluginFrame";
 import { pluginFor, pluginModule } from "./readers/plugins";
 
 /**
@@ -108,6 +109,16 @@ async function catalogCover(id: string): Promise<Blob> {
 
 /** A plugin draws the cover itself: it gets the file's address and hands back an image. */
 async function pluginCover(book: Todo, plugin: NonNullable<ReturnType<typeof pluginFor>>): Promise<Blob> {
+  if (plugin.isolated) {
+    // the plugin draws in a frame of its own; what comes back is an image or the reason there is none
+    const got = await coverFromFrame(plugin, `/api/file/${book.id}`, book.ext, THUMB_W, THUMB_H);
+    if ("failed" in got) {
+      if (got.retry) throw new TypeError(got.failed); // network trouble: try again later
+      throw new NoCover(got.failed);
+    }
+    if (got.image instanceof Blob) return fromImage(got.image);
+    return scaled(got.image, got.image.width, got.image.height);
+  }
   try {
     const module = await pluginModule(plugin);
     if (typeof module.cover !== "function") throw new NoCover("the plugin draws no covers");
