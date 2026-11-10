@@ -102,6 +102,13 @@
   .head h1 { font-size: clamp(34px, 5.4vw, 60px); line-height: 1.04; font-weight: 700; letter-spacing: -0.02em; }
   .head h1 em { font-style: normal; color: var(--hub); }
   .lead { margin: 18px 0 0; color: var(--muted); font-size: 17px; max-width: 54ch; }
+  .actions { margin: 24px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+  .btn { display: inline-block; background: var(--hub); color: var(--bg); font: 600 16px var(--font-body); text-decoration: none; padding: 12px 22px; border-radius: 6px; }
+  .btn:hover { filter: brightness(1.1); }
+  .alt { color: var(--fg); font-weight: 500; text-underline-offset: 3px; }
+  .note { color: var(--muted); font-size: 13px; flex-basis: 100%; }
+  .btn:focus-visible, .alt:focus-visible, footer a:focus-visible { outline: 2px solid var(--hub); outline-offset: 3px; }
+  footer a { color: var(--fg); text-underline-offset: 3px; }
   .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line); }
   .fact { padding: 14px 0; border-bottom: 1px solid var(--line); }
   .fact:nth-child(odd) { padding-right: 16px; }
@@ -164,6 +171,7 @@
     <div>
       <h1 data-k="h1"></h1>
       <p class="lead" data-k="lead"></p>
+      <p class="actions"><a class="btn" href="https://github.com/alexandrkotov/tapalog-reader/releases" data-k="dl"></a><a class="alt" href="https://github.com/alexandrkotov/tapalog-reader" data-k="src"></a><span class="note" data-k="dlNote"></span></p>
     </div>
     <div class="facts" id="facts"></div>
   </header>
@@ -281,6 +289,7 @@
       "dg.plug": "Плагины", "dg.p1": "папка рядом с программой", "dg.p2": "в странице или в sandbox",
       "dg.l1": "файлы", "dg.l2": "текст, рисунки, обложки", "dg.l3": "по желанию",
       facts: [["7", "форматов читается сразу, остальные плагинами"], ["3", "языка интерфейса: русский, английский, украинский"], ["3", "системы: Windows, Linux, macOS"], ["1", "файл, без установки на стороне читателя"]],
+      dl: "Скачать", src: "Исходный код", dlNote: "Windows, Linux и macOS, один файл без установки · лицензия MIT",
       foot: ["Лицензия MIT", "Сопутствующий проект: Tapalog, каталоги .ecatm"],
       groups: [
         { g: "read", name: "Чтение", sub: "Читалки встроены в страницу; адрес всегда хранит точное место.", items: [
@@ -358,6 +367,7 @@
       "dg.plug": "Plugins", "dg.p1": "a folder beside the program", "dg.p2": "in the page or in a sandbox",
       "dg.l1": "files", "dg.l2": "text, figures, covers", "dg.l3": "optional",
       facts: [["7", "formats read out of the box, the rest by plugins"], ["3", "interface languages: Russian, English, Ukrainian"], ["3", "systems: Windows, Linux, macOS"], ["1", "file, nothing installed on the reading side"]],
+      dl: "Download", src: "Source code", dlNote: "Windows, Linux and macOS, one file, nothing to install · MIT licence",
       foot: ["MIT licence", "Companion to Tapalog, .ecatm catalogs"],
       groups: [
         { g: "read", name: "Reading", sub: "The readers are built into the page; the address always holds the exact place.", items: [
@@ -427,7 +437,7 @@
     document.getElementById("map").innerHTML = L.groups
       .map((g) => '<article class="group" data-g="' + g.g + '"><h3>' + esc(g.name) + '</h3><p class="sub">' + esc(g.sub) + "</p><ul>" + g.items.map(([a, b]) => "<li><b>" + esc(a) + "</b> <span>" + esc(b) + "</span></li>").join("") + "</ul></article>")
       .join("");
-    document.getElementById("foot").innerHTML = L.foot.map((s) => "<span>" + esc(s) + "</span>").join("");
+    document.getElementById("foot").innerHTML = L.foot.map((s) => "<span>" + esc(s) + "</span>").join("") + '<a href="https://github.com/alexandrkotov/tapalog-reader/releases">' + esc(L.dl) + '</a><a href="https://github.com/alexandrkotov/tapalog-reader">' + esc(L.src) + "</a>";
     document.getElementById("b-ru").setAttribute("aria-pressed", String(lang === "ru"));
     document.getElementById("b-en").setAttribute("aria-pressed", String(lang === "en"));
   }
