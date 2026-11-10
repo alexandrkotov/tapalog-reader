@@ -32,7 +32,7 @@ e2e("a scanned PDF is read page by page in the browser, the text goes to the ser
     listed = (await api<{ books: typeof listed }>(ctx, inst, "/api/admin/ocr")).books;
   }
   expect(listed).toHaveLength(1); // the indexer found a PDF with no text and offers it
-  expect(listed[0]).toMatchObject({ pages: null, done: 0 });
+  expect(listed[0]).toMatchObject({ pages: 2, textPages: 0, done: 0 }); // the index counted the pages before any was read
   const id = await bookId(ctx, inst, "Scans/scan.pdf");
 
   const page = await ctx.newPage();

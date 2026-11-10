@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ConfigStore } from "./config";
 import type { BookRow, Library } from "./library";
 import { OcrText, type OcrProgress } from "./ocr";
-import { EXTRACTORS, NoText, type Loc } from "./text/extract";
+import { EXTRACTORS, measurePdf, NoText, type ExtractMeta, type Loc } from "./text/extract";
 
 /** Bump when an extractor improves, so books indexed by the old one are read again. */
 export const EXTRACTOR_VERSION = 1;
@@ -24,9 +24,17 @@ export interface FullTextStatus {
   recognizedPages: number;
 }
 
-/** A PDF that has (almost) no text of its own, so its pictures could be read. */
+/** A PDF is offered for recognizing when at least this share of its pages (and at least MIXED_MIN_PAGES pages) has no text of its own. */
+export const MIXED_SHARE = 0.1;
+export const MIXED_MIN_PAGES = 3;
+
+/** A PDF that has (almost) no text of its own, or part of whose pages are pictures, so that those pictures could be read. */
 export interface ScanBook {
   book: BookRow;
+  /** Pages of the file, as the index counted them; null while it has not (a book the index has not reached, or one with too many pages). */
+  pages: number | null;
+  /** Of them, the pages that have text of their own. */
+  textPages: number | null;
   /** How far the reading has got; null when it has not begun. */
   ocr: OcrProgress | null;
 }
@@ -120,8 +128,13 @@ export class FullText {
       first  INTEGER NOT NULL,    -- rowids of this book's chunks: first..last, so they can be removed without a scan
       last   INTEGER NOT NULL,
       note   TEXT,
-      seen   INTEGER NOT NULL
+      seen   INTEGER NOT NULL,
+      pages  INTEGER,             -- a PDF's page count (0: not told) and how many pages have text of their own; null until measured
+      textpages INTEGER
     )`);
+    const columns = (db.query("PRAGMA table_info(docs)").all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes("pages")) db.run("ALTER TABLE docs ADD COLUMN pages INTEGER");
+    if (!columns.includes("textpages")) db.run("ALTER TABLE docs ADD COLUMN textpages INTEGER");
     db.run("CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(text, id UNINDEXED, loc UNINDEXED, tokenize = 'unicode61 remove_diacritics 2')");
     // A crash mid-book leaves its chunks without a finished row: the book is the last writer, so drop everything from its start.
     for (const row of db.query("SELECT id, first FROM docs WHERE state = 'indexing'").all() as { id: string; first: number }[]) {
@@ -173,6 +186,26 @@ export class FullText {
       await this.indexOne(book);
       await Bun.sleep(20);
     }
+    await this.measureOld();
+  }
+
+  /**
+   * PDFs indexed before the index counted pages: each is read once more for its page count and the pages that have text, so that a book
+   * of mixed pages can be offered for recognizing. Its text stays in the index as it is, so search is not disturbed.
+   */
+  private async measureOld(): Promise<void> {
+    const root = this.library.root;
+    if (!root) return;
+    const unmeasured = new Set((this.db.query("SELECT id FROM docs WHERE pages IS NULL AND state IN ('done', 'skipped')").all() as { id: string }[]).map((r) => r.id));
+    const save = this.db.prepare("UPDATE docs SET pages = ?, textpages = ? WHERE id = ?");
+    for (const book of this.indexable()) {
+      if (book.ext !== "pdf" || !unmeasured.has(book.id)) continue;
+      if (this.stopping || !this.enabled) return;
+      this.working = book.name;
+      const found = await measurePdf(join(root, ...book.path.split("/")));
+      save.run(found?.pages ?? 0, found?.textPages ?? 0, book.id); // a file that cannot be read is not tried again
+      await Bun.sleep(20);
+    }
   }
 
   private async indexOne(book: BookRow): Promise<void> {
@@ -191,8 +224,9 @@ export class FullText {
     let count = 0;
     let state: "done" | "skipped" | "failed" = "done";
     let note: string | null = null;
+    const meta: ExtractMeta = {};
     try {
-      for await (const chunk of extract(path)) {
+      for await (const chunk of extract(path, meta)) {
         batch.push([chunk.text, JSON.stringify(chunk.loc)]);
         count++;
         if (batch.length >= 200) {
@@ -222,7 +256,7 @@ export class FullText {
       }
     }
     const last = (db.query("SELECT COALESCE(MAX(rowid), 0) AS m FROM chunks").get() as { m: number }).m;
-    db.run("UPDATE docs SET state = ?, last = ?, note = ? WHERE id = ?", [state, Math.max(last, first - 1), note, book.id]);
+    db.run("UPDATE docs SET state = ?, last = ?, note = ?, pages = ?, textpages = ? WHERE id = ?", [state, Math.max(last, first - 1), note, meta.pages ?? null, meta.textPages ?? null, book.id]);
   }
 
   private removeDoc(id: string): void {
@@ -259,10 +293,10 @@ export class FullText {
     return { enabled: st.enabled, done: st.indexed + st.skipped + st.failed, total: st.total };
   }
 
-  /** PDFs with nothing or next to nothing to read in them (no text at all, or under 2000 characters in the whole book), and how far their pictures have been read. */
+  /** PDFs with nothing or next to nothing to read in them (no text at all, or under 2000 characters in the whole book) or with a share of pages that have none, and how far their pictures have been read. */
   scans(): ScanBook[] {
     const ocr = this.ocr.all();
-    const state = new Map((this.db.query("SELECT id, state, note, first, last FROM docs").all() as { id: string; state: string; note: string | null; first: number; last: number }[]).map((r) => [r.id, r]));
+    const state = new Map((this.db.query("SELECT id, state, note, first, last, pages, textpages FROM docs").all() as { id: string; state: string; note: string | null; first: number; last: number; pages: number | null; textpages: number | null }[]).map((r) => [r.id, r]));
     const chars = this.db.prepare("SELECT COALESCE(SUM(length(text)), 0) AS n FROM chunks WHERE rowid BETWEEN ? AND ?");
     const out: ScanBook[] = [];
     for (const book of this.indexable()) {
@@ -271,7 +305,11 @@ export class FullText {
       const progress = ocr.get(book.id) ?? null;
       const bare = doc?.state === "skipped" && doc.note === "no text";
       const sparse = doc?.state === "done" && (chars.get(doc.first, doc.last) as { n: number }).n < 2000;
-      if (bare || sparse || progress) out.push({ book, ocr: progress });
+      const pages = doc?.pages ? doc.pages : null;
+      const textPages = pages === null ? null : Math.min(pages, doc?.textpages ?? 0);
+      const blank = pages === null ? 0 : pages - textPages!;
+      const mixed = blank >= MIXED_MIN_PAGES && blank >= pages! * MIXED_SHARE;
+      if (bare || sparse || mixed || progress) out.push({ book, pages, textPages, ocr: progress });
     }
     return out;
   }

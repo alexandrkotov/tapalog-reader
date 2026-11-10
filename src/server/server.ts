@@ -823,13 +823,14 @@ function buildRoutes(app: App, origin: Origin) {
     // ----- reading the pictures of scanned pages: the administrator's browser does the reading, the server keeps the text -----
     "/api/admin/ocr": {
       GET: admin(() => {
-        const books = app.fullText.scans().map(({ book, ocr }) => ({
+        const books = app.fullText.scans().map(({ book, ocr, pages, textPages }) => ({
           id: book.id,
           name: book.name,
           title: titleOf(book),
           path: book.path,
           size: book.size,
-          pages: ocr?.pages ?? null,
+          pages: ocr?.pages ?? pages,
+          textPages,
           done: ocr?.done ?? 0,
           edited: ocr?.edited ?? 0,
           images: ocr?.images ?? 0,

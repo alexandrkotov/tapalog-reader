@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import { OWN_MIN_CHARS } from "../../web/ocrOwn";
 import { decodeText } from "../../web/readers/decode";
 import { htmlToText } from "./html";
 import { mobiText } from "./mobi";
@@ -9,6 +10,14 @@ export type Loc = { page: number } | { offset: number } | { section: number } | 
 export interface Chunk {
   text: string;
   loc: Loc;
+}
+
+/** What an extractor tells about the file besides its text. A PDF says how many pages it has and how many of them have text. */
+export interface ExtractMeta {
+  /** Pages of the PDF; 0 when there are too many to be read page by page (nothing is then said of its pages). */
+  pages?: number;
+  /** Pages with enough text of their own to be taken as they are (the same measure the recognizing of scans uses). */
+  textPages?: number;
 }
 
 /** The book has no text we can index (a scan, a locked file); not an error. */
@@ -43,7 +52,8 @@ async function readCapped(path: string): Promise<Uint8Array> {
   return file.bytes();
 }
 
-async function* pdfChunks(path: string): AsyncGenerator<Chunk> {
+/** The text of each page of a PDF, one after another; `meta` is filled as the pages go by. */
+async function* pdfPages(path: string, meta: ExtractMeta): AsyncGenerator<{ page: number; text: string }> {
   // pdf.js grumbles on load that it has no canvas to draw with; we only read text, so keep the console clean.
   const warn = console.warn;
   console.warn = () => {};
@@ -59,12 +69,15 @@ async function* pdfChunks(path: string): AsyncGenerator<Chunk> {
   task.onPassword = () => void task.destroy();
   try {
     const doc = await task.promise;
+    meta.pages = doc.numPages <= MAX_PAGES ? doc.numPages : 0;
+    meta.textPages = 0;
     for (let n = 1; n <= Math.min(doc.numPages, MAX_PAGES); n++) {
       const page = await doc.getPage(n);
       const content = await page.getTextContent();
       const text = content.items.map((i) => ("str" in i ? i.str + (i.hasEOL ? "\n" : " ") : "")).join("").replace(/[ \t]+/g, " ").trim();
       page.cleanup();
-      for (const piece of chunkText(text, 4000)) yield { text: piece.text, loc: { page: n } };
+      if (text.replace(/\s/g, "").length >= OWN_MIN_CHARS) meta.textPages!++;
+      yield { page: n, text };
       if (n % 5 === 0) await Bun.sleep(0); // let the server answer requests between pages
     }
   } catch (err) {
@@ -73,6 +86,21 @@ async function* pdfChunks(path: string): AsyncGenerator<Chunk> {
   } finally {
     void task.destroy();
   }
+}
+
+async function* pdfChunks(path: string, meta: ExtractMeta = {}): AsyncGenerator<Chunk> {
+  for await (const { page, text } of pdfPages(path, meta)) for (const piece of chunkText(text, 4000)) yield { text: piece.text, loc: { page } };
+}
+
+/** How many pages a PDF has and how many have text, without keeping any of it; null when it cannot be read (locked, damaged). */
+export async function measurePdf(path: string): Promise<{ pages: number; textPages: number } | null> {
+  const meta: ExtractMeta = {};
+  try {
+    for await (const _ of pdfPages(path, meta)) void _;
+  } catch {
+    return null;
+  }
+  return { pages: meta.pages ?? 0, textPages: meta.textPages ?? 0 };
 }
 
 async function* txtChunks(path: string): AsyncGenerator<Chunk> {
@@ -146,7 +174,7 @@ async function* ecatmChunks(path: string): AsyncGenerator<Chunk> {
   for (const c of await catalogChunks(path)) yield { text: c.text, loc: { image: c.imageId, ...(c.linkId !== undefined ? { link: c.linkId } : {}) } };
 }
 
-export const EXTRACTORS: Record<string, (path: string) => AsyncGenerator<Chunk>> = {
+export const EXTRACTORS: Record<string, (path: string, meta?: ExtractMeta) => AsyncGenerator<Chunk>> = {
   pdf: pdfChunks,
   txt: txtChunks,
   fb2: fb2Chunks,
