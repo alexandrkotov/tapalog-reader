@@ -290,7 +290,7 @@
       "dg.l1": "файлы", "dg.l2": "текст, рисунки, обложки", "dg.l3": "по желанию",
       facts: [["7", "форматов читается сразу, остальные плагинами"], ["3", "языка интерфейса: русский, английский, украинский"], ["3", "системы: Windows, Linux, macOS"], ["1", "файл, без установки на стороне читателя"]],
       dl: "Скачать", src: "Исходный код", dlNote: "Windows, Linux и macOS, один файл без установки · лицензия MIT",
-      foot: ["Лицензия MIT", "Сопутствующий проект: Tapalog, каталоги .ecatm"],
+      foot: ["Лицензия MIT", "Сопутствующий проект: {Tapalog}, каталоги .ecatm"],
       groups: [
         { g: "read", name: "Чтение", sub: "Читалки встроены в страницу; адрес всегда хранит точное место.", items: [
           ["PDF", "pdf.js: поворот, обрезка полей, режим чтения, печатные номера страниц"],
@@ -368,7 +368,7 @@
       "dg.l1": "files", "dg.l2": "text, figures, covers", "dg.l3": "optional",
       facts: [["7", "formats read out of the box, the rest by plugins"], ["3", "interface languages: Russian, English, Ukrainian"], ["3", "systems: Windows, Linux, macOS"], ["1", "file, nothing installed on the reading side"]],
       dl: "Download", src: "Source code", dlNote: "Windows, Linux and macOS, one file, nothing to install · MIT licence",
-      foot: ["MIT licence", "Companion to Tapalog, .ecatm catalogs"],
+      foot: ["MIT licence", "Companion to {Tapalog}, .ecatm catalogs"],
       groups: [
         { g: "read", name: "Reading", sub: "The readers are built into the page; the address always holds the exact place.", items: [
           ["PDF", "pdf.js: rotate, crop margins, reading mode, printed page numbers"],
@@ -437,7 +437,7 @@
     document.getElementById("map").innerHTML = L.groups
       .map((g) => '<article class="group" data-g="' + g.g + '"><h3>' + esc(g.name) + '</h3><p class="sub">' + esc(g.sub) + "</p><ul>" + g.items.map(([a, b]) => "<li><b>" + esc(a) + "</b> <span>" + esc(b) + "</span></li>").join("") + "</ul></article>")
       .join("");
-    document.getElementById("foot").innerHTML = L.foot.map((s) => "<span>" + esc(s) + "</span>").join("") + '<a href="https://github.com/alexandrkotov/tapalog-reader/releases/latest">' + esc(L.dl) + '</a><a href="https://github.com/alexandrkotov/tapalog-reader">' + esc(L.src) + "</a>";
+    document.getElementById("foot").innerHTML = L.foot.map((s) => "<span>" + esc(s).replace("{Tapalog}", '<a href="https://tapalog.com/">Tapalog</a>') + "</span>").join("") + '<a href="https://github.com/alexandrkotov/tapalog-reader/releases/latest">' + esc(L.dl) + '</a><a href="https://github.com/alexandrkotov/tapalog-reader">' + esc(L.src) + "</a>";
     document.getElementById("b-ru").setAttribute("aria-pressed", String(lang === "ru"));
     document.getElementById("b-en").setAttribute("aria-pressed", String(lang === "en"));
   }
