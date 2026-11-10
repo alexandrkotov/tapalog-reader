@@ -85,6 +85,55 @@ e2e("the library folder is chosen by browsing the computer's folders, not by typ
   await ctx.close();
 });
 
+e2e("the settings window has a tour of its own: ? lights up each part of it in turn, and Escape ends the tour but not the window", async () => {
+  const ctx = await signedIn(browser, inst);
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(inst.url + "/");
+  await page.waitForSelector(".shelf");
+  await page.click("button:has-text('Settings')");
+  await page.waitForSelector(".modal .part-backup");
+  expect(await page.getAttribute(".modal-help", "title")).toBe("How these settings work");
+  // the help button sits next to the close button, at the right of the title
+  const [help, close, title] = await page.evaluate(() => [".modal-help", ".modal-head > .icon-btn:last-child", ".modal-head h2"].map((s) => { const r = document.querySelector(s)!.getBoundingClientRect(); return { x: r.x, w: r.width }; }));
+  expect(help!.x).toBeGreaterThan(title!.x + title!.w);
+  expect(help!.x + help!.w).toBeLessThanOrEqual(close!.x);
+
+  await page.click(".modal-help");
+  const total = Number((await page.textContent(".tour-count"))!.split(" of ")[1]);
+  const seen: (string | null)[] = [];
+  for (let i = 0; i < total; i++) {
+    await page.waitForTimeout(300); // the spotlight glides to the next part
+    const hole = (await page.locator(".tour-hole").boundingBox())!;
+    seen.push(
+      await page.evaluate((h) => {
+        const near = (a: number, b: number) => Math.abs(a - b) <= 6;
+        const match = [...document.querySelectorAll<HTMLElement>(".modal .admin-folder, .modal .admin-tools, .modal .section")].find((n) => {
+          const r = n.getBoundingClientRect();
+          return near(r.left, h.x) && near(r.top, h.y) && near(r.width + 8, h.width) && near(r.height + 8, h.height);
+        });
+        return match ? [...match.classList].find((c) => c.startsWith("admin-") || c.startsWith("part-")) ?? null : null;
+      }, hole),
+    );
+    expect((await page.textContent(".tour-text"))!.length).toBeGreaterThan(10);
+    const card = (await page.locator(".tour-card").boundingBox())!;
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    if (i < total - 1) await page.click(".tour-card .btn.primary");
+  }
+  expect(seen).toEqual(["admin-folder", "admin-tools", "part-access", "part-internet", "part-fulltext", "part-users", "part-plugins", "part-backup", "part-server"]);
+  await page.click(".tour-card .btn.primary"); // Done
+  expect(await page.locator(".tour-card").count()).toBe(0);
+  expect(await page.isVisible(".modal")).toBe(true);
+
+  await page.click(".modal-help");
+  await page.keyboard.press("Escape");
+  expect(await page.locator(".tour-card").count()).toBe(0);
+  expect(await page.isVisible(".modal")).toBe(true); // the tour was closed, not the settings
+  expect(errors).toEqual([]);
+  await ctx.close();
+});
+
 e2e("the quick tour is offered once, lights up each button in turn and can be started again", async () => {
   const ctx = await signedIn(browser, inst, undefined, undefined, true);
   const page = await ctx.newPage();

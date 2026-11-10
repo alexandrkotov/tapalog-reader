@@ -3,6 +3,7 @@ import { t } from "./i18n";
 import { openDuplicates } from "./duplicates";
 import { pickFolder } from "./folderPicker";
 import { openOcr } from "./ocrWindow";
+import { startTour, type TourStep } from "./tour";
 import { api, ApiError, el, formatBytes, openModal } from "./ui";
 
 interface Settings {
@@ -25,9 +26,26 @@ interface FullTextStatus {
 }
 
 
+/** The tour of the settings window: it lights up the real sections, and the one for stopping the program is skipped where it is not offered. */
+const SETTINGS_TOUR: TourStep[] = [
+  { target: ".admin-folder", text: "tour.settings.folder", more: "tour.settings.folderMore", scrolls: true },
+  { target: ".admin-tools", text: "tour.settings.tools", more: "tour.settings.toolsMore", scrolls: true },
+  { target: ".part-access", text: "tour.settings.access", more: "tour.settings.accessMore", scrolls: true },
+  { target: ".part-internet", text: "tour.settings.internet", more: "tour.settings.internetMore", scrolls: true },
+  { target: ".part-fulltext", text: "tour.settings.fulltext", more: "tour.settings.fulltextMore", scrolls: true },
+  { target: ".part-users", text: "tour.settings.users", more: "tour.settings.usersMore", scrolls: true },
+  { target: ".part-plugins", text: "tour.settings.plugins", more: "tour.settings.pluginsMore", scrolls: true },
+  { target: ".part-backup", text: "tour.settings.backup", more: "tour.settings.backupMore", scrolls: true },
+  { target: ".part-server", text: "tour.settings.server", more: "tour.settings.serverMore", scrolls: true },
+];
+
 /** The administrator's panel: library folder, who may browse, the internet tunnel, accounts. */
 export async function openAdmin(me: { id: number }, onLibraryChanged: () => void, canStop = false): Promise<void> {
   const modal = openModal(t("admin.title"));
+  const help = el("button", { type: "button", class: "icon-btn small modal-help", title: t("admin.help"), ariaLabel: t("admin.help"), textContent: "?" });
+  help.addEventListener("click", () => startTour(SETTINGS_TOUR));
+  const head = modal.body.parentElement?.querySelector(".modal-head");
+  head?.insertBefore(help, head.querySelector(".icon-btn"));
   let timer: ReturnType<typeof setTimeout> | undefined;
   let indexTimer: ReturnType<typeof setTimeout> | undefined;
   const stop = modal.close;
@@ -37,7 +55,7 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
     stop();
   };
 
-  const section = (title: string, ...children: (Node | string)[]) => el("section", { class: "section" }, el("h3", { textContent: title }), ...children);
+  const section = (part: string, title: string, ...children: (Node | string)[]) => el("section", { class: `section part-${part}` }, el("h3", { textContent: title }), ...children);
   const note = (text: string) => el("p", { class: "muted", textContent: text });
   const post = async (patch: object): Promise<Settings> => api<Settings>("/api/admin/settings", patch);
 
@@ -197,6 +215,7 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
 
     // reader plugins: what was found in the plugins folder when the program started (nothing to change here: they are files)
     const pluginsBox = section(
+      "plugins",
       t("admin.plugins"),
       note(t("admin.plugins.note")),
       el("p", { class: "small" }, el("code", { textContent: pluginsInfo.dir })),
@@ -206,14 +225,14 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
     );
 
     modal.body.replaceChildren(
-      section(t("admin.library"), el("div", { class: "row" }, path, browseFolder, useFolder), el("p", { class: "muted small", textContent: t("admin.library.hint") }), libError, el("div", { class: "row" }, rescan, duplicates)),
-      section(t("admin.access"), radio("open", t("admin.access.open")), radio("login", t("admin.access.login")), el("label", { class: "choice" }, registration, t("admin.register"))),
-      section(t("admin.internet"), el("label", { class: "choice" }, internet, s.mode === "internet" ? t("admin.internet.on") : t("admin.internet.off")), tunnelStatus, note(t("admin.internet.note"))),
-      section(t("admin.fulltext"), indexBox),
-      section(t("admin.users"), ...users, el("div", { class: "user-row" }, newName, newPass, newRole, add), addError),
+      section("library", t("admin.library"), el("div", { class: "row admin-folder" }, path, browseFolder, useFolder), el("p", { class: "muted small", textContent: t("admin.library.hint") }), libError, el("div", { class: "row admin-tools" }, rescan, duplicates)),
+      section("access", t("admin.access"), radio("open", t("admin.access.open")), radio("login", t("admin.access.login")), el("label", { class: "choice" }, registration, t("admin.register"))),
+      section("internet", t("admin.internet"), el("label", { class: "choice" }, internet, s.mode === "internet" ? t("admin.internet.on") : t("admin.internet.off")), tunnelStatus, note(t("admin.internet.note"))),
+      section("fulltext", t("admin.fulltext"), indexBox),
+      section("users", t("admin.users"), ...users, el("div", { class: "user-row" }, newName, newPass, newRole, add), addError),
       pluginsBox,
-      section(t("backup.title"), note(t("backup.note")), el("div", { class: "row" }, download, restore), backupMessage),
-      ...(canStop ? [section(t("admin.server"), note(t("admin.stop.note")), el("div", { class: "row" }, stopButton))] : []),
+      section("backup", t("backup.title"), note(t("backup.note")), el("div", { class: "row" }, download, restore), backupMessage),
+      ...(canStop ? [section("server", t("admin.server"), note(t("admin.stop.note")), el("div", { class: "row" }, stopButton))] : []),
     );
   }
 

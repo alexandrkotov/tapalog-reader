@@ -22,7 +22,9 @@ Administrator only, in Settings (also offered on the first-run screen of a new c
 
 ## Settings
 
-For the administrator: library folder, who may browse on the local network, internet tunnel, accounts
+For the administrator: library folder, who may browse on the local network, internet tunnel, search inside books, accounts, reader plugins, backup and stopping the program.
+
+The library folder is chosen with **Browse…** (or by typing its path). **Change folder** is offered only while the path in the field differs from the folder in use, and switches the library to it at once; **Rescan now** and **Find duplicates…** are in the row below. The **?** button in the title of the window starts a tour of its sections: it lights up the real parts of the window one after another (the folder, the rescan and duplicates buttons, access on the network, the internet address, search inside books, accounts, plugins, backup, and the stop button where it is offered), and every step has a **More** button with a longer explanation.
 
 ## About the program
 

@@ -10,16 +10,19 @@ export interface TourStep {
   more?: Key;
   /** A small picture shown with the longer explanation. */
   picture?: TourPicture;
+  /** The element may lie below the visible part of a window that scrolls: the step then still counts, and the tour scrolls to it. */
+  scrolls?: boolean;
 }
 
 const GAP = 10;
 const MARGIN = 12;
 const DONE_KEY = "tour";
 
-function onScreen(node: HTMLElement | null): node is HTMLElement {
+function onScreen(node: HTMLElement | null, scrolls = false): node is HTMLElement {
   if (!node) return false;
   const r = node.getBoundingClientRect();
-  return r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight && getComputedStyle(node).visibility !== "hidden";
+  const inView = scrolls ? r.right > 0 && r.left < innerWidth : r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
+  return r.width > 0 && r.height > 0 && inView && getComputedStyle(node).visibility !== "hidden";
 }
 
 let stopTour: (() => void) | null = null;
@@ -29,7 +32,7 @@ export function startTour(steps: TourStep[]): void {
   stopTour?.();
   const items = steps.flatMap((step) => {
     const node = document.querySelector<HTMLElement>(step.target);
-    return onScreen(node) ? [{ node, text: step.text, more: step.more, picture: step.picture }] : [];
+    return onScreen(node, step.scrolls) ? [{ node, text: step.text, more: step.more, picture: step.picture }] : [];
   });
   if (!items.length) return;
   store.set(DONE_KEY, "1");

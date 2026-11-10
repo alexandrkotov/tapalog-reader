@@ -85,6 +85,8 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .modal.sizable .modal-head { user-select: none; }
 .modal-head .modal-expand { margin-left: auto; margin-right: 4px; display: inline-flex; align-items: center; justify-content: center; }
 .modal-head .modal-expand + .icon-btn { margin-left: 0; }
+.modal-head .modal-help { margin-left: auto; margin-right: 4px; }
+.modal-head .modal-help + .icon-btn { margin-left: 0; }
 .modal-grip { position: absolute; z-index: 2; touch-action: none; }
 .modal-grip[data-grip="n"], .modal-grip[data-grip="s"] { left: 14px; right: 14px; height: 8px; cursor: ns-resize; }
 .modal-grip[data-grip="e"], .modal-grip[data-grip="w"] { top: 14px; bottom: 14px; width: 8px; cursor: ew-resize; }
