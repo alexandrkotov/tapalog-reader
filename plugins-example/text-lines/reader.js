@@ -1,5 +1,5 @@
 // An example reader plugin (MIT): shows a ".lines" text file, one numbered line per row.
-// A plugin is an ES module that exports `mount(host, context)`; see "Plugins" in the README.
+// A plugin is an ES module that exports `mount(host, context)`; see guide/plugins.md.
 
 // Optional: draw the book's cover for the library. Return a canvas, an ImageBitmap or an image Blob (it is scaled to fit);
 // throw an error if the file has nothing to show. A network failure (a TypeError from fetch) is tried again later.

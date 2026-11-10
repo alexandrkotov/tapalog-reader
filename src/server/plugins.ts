@@ -10,7 +10,7 @@ import { formatOf } from "./formats";
  *   plugins/djvu/plugin.json   { "id": "djvu", "name": "DjVu reader", "version": "1.0.0",
  *                                "formats": [{ "ext": ["djvu", "djv"], "mime": "image/vnd.djvu" }],
  *                                "reader": "reader.js", "shareableView": true, "cover": true }
- *   plugins/djvu/reader.js     an ES module that exports `mount(host, context)` and optionally `cover(context)` (see docs in README)
+ *   plugins/djvu/reader.js     an ES module that exports `mount(host, context)` and optionally `cover(context)` (see guide/plugins.md)
  *
  * A plugin is code that runs in every reader's browser, so plugins are put in the folder by the person
  * who runs the server and by nobody else: nothing here installs or downloads one. The server only
