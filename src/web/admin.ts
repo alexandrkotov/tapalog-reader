@@ -188,7 +188,8 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
       t("admin.plugins"),
       note(t("admin.plugins.note")),
       el("p", { class: "small" }, el("code", { textContent: pluginsInfo.dir })),
-      ...(pluginsInfo.plugins.length ? [el("ul", { class: "plain" }, ...pluginsInfo.plugins.map((p) => el("li", { textContent: `${p.name} ${p.version} (${p.exts.map((e) => "." + e).join(", ")})` })))] : [note(t("admin.plugins.none"))]),
+      ...(pluginsInfo.api ? [note(t("admin.plugins.api", { n: pluginsInfo.api }))] : []),
+      ...(pluginsInfo.plugins.length ? [el("ul", { class: "plain" }, ...pluginsInfo.plugins.map((p) => el("li", { textContent: `${p.name} ${p.version} (${p.exts.map((e) => "." + e).join(", ")}) · API ${p.api}` })))] : [note(t("admin.plugins.none"))]),
       ...pluginsInfo.problems.map((p) => el("div", { class: "error", textContent: `${p.folder}: ${p.problem}` })),
     );
 
@@ -204,7 +205,7 @@ export async function openAdmin(me: { id: number }, onLibraryChanged: () => void
     );
   }
 
-  const pluginsInfo = await api<{ dir: string; plugins: { name: string; version: string; exts: string[] }[]; problems: { folder: string; problem: string }[] }>("/api/admin/plugins").catch(() => ({ dir: "", plugins: [], problems: [] }));
+  const pluginsInfo = await api<{ api?: number; dir: string; plugins: { name: string; version: string; api: number; exts: string[] }[]; problems: { folder: string; problem: string }[] }>("/api/admin/plugins").catch(() => ({ api: 0, dir: "", plugins: [], problems: [] }));
   render(await api<Settings>("/api/admin/settings"));
   drawIndex(await api<FullTextStatus>("/api/admin/fulltext"));
 }

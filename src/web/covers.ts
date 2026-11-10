@@ -111,7 +111,7 @@ async function pluginCover(book: Todo, plugin: NonNullable<ReturnType<typeof plu
   try {
     const module = await pluginModule(plugin);
     if (typeof module.cover !== "function") throw new NoCover("the plugin draws no covers");
-    const image = await module.cover({ url: `/api/file/${book.id}`, ext: book.ext, width: THUMB_W, height: THUMB_H });
+    const image = await module.cover({ api: plugin.api, url: `/api/file/${book.id}`, ext: book.ext, width: THUMB_W, height: THUMB_H });
     if (image instanceof Blob) return await fromImage(image);
     const size = image as { width?: number; height?: number; videoWidth?: number; videoHeight?: number };
     return await scaled(image, size.width ?? size.videoWidth ?? 0, size.height ?? size.videoHeight ?? 0);

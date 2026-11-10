@@ -1,8 +1,7 @@
 ## English
 
 What's new:
-- **Big books with a few scanned pages are offered by themselves.** The window for recognizing scans used to list only books with next to no text. Now it also lists a PDF with at least 3 pages (and a tenth of the book) that have no text of their own, and says in its row how many: "3 of 27 pages have no text". Running it reads only those pages and takes the rest as they are.
-- **Pages are counted in advance.** The index now remembers how many pages each PDF has and how many of them have text. PDFs indexed before are measured once in the background, and search is not interrupted. The number of pages is known before anything is read, so the list can be ordered by it: **Order: most pages first**.
+- **Plugins have a version of their contract with the program.** A plugin's `plugin.json` can say which version of the plugin API it was written for (`"api": 1`; plugins that say nothing are version 1, so existing ones go on working). The plugin is told the version it is given, **Settings → Plugins** shows the program's version and each plugin's, and a plugin written for a newer version than the program's is skipped with the reason shown there instead of failing in somebody's reader. The rules of compatibility are in the plugin guide.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -16,8 +15,7 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **Большие книги с несколькими сканированными страницами предлагаются сами.** Раньше окно распознавания сканов показывало только книги, в которых почти нет текста. Теперь в нём есть и PDF, где не меньше 3 страниц (и десятая часть книги) без собственного текста, а в строке сказано, сколько их: «3 из 27 стр. без текста». Запуск читает только эти страницы, остальные берёт как есть.
-- **Страницы считаются заранее.** Индекс теперь запоминает, сколько страниц в каждом PDF и сколько из них с текстом. Те PDF, что были проиндексированы раньше, один раз измеряются в фоне, поиск при этом не прерывается. Число страниц известно до начала распознавания, поэтому список можно упорядочить по нему: **Порядок: больше страниц сверху**.
+- **У плагинов появилась версия их соглашения с программой.** В `plugin.json` плагина можно указать, для какой версии API плагинов он написан (`"api": 1`; у плагинов без этого поля версия 1, так что существующие продолжают работать). Плагину сообщается версия, которую он получает, **Настройки → Плагины** показывают версию программы и каждого плагина, а плагин, написанный для более новой версии, пропускается с причиной там же, вместо того чтобы ломаться в чьей-то читалке. Правила совместимости описаны в руководстве по плагинам.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -31,8 +29,7 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **Великі книги з кількома відсканованими сторінками пропонуються самі.** Раніше вікно розпізнавання сканів показувало лише книги, у яких майже немає тексту. Тепер у ньому є й PDF, де не менше 3 сторінок (і десята частина книги) без власного тексту, а в рядку сказано, скільки їх: «3 з 27 стор. без тексту». Запуск читає лише ці сторінки, решту бере як є.
-- **Сторінки рахуються заздалегідь.** Індекс тепер запам'ятовує, скільки сторінок у кожному PDF і скільки з них має текст. Ті PDF, що були проіндексовані раніше, один раз вимірюються у фоні, пошук при цьому не переривається. Кількість сторінок відома до початку розпізнавання, тому список можна впорядкувати за нею: **Порядок: більше сторінок зверху**.
+- **У плагінів з'явилася версія їхньої угоди з програмою.** У `plugin.json` плагіна можна вказати, для якої версії API плагінів його написано (`"api": 1`; у плагінів без цього поля версія 1, тож наявні продовжують працювати). Плагіну повідомляється версія, яку він отримує, **Налаштування → Плагіни** показують версію програми та кожного плагіна, а плагін, написаний для новішої версії, пропускається з причиною там-таки, замість того щоб ламатися в чиїйсь читалці. Правила сумісності описано в посібнику з плагінів.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 

@@ -1,5 +1,7 @@
 // An example reader plugin (MIT): shows a ".lines" text file, one numbered line per row.
 // A plugin is an ES module that exports `mount(host, context)`; see guide/plugins.md.
+// `context.api` is the version of the contract the plugin is given (the "api" of its plugin.json); a plugin that needs
+// something newer than it can say so with `context.onError` instead of misbehaving.
 
 // Optional: draw the book's cover for the library. Return a canvas, an ImageBitmap or an image Blob (it is scaled to fit);
 // throw an error if the file has nothing to show. A network failure (a TypeError from fetch) is tried again later.
@@ -29,6 +31,7 @@ export async function mount(host, context) {
 
   const list = document.createElement("ol");
   list.className = "text-lines";
+  list.dataset.api = String(context.api);
   list.style.cssText = "margin:0;padding:1rem 1rem 1rem 3.5rem;overflow:auto;height:100%;box-sizing:border-box;font:15px/1.5 monospace";
   for (const text of lines) {
     const row = document.createElement("li");

@@ -8,6 +8,8 @@ export interface PluginInfo {
   id: string;
   name: string;
   version: string;
+  /** The version of the contract it was written for (see PLUGIN_API in src/server/plugins.ts). */
+  api: number;
   exts: string[];
   /** Address of the plugin's reader module. */
   reader: string;
@@ -19,6 +21,8 @@ export interface PluginInfo {
 
 /** What a plugin's `cover(context)` is given: the book's file and the size the cover will be shown at (it is scaled to fit anyway). */
 export interface CoverContext {
+  /** The version of the contract the plugin is given: the one its manifest names (1 when it names none). */
+  api: number;
   url: string;
   ext: string;
   width: number;
@@ -27,6 +31,8 @@ export interface CoverContext {
 
 /** What a plugin's `mount(host, context)` is given. The plugin draws into `host` and owns it until `destroy`. */
 export interface PluginContext {
+  /** The version of the contract the plugin is given: the one its manifest names (1 when it names none). */
+  api: number;
   /** Where the file bytes come from: a library file or a share link's file (same origin, cookies included). */
   url: string;
   name: string;
@@ -76,6 +82,7 @@ export async function mountPlugin(host: HTMLElement, plugin: PluginInfo, spec: R
   const module = await pluginModule(plugin);
   if (typeof module.mount !== "function") throw new Error(`${plugin.name}: the reader has no mount function`);
   const reader = await module.mount(host, {
+    api: plugin.api,
     url: spec.fileUrl,
     name: spec.name,
     ext: spec.ext,
