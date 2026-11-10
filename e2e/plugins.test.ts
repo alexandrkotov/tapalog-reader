@@ -79,7 +79,7 @@ e2e("the administrator can see which plugins are installed", async () => {
   await page.click("button:has-text('Settings')");
   await page.waitForSelector("text=Reader plugins");
   await page.waitForSelector("li:text-is('Text lines (example) 1.0.0 (.lines) · API 1')");
-  await page.waitForSelector("text=This program gives plugins version 2 of the plugin contract");
+  await page.waitForSelector("text=This program supports plugins up to version 2.");
   await page.waitForSelector("text=from-the-future: it is written for plugin API 3"); // a plugin for a newer contract is skipped, with the reason
   expect(errors).toEqual([]);
   await ctx.close();
