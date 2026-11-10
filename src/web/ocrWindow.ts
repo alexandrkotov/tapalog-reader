@@ -12,6 +12,8 @@ interface Row extends OcrListRow {
   images: number;
   /** Pages read without frames of words: their text cannot be selected in the reader until they are read again. */
   plain: number;
+  /** Pages kept as the PDF has them (its own text), not read from the picture. */
+  own: number;
   lang: string | null;
 }
 
@@ -24,6 +26,7 @@ interface Listing {
 
 const LANG_KEY = "tapalog.ocrLang";
 const SORT_KEY = "tapalog.ocrSort";
+const OWN_KEY = "tapalog.ocrTakeOwn";
 
 /** "2 h 5 min", "14 min", "40 s" in the reader's language. */
 function etaText(seconds: number): string {
@@ -80,6 +83,9 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
   const selectPlain = el("button", { type: "button", class: "btn ocr-select-plain", textContent: t("ocr.selectPlain") });
   const againBox = el("input", { type: "checkbox", class: "ocr-again" });
   const again = el("label", { class: "ocr-again-line small" }, againBox, el("span", { textContent: t("ocr.again") }));
+  const ownBox = el("input", { type: "checkbox", class: "ocr-own", checked: store.get(OWN_KEY) !== "0" }); // on unless it was turned off
+  ownBox.addEventListener("change", () => store.set(OWN_KEY, ownBox.checked ? "1" : "0"));
+  const ownLine = el("label", { class: "ocr-again-line small" }, ownBox, el("span", { textContent: t("ocr.takeOwn") }));
   const bar = el("progress", { class: "ocr-bar", max: 1, value: 0, hidden: true });
   const progressLine = el("p", { class: "muted small ocr-progress", hidden: true });
   const message = el("p", { class: "small ocr-message", hidden: true });
@@ -94,7 +100,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     if (locked.has(row.id)) return t("ocr.row.locked");
     const failed = failedPages.get(row.id) ?? 0;
     const base = row.pages === null || row.done === 0 ? t("ocr.row.new") : row.done >= row.pages ? t("ocr.row.done", { pages: row.pages }) : t("ocr.row.partial", { done: row.done, pages: row.pages });
-    const notes = [...(row.plain ? [t("ocr.row.plain", { n: row.plain })] : []), ...(failed ? [t("ocr.row.failed", { n: failed })] : [])];
+    const notes = [...(row.own ? [t("ocr.row.own", { n: row.own })] : []), ...(row.plain ? [t("ocr.row.plain", { n: row.plain })] : []), ...(failed ? [t("ocr.row.failed", { n: failed })] : [])];
     return [base, ...notes].join(" · ");
   };
 
@@ -102,7 +108,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     list = next;
     rows.clear();
     for (const r of next.books) rows.set(r.id, r);
-    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, edited: 0, images: 0, plain: 0, lang: null });
+    if (opts.focus && !rows.has(opts.focus.id)) rows.set(opts.focus.id, { id: opts.focus.id, title: opts.focus.title, path: opts.focus.path, size: 0, pages: null, done: 0, edited: 0, images: 0, plain: 0, own: 0, lang: null });
     for (const id of [...checked]) if (!rows.has(id)) checked.delete(id);
   }
 
@@ -150,7 +156,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     selectUnread.disabled = running || !supported;
     selectPlain.hidden = ![...rows.values()].some((r) => r.plain);
     selectPlain.disabled = running || !supported;
-    againBox.disabled = running;
+    againBox.disabled = ownBox.disabled = running;
     update();
   }
 
@@ -197,6 +203,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     draw();
     bar.hidden = progressLine.hidden = false;
     let read = 0;
+    let taken = 0; // pages kept as the PDF has them
     let serverError = false;
     const readers = new Readers(lang.value as OcrLang); // made for the first book, kept for the next ones, ended with the run
     for (const [index, row] of queue.entries()) {
@@ -218,12 +225,14 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
           lang: readers.lang,
           readers,
           ...(againBox.checked ? { again: true } : {}),
+          ...(ownBox.checked ? { takeOwn: true } : {}),
           signal: controller.signal,
           lanes: defaultLanes(),
           onProgress: showProgress,
           onState: (s) => (progressLine.textContent = s === "loading" ? t("ocr.loading") : progressLine.textContent),
         });
-        read += outcome.done - before;
+        read += outcome.done - before - outcome.own;
+        taken += outcome.own;
         if (outcome.failed.length) failedPages.set(row.id, outcome.failed.length);
         row.done = outcome.done;
         if (outcome.error) {
@@ -250,7 +259,8 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     } catch {
       draw();
     }
-    say(serverError ? t("ocr.serverError") : controller.signal.aborted ? t("ocr.stopped", { n: read }) : t("ocr.finished", { n: read }), serverError);
+    const result = serverError ? t("ocr.serverError") : controller.signal.aborted ? t("ocr.stopped", { n: read }) : t("ocr.finished", { n: read });
+    say(taken && !serverError ? `${result} ${t("ocr.finishedOwn", { n: taken })}` : result, serverError);
     opts.changed?.();
   });
 
@@ -266,6 +276,7 @@ export async function openOcr(opts: { focus?: { id: string; title: string; path:
     listEl,
     el("div", { class: "row project-buttons ocr-actions" }, selectUnread, selectPlain, start, stop),
     again,
+    ownLine,
     bar,
     progressLine,
     message,

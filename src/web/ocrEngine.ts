@@ -1,5 +1,6 @@
 import { pdfDocumentOptions } from "./readers/pdfAssets";
 import { boxesOf, type FoundBlock, type OcrBox } from "./ocrBoxes";
+import { ownText } from "./ocrOwn";
 import { runOcr, type OcrOutcome, type OcrProgress } from "./ocrRun";
 import { api } from "./ui";
 
@@ -121,6 +122,8 @@ export interface RecognizeOptions {
   readers?: Readers;
   /** Read once more the pages recognized before without frames of words, so that their text can be selected in the reader. */
   again?: boolean;
+  /** Take a page that has a text of its own in the file as it is, and read only the pages that are pictures (a book of mixed pages). */
+  takeOwn?: boolean;
   /** Pages at once; the default fits the computer. */
   lanes?: number;
   onProgress?(progress: OcrProgress): void;
@@ -145,15 +148,28 @@ export async function recognizeBook(options: RecognizeOptions): Promise<OcrOutco
     const { done } = await api<{ done: number[] }>(`/api/admin/ocr/${options.id}/start`, { pages: pdf.numPages, lang: options.lang, ...(options.again ? { again: true } : {}) });
     const lanes = Math.max(1, Math.min(options.lanes ?? defaultLanes(), pdf.numPages - done.length || 1));
     const workers = await readers.ensure(lanes);
-    if (options.signal?.aborted) return { done: done.length, pages: pdf.numPages, failed: [], stopped: true };
+    if (options.signal?.aborted) return { done: done.length, pages: pdf.numPages, own: 0, failed: [], stopped: true };
     options.onState?.("reading");
     const idle = [...workers];
-    return await runOcr<HTMLCanvasElement, { text: string; boxes: OcrBox[] }>({
+    return await runOcr<HTMLCanvasElement, { text: string; boxes: OcrBox[]; own?: true }>({
       pages: pdf.numPages,
       done,
       lanes,
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+      ...(options.takeOwn
+        ? {
+            async shortcut(number: number) {
+              const page = await pdf.getPage(number);
+              try {
+                const text = ownText((await page.getTextContent()).items as { str?: string; hasEOL?: boolean }[]);
+                return text === null ? null : { text, boxes: [], own: true as const };
+              } finally {
+                page.cleanup();
+              }
+            },
+          }
+        : {}),
       async render(number) {
         const page = await pdf.getPage(number);
         const base = page.getViewport({ scale: 1 });
@@ -178,8 +194,8 @@ export async function recognizeBook(options: RecognizeOptions): Promise<OcrOutco
       release(canvas) {
         canvas.width = canvas.height = 0; // the memory goes back at once, not when the collector gets round to it
       },
-      async upload(page, { text, boxes }) {
-        await api(`/api/admin/ocr/${options.id}/pages/${page}`, boxes.length ? { text, boxes } : { text }, "PUT");
+      async upload(page, { text, boxes, own }) {
+        await api(`/api/admin/ocr/${options.id}/pages/${page}`, own ? { text, own: true } : boxes.length ? { text, boxes } : { text }, "PUT");
       },
     });
   } finally {

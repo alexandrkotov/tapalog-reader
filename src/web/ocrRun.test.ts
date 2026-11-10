@@ -32,7 +32,7 @@ test("every page the server lacks is read and handed over, those it has are left
   const out = await runOcr({ ...s, pages: 6, done: [2, 5], lanes: 3, onProgress: (p) => progress.push(p) });
   expect([...s.uploaded.keys()].sort()).toEqual([1, 3, 4, 6]);
   expect(s.uploaded.get(3)).toBe("text 3");
-  expect(out).toEqual({ done: 6, pages: 6, failed: [], stopped: false });
+  expect(out).toEqual({ done: 6, pages: 6, own: 0, failed: [], stopped: false });
   expect(s.peak).toBe(3); // three at once, never more
   expect(s.log.filter((x) => x.startsWith("release")).length).toBe(4); // everything drawn was freed
   expect(progress[0]).toMatchObject({ done: 2, pages: 6, etaSeconds: null });
@@ -49,7 +49,7 @@ test("a page that fails is tried once more, and one that fails twice is set asid
     },
   });
   const out = await runOcr({ ...s, pages: 4, done: [], lanes: 2 });
-  expect(out).toEqual({ done: 3, pages: 4, failed: [2], stopped: false });
+  expect(out).toEqual({ done: 3, pages: 4, own: 0, failed: [2], stopped: false });
   expect(s.uploaded.get(3)).toBe("text 3"); // read on the second try
   expect(s.uploaded.has(2)).toBe(false);
   expect(s.log.filter((x) => x === "render 2").length).toBe(2); // the page and its one more try
@@ -74,7 +74,7 @@ test("a stop before the start reads nothing, and a stop after the last page is n
   const early = new AbortController();
   early.abort();
   const s = steps();
-  expect(await runOcr({ ...s, pages: 3, done: [], lanes: 2, signal: early.signal })).toEqual({ done: 0, pages: 3, failed: [], stopped: true });
+  expect(await runOcr({ ...s, pages: 3, done: [], lanes: 2, signal: early.signal })).toEqual({ done: 0, pages: 3, own: 0, failed: [], stopped: true });
   expect(s.uploaded.size).toBe(0);
   const late = new AbortController();
   const t = steps({
@@ -103,7 +103,7 @@ test("a failed upload ends the run with what went wrong, and nothing is claimed 
 
 test("all pages already held: nothing to do", async () => {
   const s = steps();
-  expect(await runOcr({ ...s, pages: 3, done: [1, 2, 3], lanes: 4 })).toEqual({ done: 3, pages: 3, failed: [], stopped: false });
+  expect(await runOcr({ ...s, pages: 3, done: [1, 2, 3], lanes: 4 })).toEqual({ done: 3, pages: 3, own: 0, failed: [], stopped: false });
   expect(s.log).toEqual([]);
 });
 
@@ -115,4 +115,57 @@ test("the time left goes by the speed so far, and is told the way people say it"
   expect(splitEta(14 * 60)).toEqual({ hours: 0, minutes: 14, seconds: 0 });
   expect(splitEta(2 * 3600 + 5 * 60)).toEqual({ hours: 2, minutes: 5, seconds: 0 });
   expect(splitEta(3 * 3600)).toEqual({ hours: 3, minutes: 0, seconds: 0 });
+});
+
+test("a page that has a text of its own is taken as it is without being drawn or read, and is counted apart", async () => {
+  const s = steps();
+  const progress: OcrProgress[] = [];
+  const taken: number[] = [];
+  const out = await runOcr({
+    ...s,
+    pages: 5,
+    done: [],
+    lanes: 2,
+    async shortcut(page: number) {
+      taken.push(page);
+      return page % 2 === 1 ? `own ${page}` : null; // the odd pages are typeset, the even ones are pictures
+    },
+    onProgress: (p) => progress.push(p),
+  });
+  expect(out).toEqual({ done: 5, pages: 5, own: 3, failed: [], stopped: false });
+  expect(taken.sort()).toEqual([1, 2, 3, 4, 5]);
+  expect(s.uploaded.get(1)).toBe("own 1");
+  expect(s.uploaded.get(2)).toBe("text 2");
+  expect(s.log.filter((x) => x.startsWith("render")).sort()).toEqual(["render 2", "render 4"]); // only the pictures were drawn
+  expect(progress.at(-1)).toMatchObject({ done: 5, own: 3 });
+});
+
+test("a shortcut that fails sends the page to be read from its picture, and pages the server holds are not asked about", async () => {
+  const s = steps();
+  const asked: number[] = [];
+  const out = await runOcr({
+    ...s,
+    pages: 3,
+    done: [3],
+    lanes: 1,
+    async shortcut(page: number) {
+      asked.push(page);
+      throw new Error("no text layer");
+    },
+  });
+  expect(out).toEqual({ done: 3, pages: 3, own: 0, failed: [], stopped: false });
+  expect(asked).toEqual([1, 2]);
+  expect(s.uploaded.get(1)).toBe("text 1");
+});
+
+test("the time left is reckoned from the pages that were read, not from those taken as they were", async () => {
+  const s = steps({ async recognize(image: number) {
+    await Bun.sleep(30);
+    return `text ${image}`;
+  } });
+  const progress: OcrProgress[] = [];
+  await runOcr({ ...s, pages: 6, done: [], lanes: 1, async shortcut(page: number) { return page <= 4 ? `own ${page}` : null; }, onProgress: (p) => progress.push(p) });
+  // while pages 1-4 go by nothing has been read, so there is no speed to go by; the last page leaves nothing
+  expect(progress.filter((p) => p.done < 5).every((p) => p.etaSeconds === null)).toBe(true);
+  expect(progress.at(-1)).toMatchObject({ done: 6, own: 4, etaSeconds: 0 });
 });
