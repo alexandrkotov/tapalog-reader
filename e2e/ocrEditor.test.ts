@@ -175,6 +175,110 @@ e2e("a figure put into a page is shown in the editor, and a page taken back show
   await page.close();
 });
 
+/** Gives a page the text a person typed (its lines are kept). */
+async function seed(n: number, text: string): Promise<void> {
+  await ctx.request.put(`${inst.url}/api/admin/ocr/${id}/edit/${n}`, { data: { text }, headers: { Origin: inst.url } });
+}
+
+e2e("the tools above the text format the paragraph the cursor is in, and are off in the plain text and until a text is entered", async () => {
+  await seed(3, "Первая строка\n\nВторая строка\n\nТретья строка");
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await openProof(page);
+  expect(await page.isVisible(".proof-tools")).toBe(true);
+  expect(await page.isDisabled(".proof-tool-bold")).toBe(true); // no cursor in any text yet
+  expect(await page.getAttribute(".proof-tool-bold", "title")).toBe("Bold (Ctrl+B)");
+  await page.$eval(".proof-pages", (s) => (s.scrollTop = s.scrollHeight));
+  await page.waitForSelector(editor(3));
+
+  await page.click(`${editor(3)} p:nth-child(1)`, { clickCount: 3 }); // the whole paragraph
+  expect(await page.isDisabled(".proof-tool-bold")).toBe(false);
+  await page.click(".proof-tool-bold");
+  await heldIs(3, "**Первая строка**\n\nВторая строка\n\nТретья строка")();
+  expect(await page.evaluate(() => !!document.activeElement?.closest(".proof-editor"))).toBe(true); // the cursor stayed in the text
+
+  await page.click(`${editor(3)} p:nth-child(2)`, { clickCount: 3 });
+  await page.click(".proof-tool-italic");
+  await page.click(`${editor(3)} p:nth-child(3)`);
+  await page.click(".proof-tool-heading");
+  await heldIs(3, "**Первая строка**\n\n*Вторая строка*\n\n### Третья строка")();
+  await page.click(".proof-tool-heading"); // again: a paragraph
+  await heldIs(3, "**Первая строка**\n\n*Вторая строка*\n\nТретья строка")();
+
+  await page.click(".proof-tool-bullet");
+  await heldIs(3, "**Первая строка**\n\n*Вторая строка*\n\n* Третья строка")();
+  await page.click(".proof-tool-bullet"); // the same button again does not undo it; the list stays a list
+  await page.click(`${editor(3)} p`, { clickCount: 3 });
+
+  // in the plain text there are no tools
+  await page.click(".proof-source");
+  expect(await page.isVisible(".proof-tools")).toBe(false);
+  await page.click(".proof-source");
+  expect(await page.isVisible(".proof-tools")).toBe(true);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+e2e("a formula is put in with a window that shows it as it is typed, edited by a click on it, and taken out; Esc leaves only that window", async () => {
+  await seed(3, "Перед формулой.");
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await openProof(page);
+  await page.$eval(".proof-pages", (s) => (s.scrollTop = s.scrollHeight));
+  await page.waitForSelector(editor(3));
+  await clickInto(page, `${editor(3)} p`);
+  await page.keyboard.press("Control+End");
+
+  await page.click(".proof-tool-formula");
+  await page.waitForSelector(".modal.formula");
+  expect(await page.getAttribute(".modal.formula .formula-latex", "aria-label")).toBe("Formula in LaTeX");
+  await page.fill(".formula-latex", "x^2 + y^2");
+  await page.waitForSelector(".formula-preview .katex");
+  // a piece of LaTeX goes in at the cursor
+  await page.click(".formula-pieces button:has-text('√')");
+  expect(await page.inputValue(".formula-latex")).toBe("x^2 + y^2\\sqrt{}");
+  await page.keyboard.type("z");
+  expect(await page.inputValue(".formula-latex")).toBe("x^2 + y^2\\sqrt{z}");
+  // Esc closes the window of the formula only
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".modal.formula", { state: "detached" });
+  expect(await page.isVisible(".modal.proof")).toBe(true);
+  expect(await page.locator(`${editor(3)} .katex`).count()).toBe(0);
+
+  await page.click(".proof-tool-formula");
+  await page.fill(".formula-latex", "x^2 + y^2");
+  await page.click(".modal.formula button:has-text('Insert')");
+  await page.waitForSelector(`${editor(3)} .katex`);
+  await heldIs(3, "Перед формулой.$x^2 + y^2$")();
+
+  // a click on the formula opens it with its text; applying changes it in the text
+  await page.click(`${editor(3)} [data-type='math_inline']`);
+  await page.waitForSelector(".modal.formula");
+  expect(await page.inputValue(".formula-latex")).toBe("x^2 + y^2");
+  expect(await page.isVisible(".modal.formula button:has-text('Delete')")).toBe(true);
+  await page.fill(".formula-latex", "a_1");
+  await page.click(".modal.formula button:has-text('Apply')");
+  await heldIs(3, "Перед формулой.$a_1$")();
+
+  // a formula on a line of its own
+  await page.click(`${editor(3)} p`);
+  await page.keyboard.press("Control+End");
+  await page.click(".proof-tool-formula-block");
+  await page.fill(".formula-latex", "\\frac{1}{2}");
+  await page.keyboard.press("Control+Enter");
+  await page.waitForSelector(`${editor(3)} [data-type='math_block'] .katex`);
+  expect(await page.inputValue(textarea(3))).toContain("$$\n\\frac{1}{2}\n$$");
+
+  // and taken out
+  await page.click(`${editor(3)} [data-type='math_block']`);
+  await page.waitForSelector(".modal.formula");
+  await page.click(".modal.formula button:has-text('Delete')");
+  await page.waitForFunction((sel) => !document.querySelector(sel + " [data-type='math_block']"), editor(3));
+  expect(await page.inputValue(textarea(3))).not.toContain("$$");
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
 e2e("the editor is made only for the pages near the window, and a page left far behind lets it go with its text kept", async () => {
   const [picture] = await scanPictures(browser, [["Страница", "из длинной книги"]]);
   const own = await startServer({ "Scans/long.pdf": scanPdf(Array.from({ length: 40 }, () => picture!), PAGE_W, PAGE_H) });

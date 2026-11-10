@@ -1,6 +1,6 @@
-import type { EditorOptions, PageEditor } from "./editor/bundle";
+import type { EditorOptions, Format, Formula, PageEditor } from "./editor/bundle";
 
-export type { EditorOptions, PageEditor };
+export type { EditorOptions, Format, Formula, PageEditor };
 
 /**
  * The visual editor of a page's text. It is not imported: the program's page is one piece, and Milkdown and KaTeX would put about
@@ -9,6 +9,7 @@ export type { EditorOptions, PageEditor };
  */
 interface Factory {
   create: (root: HTMLElement, text: string, options: EditorOptions) => Promise<PageEditor>;
+  render: (target: HTMLElement, latex: string, block: boolean) => void;
 }
 
 let loading: Promise<Factory> | null = null;
@@ -40,4 +41,9 @@ function loadEditor(): Promise<Factory> {
 
 export async function createPageEditor(root: HTMLElement, text: string, options: EditorOptions): Promise<PageEditor> {
   return (await loadEditor()).create(root, text, options);
+}
+
+/** Draws a formula into `target`, as the editor draws it. */
+export async function renderFormula(target: HTMLElement, latex: string, block: boolean): Promise<void> {
+  (await loadEditor()).render(target, latex, block);
 }

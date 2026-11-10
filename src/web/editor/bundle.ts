@@ -6,18 +6,42 @@
 import { defaultValueCtx, Editor, editorViewCtx, rootCtx, serializerCtx } from "@milkdown/kit/core";
 import type { Ctx } from "@milkdown/kit/ctx";
 import { history } from "@milkdown/kit/plugin/history";
-import { commonmark, hardbreakSchema, imageSchema } from "@milkdown/kit/preset/commonmark";
+import {
+  commonmark,
+  hardbreakSchema,
+  imageSchema,
+  toggleEmphasisCommand,
+  toggleInlineCodeCommand,
+  toggleStrongCommand,
+  turnIntoTextCommand,
+  wrapInBlockquoteCommand,
+  wrapInBulletListCommand,
+  wrapInHeadingCommand,
+  wrapInOrderedListCommand,
+} from "@milkdown/kit/preset/commonmark";
 import type { Node } from "@milkdown/kit/prose/model";
 import { Plugin, Selection } from "@milkdown/kit/prose/state";
-import { $prose, $view, insert, replaceAll } from "@milkdown/kit/utils";
-import { katexOptionsCtx, math } from "@milkdown/plugin-math";
+import { $prose, $view, callCommand, insert, replaceAll } from "@milkdown/kit/utils";
+import { katexOptionsCtx, math, mathBlockSchema, mathInlineSchema } from "@milkdown/plugin-math";
+import katex from "katex";
 import { fromEditor, toEditor } from "./textRules";
+
+/** A formula as it is asked for and edited: LaTeX, and whether it stands in a paragraph of its own. */
+export interface Formula {
+  latex: string;
+  block: boolean;
+}
+
+/** What the toolbar can do to the text at the cursor. */
+export type Format = "bold" | "italic" | "code" | "heading" | "bullet" | "ordered" | "quote";
 
 export interface EditorOptions {
   /** Where the picture written as `images/p008-1.png` really is. */
   resolveImage: (src: string) => string;
   /** The text after a change made by the person (not after `set`). */
   onChange: (text: string) => void;
+  /** Asks for a formula (a click on one that is there edits it); `null` leaves it as it is, `"delete"` takes it out. */
+  askFormula: (current: Formula) => Promise<Formula | "delete" | null>;
 }
 
 export interface PageEditor {
@@ -27,8 +51,18 @@ export interface PageEditor {
   set: (text: string) => void;
   /** Puts Markdown at the cursor as a paragraph of its own (at the end of the text when nobody has put a cursor there yet). */
   insert: (markdown: string) => void;
+  /** Applies a format to the selection or the paragraph the cursor is in. */
+  format: (format: Format) => void;
+  /** Puts a formula at the cursor. */
+  insertFormula: (formula: Formula) => void;
   focus: () => void;
   destroy: () => Promise<void>;
+}
+
+function formulaNode(ctx: Ctx, { latex, block }: Formula): Node {
+  if (block) return mathBlockSchema.type(ctx).create({ value: latex });
+  const inline = mathInlineSchema.type(ctx);
+  return inline.create(null, latex ? inline.schema.text(latex) : undefined);
 }
 
 const textOf = (ctx: Ctx): string => fromEditor(ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc));
@@ -46,6 +80,24 @@ async function create(root: HTMLElement, text: string, options: EditorOptions): 
         },
       }),
       props: {
+        // a click on a drawn formula opens it for editing
+        handleClickOn: (view, _pos, node, nodePos) => {
+          const block = node.type.name === mathBlockSchema.type(ctx).name;
+          if (!block && node.type.name !== mathInlineSchema.type(ctx).name) return false;
+          const current = { latex: block ? String(node.attrs.value ?? "") : node.textContent, block };
+          void options.askFormula(current).then((answer) => {
+            if (!answer || !view.dom.isConnected) return;
+            const at = nodePos;
+            const now = view.state.doc.nodeAt(at);
+            if (!now || now.type !== node.type) return; // the text changed under the dialog
+            const tr = view.state.tr;
+            if (answer === "delete") tr.delete(at, at + now.nodeSize);
+            else tr.replaceWith(at, at + now.nodeSize, formulaNode(ctx, answer));
+            view.dispatch(tr);
+            view.focus();
+          });
+          return true;
+        },
         // a line break in this text is a plain one, not the "hard break" that is written with a backslash
         handleKeyDown: (view, event) => {
           if (event.key !== "Enter" || !event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false;
@@ -126,9 +178,33 @@ async function create(root: HTMLElement, text: string, options: EditorOptions): 
       }
       made.action(insert(markdown));
     },
+    format: (format) => {
+      made.action((ctx) => {
+        if (format === "heading") {
+          // a heading of the third level (the pages' own titles are above it), or a plain paragraph again
+          const inHeading = ctx.get(editorViewCtx).state.selection.$from.parent.type.name === "heading";
+          return callCommand(inHeading ? turnIntoTextCommand.key : wrapInHeadingCommand.key, inHeading ? undefined : 3)(ctx);
+        }
+        const commands = { bold: toggleStrongCommand, italic: toggleEmphasisCommand, code: toggleInlineCodeCommand, bullet: wrapInBulletListCommand, ordered: wrapInOrderedListCommand, quote: wrapInBlockquoteCommand };
+        return callCommand(commands[format].key)(ctx);
+      });
+      made.action((ctx) => ctx.get(editorViewCtx).focus());
+    },
+    insertFormula: (formula) => {
+      made.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        view.dispatch(view.state.tr.replaceSelectionWith(formulaNode(ctx, formula), false).scrollIntoView());
+        view.focus();
+      });
+    },
     focus: () => made.action((ctx) => ctx.get(editorViewCtx).focus()),
     destroy: async () => void (await made.destroy()),
   };
 }
 
-(globalThis as unknown as { TapalogEditor: unknown }).TapalogEditor = { create };
+/** Draws a formula into `target` (the preview in the dialog for it). */
+function render(target: HTMLElement, latex: string, block: boolean): void {
+  katex.render(latex, target, { displayMode: block, throwOnError: false });
+}
+
+(globalThis as unknown as { TapalogEditor: unknown }).TapalogEditor = { create, render };

@@ -144,6 +144,17 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .proof-text { flex: 1 1 0; min-height: 0; width: 100%; resize: none; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; line-height: 1.5; }
 /* the text of a page is shown by the visual editor (class "visual" on the list) or as the plain text in the textarea */
 .proof-pages.visual .proof-text, .proof-pages:not(.visual) .proof-editor { display: none; }
+.proof-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+.proof-tools[hidden] { display: none; }
+.proof-tool { min-width: 32px; }
+.proof-tool-bold { font-weight: 700; }
+.proof-tool-italic { font-style: italic; }
+.proof-tool-code { font-family: ui-monospace, monospace; }
+.modal.formula { width: min(560px, 100%); }
+.formula-latex { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: 14px ui-monospace, monospace; resize: vertical; }
+.formula-pieces { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.formula-preview { min-height: 56px; font-size: 1.3em; margin: 4px 0 10px; padding: 10px; display: flex; align-items: center; justify-content: center; overflow: auto; border: 1px dashed var(--border); border-radius: 6px; }
+.formula-actions { gap: 8px; }
 .proof-editor { position: relative; flex: 1 1 0; min-height: 0; overflow: auto; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); line-height: 1.5; }
 .proof-editor:focus-within { border-color: var(--accent); }
 .proof-editor.empty::before { content: attr(data-placeholder); position: absolute; left: 10px; top: 8px; color: var(--muted); pointer-events: none; }

@@ -2,7 +2,8 @@ import type * as Pdfjs from "pdfjs-dist/build/pdf.min.mjs";
 import { lang, t } from "./i18n";
 import { makeResizable, type Resizable } from "./modalResize";
 import { figureScale, MAX_ATTEMPTS, MAX_PNG_BYTES, scrollStep } from "./proofFigure";
-import { createPageEditor, type PageEditor } from "./pageEditor";
+import { askFormula } from "./formulaDialog";
+import { createPageEditor, type Format, type PageEditor } from "./pageEditor";
 import { pdfDocumentOptions } from "./readers/pdfAssets";
 import { api, ApiError, el, formatBytes, openModal, store } from "./ui";
 
@@ -342,7 +343,42 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   // the text of a page is edited as it is shown (bold, headings, formulas, the figures in place) or as the plain text it is kept as; remembered like the size of the window
   const sourceButton = el("button", { type: "button", class: "btn small proof-source", textContent: t("proof.source"), title: t("proof.sourceHint") });
   let visual = store.get("tapalog.proofEditor") !== "source";
+  // the tools act on the page whose editor the cursor was last in
+  let active: Slot | null = null;
+  const tools = el("div", { class: "proof-tools", role: "toolbar" });
+  tools.setAttribute("aria-label", t("proof.tools"));
+  tools.addEventListener("mousedown", (e) => e.preventDefault()); // the cursor stays in the text
+  const toolButtons: HTMLButtonElement[] = [];
+  const addTool = (label: string, tip: Parameters<typeof t>[0], className: string, run: (slot: Slot) => void) => {
+    const button = el("button", { type: "button", class: `btn small proof-tool ${className}`, textContent: label, title: t(tip), disabled: true });
+    button.setAttribute("aria-label", t(tip));
+    button.addEventListener("click", () => active?.editor && run(active));
+    toolButtons.push(button);
+    tools.append(button);
+  };
+  const formats: [Format, string, Parameters<typeof t>[0]][] = [
+    ["bold", "B", "proof.tool.bold"],
+    ["italic", "I", "proof.tool.italic"],
+    ["code", "‹›", "proof.tool.code"],
+    ["heading", "H", "proof.tool.heading"],
+    ["bullet", "•", "proof.tool.bullet"],
+    ["ordered", "1.", "proof.tool.ordered"],
+    ["quote", "❝", "proof.tool.quote"],
+  ];
+  for (const [format, label, tip] of formats) addTool(label, tip, `proof-tool-${format}`, (slot) => slot.editor?.format(format));
+  for (const block of [false, true]) {
+    addTool(block ? "∑ ¶" : "∑", block ? "proof.tool.formulaBlock" : "proof.tool.formula", block ? "proof-tool-formula-block" : "proof-tool-formula", (slot) => {
+      void askFormula({ latex: "", block }).then((formula) => {
+        if (formula && formula !== "delete") slot.editor?.insertFormula(formula); // the page may have been left meanwhile
+      });
+    });
+  }
+  const showTools = () => {
+    tools.hidden = !visual;
+    for (const button of toolButtons) button.disabled = !(visual && active?.editor);
+  };
   const showMode = () => {
+    showTools();
     scroller.classList.toggle("visual", visual);
     sourceButton.classList.toggle("primary", !visual);
     sourceButton.setAttribute("aria-pressed", String(!visual));
@@ -369,6 +405,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const started = slot.text.value;
     try {
       const editor = await createPageEditor(slot.host, started, {
+        askFormula: (current) => askFormula({ ...current, editing: true }),
         resolveImage: (src) => (/^images\/p\d+-\d+\.png$/.test(src) ? `${base}/${src}` : src),
         onChange: (text) => {
           slot.text.value = text;
@@ -381,6 +418,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
         return;
       }
       slot.editor = editor;
+      showTools();
       if (slot.text.value !== started) editor.set(slot.text.value); // changed meanwhile (a figure put in)
       slot.host.classList.toggle("empty", slot.text.value === "");
     } catch {
@@ -394,6 +432,8 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     slot.mounts++;
     const editor = slot.editor;
     slot.editor = null;
+    if (active === slot) active = null;
+    showTools();
     if (!editor) return;
     void editor.destroy().then(() => slot.host.replaceChildren());
   }
@@ -460,6 +500,10 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     });
     text.addEventListener("blur", () => void save(slot));
     host.addEventListener("focusout", () => void save(slot));
+    host.addEventListener("focusin", () => {
+      active = slot;
+      showTools();
+    });
     restoreButton.addEventListener("click", () => void restore(slot));
     wholeButton.addEventListener("click", () => void cutFigure(slot, { x: 0, y: 0, w: 1, h: 1 })); // the page as one figure: no frame to draw, however tall the window is
     scroller.append(row);
@@ -471,7 +515,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const row = scroller.children[Math.min(Math.max(n, 1), list.pages) - 1] as HTMLElement | undefined;
     if (row) scroller.scrollTo({ top: row.offsetTop });
   });
-  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, sourceButton, fitButton, figureButton, ...downloads, zipButton, pdfButton)), pdfPanel, hint, scroller);
+  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, sourceButton, fitButton, figureButton, ...downloads, zipButton, pdfButton)), tools, pdfPanel, hint, scroller);
   for (const image of list.images) {
     const slot = slots.get(image.page);
     if (slot) addThumb(slot, image.name);
