@@ -5,7 +5,7 @@
  */
 import { defaultValueCtx, Editor, editorViewCtx, rootCtx, serializerCtx } from "@milkdown/kit/core";
 import type { Ctx } from "@milkdown/kit/ctx";
-import { history } from "@milkdown/kit/plugin/history";
+import { history, redoCommand, undoCommand } from "@milkdown/kit/plugin/history";
 import {
   commonmark,
   hardbreakSchema,
@@ -55,6 +55,9 @@ export interface PageEditor {
   format: (format: Format) => void;
   /** Puts a formula at the cursor. */
   insertFormula: (formula: Formula) => void;
+  /** Takes back the last change made in this editor (what Ctrl+Z does), and brings it back. */
+  undo: () => void;
+  redo: () => void;
   focus: () => void;
   destroy: () => Promise<void>;
 }
@@ -196,6 +199,14 @@ async function create(root: HTMLElement, text: string, options: EditorOptions): 
         view.dispatch(view.state.tr.replaceSelectionWith(formulaNode(ctx, formula), false).scrollIntoView());
         view.focus();
       });
+    },
+    undo: () => {
+      made.action(callCommand(undoCommand.key));
+      made.action((ctx) => ctx.get(editorViewCtx).focus());
+    },
+    redo: () => {
+      made.action(callCommand(redoCommand.key));
+      made.action((ctx) => ctx.get(editorViewCtx).focus());
     },
     focus: () => made.action((ctx) => ctx.get(editorViewCtx).focus()),
     destroy: async () => void (await made.destroy()),

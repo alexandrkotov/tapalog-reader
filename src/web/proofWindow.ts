@@ -356,6 +356,9 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     toolButtons.push(button);
     tools.append(button);
   };
+  // one step back and forth, before the formats: the same as Ctrl+Z and Ctrl+Shift+Z in the text
+  addTool("↶", "proof.tool.undo", "proof-tool-undo", (slot) => slot.editor?.undo());
+  addTool("↷", "proof.tool.redo", "proof-tool-redo", (slot) => slot.editor?.redo());
   const formats: [Format, string, Parameters<typeof t>[0]][] = [
     ["bold", "B", "proof.tool.bold"],
     ["italic", "I", "proof.tool.italic"],
@@ -373,7 +376,10 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
       });
     });
   }
+  // the tools stand over the column of the text, in the same two columns as the pages
+  const toolRow = el("div", { class: "proof-toolrow" }, el("span", { class: "proof-toolgap" }), tools);
   const showTools = () => {
+    toolRow.hidden = !visual;
     tools.hidden = !visual;
     for (const button of toolButtons) button.disabled = !(visual && active?.editor);
   };
@@ -477,7 +483,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const text = el("textarea", { class: "proof-text", value: item?.text ?? "", spellcheck: false, placeholder: item ? "" : t("proof.unread") });
     const badge = el("span", { class: "proof-badge", textContent: t("proof.edited"), hidden: !item?.edited });
     const state = el("span", { class: "muted small proof-state" });
-    const restoreButton = el("button", { type: "button", class: "btn small proof-restore", textContent: t("proof.restore"), hidden: !item?.edited });
+    const restoreButton = el("button", { type: "button", class: "btn small proof-restore", textContent: t("proof.restore"), title: t("proof.restoreHint"), hidden: !item?.edited });
     const wholeButton = el("button", { type: "button", class: "btn small proof-whole", textContent: t("proof.figure.whole"), title: t("proof.figure.wholeHint") });
     const head = el("div", { class: "proof-head" }, el("span", { class: "proof-label", textContent: t("proof.page", { n }) }), badge, el("span", { class: "proof-gap" }), state, restoreButton, wholeButton);
     const figs = el("div", { class: "proof-figs" });
@@ -515,7 +521,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const row = scroller.children[Math.min(Math.max(n, 1), list.pages) - 1] as HTMLElement | undefined;
     if (row) scroller.scrollTo({ top: row.offsetTop });
   });
-  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, sourceButton, fitButton, figureButton, ...downloads, zipButton, pdfButton)), tools, pdfPanel, hint, scroller);
+  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, sourceButton, fitButton, figureButton, ...downloads, zipButton, pdfButton)), toolRow, pdfPanel, hint, scroller);
   for (const image of list.images) {
     const slot = slots.get(image.page);
     if (slot) addThumb(slot, image.name);
@@ -790,6 +796,8 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   sizeWatch = new ResizeObserver(() => {
     setFitHeight();
     sharpen();
+    // the tools keep to the column of the text, which is narrower by the scroll bar
+    toolRow.style.setProperty("--bar", `${scroller.offsetWidth - scroller.clientWidth + 4}px`);
   });
   sizeWatch.observe(scroller);
   if (store.get("tapalog.proofFit") === "1") setFit(true);

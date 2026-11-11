@@ -219,6 +219,87 @@ e2e("the tools above the text format the paragraph the cursor is in, and are off
   await page.close();
 });
 
+e2e("undo and redo take back one change at a time, as Ctrl+Z does, and the button that throws away every change says so", async () => {
+  const start = "Первая строка\n\nВторая строка\n\nТретья строка";
+  await seed(3, start);
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await openProof(page);
+  await page.$eval(".proof-pages", (s) => (s.scrollTop = s.scrollHeight));
+  await page.waitForSelector(editor(3));
+  expect(await page.getAttribute(".proof-tool-undo", "title")).toBe("Undo the last change (Ctrl+Z)");
+  expect(await page.getAttribute(".proof-tool-redo", "title")).toBe("Redo (Ctrl+Shift+Z)");
+  expect(await page.isDisabled(".proof-tool-undo")).toBe(true); // no cursor in any text yet
+
+  await clickInto(page, `${editor(3)} p:nth-child(3)`);
+  await page.keyboard.press("End");
+  await page.keyboard.type(" А");
+  await page.waitForTimeout(800); // a pause makes the next change a step of its own
+  await clickInto(page, `${editor(3)} p:nth-child(1)`);
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Б");
+  await heldIs(3, "Первая строка Б\n\nВторая строка\n\nТретья строка А")();
+
+  await page.click(".proof-tool-undo"); // the last change only
+  await heldIs(3, "Первая строка\n\nВторая строка\n\nТретья строка А")();
+  expect(await page.inputValue(textarea(3))).toBe("Первая строка\n\nВторая строка\n\nТретья строка А");
+  expect(await page.evaluate(() => !!document.activeElement?.closest(".proof-editor"))).toBe(true); // the cursor stays in the text
+  await page.click(".proof-tool-undo");
+  await heldIs(3, start)();
+  await page.click(".proof-tool-redo");
+  await heldIs(3, "Первая строка\n\nВторая строка\n\nТретья строка А")();
+  await page.keyboard.press("Control+z"); // the keys do the same
+  await heldIs(3, start)();
+
+  // the button that throws all of it away is not an undo, and its name and hint say what it does
+  const reset = ".proof-row:nth-child(3) .proof-restore";
+  await page.click(`${editor(3)} p:nth-child(3)`);
+  await page.keyboard.type("!");
+  await page.waitForSelector(`${reset}:not([hidden])`);
+  expect(await page.textContent(reset)).toBe("Reset to recognized");
+  expect(await page.getAttribute(reset, "title")).toContain("Ctrl+Z");
+  let asked = "";
+  page.once("dialog", (d) => {
+    asked = d.message();
+    void d.dismiss();
+  });
+  await page.click(reset);
+  await page.waitForTimeout(300);
+  expect(asked).toContain("All your changes to this page will be lost");
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+e2e("the tools stand over the column of the text, not over the scan, in the usual view, with the page whole, and on a narrow screen", async () => {
+  await seed(3, "Первая строка");
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await openProof(page);
+  const box = (sel: string) => page.$eval(sel, (e) => {
+    const r = e.getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top };
+  });
+  const over = async () => {
+    const tools = await box(".proof-tools");
+    const side = await box(".proof-row:nth-child(1) .proof-side");
+    const scan = await box(".proof-row:nth-child(1) .proof-scan");
+    expect(Math.abs(tools.left - side.left)).toBeLessThan(2); // the left edge of the text column
+    expect(tools.left).toBeGreaterThanOrEqual(scan.right); // never over the scan
+    expect(tools.top).toBeLessThan(side.top);
+  };
+  await over();
+  await page.click(".proof-fit");
+  await page.waitForSelector(".proof-pages.fit");
+  await over();
+  await page.setViewportSize({ width: 600, height: 900 });
+  await page.waitForTimeout(300);
+  const tools = await box(".proof-tools");
+  const pages = await box(".proof-pages");
+  expect(Math.abs(tools.left - pages.left)).toBeLessThan(6); // one column: the tools are at the left, over both
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
 e2e("a formula is put in with a window that shows it as it is typed, edited by a click on it, and taken out; Esc leaves only that window", async () => {
   await seed(3, "Перед формулой.");
   const page = await ctx.newPage();

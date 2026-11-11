@@ -144,7 +144,11 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .proof-text { flex: 1 1 0; min-height: 0; width: 100%; resize: none; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; line-height: 1.5; }
 /* the text of a page is shown by the visual editor (class "visual" on the list) or as the plain text in the textarea */
 .proof-pages.visual .proof-text, .proof-pages:not(.visual) .proof-editor { display: none; }
+.proof-toolrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding-right: var(--bar, 4px); }
+.proof-toolrow[hidden] { display: none; }
+.proof-toolrow > .proof-tools { grid-column: 2; }
 .proof-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+.proof-tool-redo { margin-right: 8px; }
 .proof-tools[hidden] { display: none; }
 .proof-tool { min-width: 32px; }
 .proof-tool-bold { font-weight: 700; }
@@ -176,6 +180,9 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .proof-editor .ProseMirror [data-type="math_block"] { display: block; margin: 0.4em 0 0.8em; text-align: center; overflow-x: auto; }
 @media (max-width: 760px) {
   .proof-row { grid-template-columns: minmax(0, 1fr); }
+  .proof-toolrow { grid-template-columns: minmax(0, 1fr); }
+  .proof-toolgap { display: none; }
+  .proof-toolrow > .proof-tools { grid-column: 1; }
   .proof-side { min-height: 45vh; }
   .proof-bar { gap: 4px 12px; }
   .proof-actions { gap: 6px; }
