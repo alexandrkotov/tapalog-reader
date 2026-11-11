@@ -1,9 +1,11 @@
 ## English
 
 What's new:
-- **A bigger window for checking the text.** The window can be stretched by its edges and corners, and made almost as big as the screen by the new button beside the ×, or by a double click on its title; a space is left around it, so it stays a window over the page. The size is remembered, the scans are drawn again sharp for the room they have, and the list stays at the same place of the book. On a phone the window is as big as the screen already.
-- **A page as a figure, and framing past the edge.** A button in the heading of every page cuts the whole page as one figure, and while a frame is dragged the list scrolls by itself when the pointer is at its edge, so a figure that reaches below what is in sight is made in one drag. A picture too heavy for the server is cut again, smaller, instead of being lost.
-- **The page whole in the window.** The new switch **Fit the page** shows every page whole, with the text beside it as tall as the scan, so that the foot of a page needs no scrolling; the choice is remembered.
+- **The text of a page is edited the way it reads.** A visual editor in the window for checking the text: bold and italic, headings, lists, quotes and the figures cut from the scan are drawn in place, and a **Source text** switch shows the plain text as before. A row of tools above the pages (bold, italic, code, heading, lists, quote, formulas) acts on the page the cursor is in. A page is rewritten only after you changed it, so the text the recognizer read is not touched by opening or clicking. The editor is fetched only when the window is opened for the first time.
+- **Formulas.** Write LaTeX between dollar signs (`$E=mc^2$`, or `$$ … $$` on a line of its own) and see it drawn; **∑** opens a window with a drawing that follows the typing and pieces to put in (fraction, root, sum, integral, Greek letters), and a click on a formula changes or deletes it. "Costs $5 and $6" stays text.
+- **The new PDF and search follow the marks.** The PDF is set with bold, italic, headings, lists and quotes instead of showing `**` and `#` (a formula is printed as its LaTeX), and an edited page is searched and downloaded as text without the marks; **Download Markdown** keeps everything.
+- **A tour of the Settings window.** A **?** in its title lights up each section in turn (folder, rescan and duplicates, network access, internet, search inside books, accounts, plugins, backup, stop), with a longer explanation for every step.
+- **Clearer Settings.** **Change folder** is shown only when the path in the field differs from the library in use, **Rescan** stands beside **Find duplicates**, and the plugins line says plainly which plugin version the program accepts and why a newer one is not loaded.
 
 Unzip and run the file for your system; the page opens in your browser. Nothing is installed.
 
@@ -17,9 +19,11 @@ Check a download against `SHA256SUMS.txt`.
 ## Русский
 
 Что нового:
-- **Окно проверки текста побольше.** Окно можно растягивать за края и углы и делать почти на весь экран новой кнопкой рядом с ×, а также двойным щелчком по заголовку; вокруг остаётся отступ, поэтому окно остаётся окном поверх страницы. Размер запоминается, сканы перерисовываются резкими под новый размер, а список остаётся на том же месте книги. На телефоне окно и так на весь экран.
-- **Страница рисунком и рамка за край окна.** Кнопка в шапке каждой страницы вырезает страницу целиком одним рисунком, а при рисовании рамки список сам прокручивается у своего края, так что рисунок, уходящий ниже видимой части, делается одним движением. Слишком тяжёлый для сервера рисунок вырезается заново, поменьше, а не пропадает.
-- **Страница целиком в окне.** Новый переключатель **Страница целиком** показывает каждую страницу полностью, а текст рядом той же высоты, что и скан, поэтому низ страницы не нужно прокручивать; выбор запоминается.
+- **Текст страницы правится так, как он читается.** Визуальный редактор в окне проверки текста: жирный и курсив, заголовки, списки, цитаты и рисунки, вырезанные из скана, рисуются на месте, а переключатель **Исходный текст** показывает простой текст, как раньше. Ряд инструментов над страницами (жирный, курсив, код, заголовок, списки, цитата, формулы) действует на страницу, где стоит курсор. Страница переписывается только после того, как вы её изменили, так что текст, прочитанный распознавателем, не меняется от того, что страницу открыли или щёлкнули в ней. Редактор загружается только при первом открытии окна.
+- **Формулы.** Пишите LaTeX между знаками доллара (`$E=mc^2$`, или `$$ … $$` отдельной строкой) и видите, как он нарисован; **∑** открывает окно с рисунком, который следует за набором, и заготовками (дробь, корень, сумма, интеграл, греческие буквы), а щелчок по формуле меняет или удаляет её. «Стоит $5 и $6» остаётся текстом.
+- **Новый PDF и поиск учитывают разметку.** PDF набирается с жирным, курсивом, заголовками, списками и цитатами, а не показывает `**` и `#` (формула печатается как её LaTeX), а правленная страница ищется и скачивается как текст без разметки; **Скачать Markdown** сохраняет всё.
+- **Обзор окна настроек.** Кнопка **?** в его заголовке по очереди подсвечивает каждый раздел (папка, пересканирование и дубликаты, доступ по сети, интернет, поиск внутри книг, учётные записи, плагины, резервная копия, остановка) и подробно объясняет каждый шаг.
+- **Настройки яснее.** **Сменить папку** показывается, только когда путь в поле отличается от используемой библиотеки, **Пересканировать** стоит рядом с **Найти дубликаты**, а строка о плагинах прямо говорит, какую версию плагинов программа принимает и почему более новый не загружается.
 
 Распакуйте и запустите файл для вашей системы: страница откроется в браузере. Ничего не устанавливается.
 
@@ -33,9 +37,11 @@ Check a download against `SHA256SUMS.txt`.
 ## Українська
 
 Що нового:
-- **Більше вікно перевірки тексту.** Вікно можна розтягувати за краї та кути й робити майже на весь екран новою кнопкою поруч із ×, а також подвійним клацанням по заголовку; навколо лишається відступ, тому вікно залишається вікном поверх сторінки. Розмір запам'ятовується, скани перемальовуються чіткими під новий розмір, а список лишається на тому ж місці книги. На телефоні вікно й так на весь екран.
-- **Сторінка малюнком і рамка за край вікна.** Кнопка в шапці кожної сторінки вирізає сторінку цілком одним малюнком, а під час малювання рамки список сам прокручується біля свого краю, тож малюнок, що виходить нижче видимої частини, робиться одним рухом. Надто важкий для сервера малюнок вирізається заново, менший, а не пропадає.
-- **Сторінка цілком у вікні.** Новий перемикач **Сторінка цілком** показує кожну сторінку повністю, а текст поруч такої ж висоти, як і скан, тому низ сторінки не треба прокручувати; вибір запам'ятовується.
+- **Текст сторінки редагується так, як він читається.** Візуальний редактор у вікні перевірки тексту: жирний і курсив, заголовки, списки, цитати та малюнки, вирізані зі скану, малюються на місці, а перемикач **Вихідний текст** показує простий текст, як раніше. Ряд інструментів над сторінками (жирний, курсив, код, заголовок, списки, цитата, формули) діє на сторінку, де стоїть курсор. Сторінка переписується лише після того, як ви її змінили, тож текст, прочитаний розпізнавачем, не змінюється від того, що сторінку відкрили чи клацнули в ній. Редактор завантажується тільки під час першого відкриття вікна.
+- **Формули.** Пишіть LaTeX між знаками долара (`$E=mc^2$`, або `$$ … $$` окремим рядком) і бачте, як він намальований; **∑** відкриває вікно з малюнком, що йде за набором, і заготовками (дріб, корінь, сума, інтеграл, грецькі літери), а клацання по формулі змінює або видаляє її. «Коштує $5 і $6» лишається текстом.
+- **Новий PDF і пошук враховують розмітку.** PDF набирається з жирним, курсивом, заголовками, списками та цитатами, а не показує `**` і `#` (формула друкується як її LaTeX), а виправлена сторінка шукається і завантажується як текст без розмітки; **Завантажити Markdown** зберігає все.
+- **Огляд вікна налаштувань.** Кнопка **?** в його заголовку по черзі підсвічує кожен розділ (тека, повторне сканування й дублікати, доступ мережею, інтернет, пошук усередині книг, облікові записи, плагіни, резервна копія, зупинка) і докладно пояснює кожен крок.
+- **Налаштування зрозуміліші.** **Змінити теку** показується, лише коли шлях у полі відрізняється від бібліотеки, що використовується, **Пересканувати** стоїть поруч із **Знайти дублікати**, а рядок про плагіни прямо каже, яку версію плагінів програма приймає і чому новіший не завантажується.
 
 Розпакуйте та запустіть файл для вашої системи: сторінка відкриється в браузері. Нічого не встановлюється.
 
