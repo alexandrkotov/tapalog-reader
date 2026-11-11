@@ -278,6 +278,31 @@ test("the references to pictures stay out of what is searched, but the page keep
   expect(ocr.progress("b")).toMatchObject({ done: 2, edited: 1 });
 });
 
+test("the marks of bold, headings and formulas stay out of what is searched and out of a plain text file, but the page keeps them", () => {
+  const ocr = fresh();
+  ocr.start("m", 3, "rus");
+  const text = "### Итог\n\nЭто **важно** и *ещё*, цена $5.\n\nФормула $x^2$ тут.\n\n$$\n\\frac{1}{2}\n$$";
+  expect(ocr.edit("m", 1, text)).toMatchObject({ edited: 1 });
+  expect(ocr.pages("m")).toEqual([{ page: 1, text, edited: true }]); // the page shows what was written
+  expect(find(ocr, "важно")).toHaveLength(1);
+  expect(find(ocr, "frac")).toEqual([]); // the LaTeX is no words
+  expect(find(ocr, "x^2")).toEqual([]);
+  expect(find(ocr, "итог")).toHaveLength(1);
+  expect(ocr.rows("важно", "[", "]", undefined, 5)[0]!.snip).not.toContain("*");
+  // a page that is nothing but a formula has text for the page and none for the index
+  ocr.edit("m", 2, "$$\nE=mc^2\n$$");
+  expect(ocr.pages("m", 2, 2)).toEqual([{ page: 2, text: "$$\nE=mc^2\n$$", edited: true }]);
+  // the plain text file: no marks, the formulas as their LaTeX; the Markdown file keeps the text as it is
+  const pages = ocr.pages("m");
+  const file = (format: "md" | "txt") => renderOcrText({ title: "Книга", pages, total: 3, done: 2, format, lang: "ru" });
+  expect(file("txt")).toBe("Книга\n\nРаспознано страниц: 2 из 3.\n\n[Страница 1]\n\nИтог\n\nЭто важно и ещё, цена $5.\n\nФормула x^2 тут.\n\n\\frac{1}{2}\n\n[Страница 2]\n\nE=mc^2\n");
+  expect(file("md")).toContain("## Страница 1\n\n### Итог\n\nЭто **важно** и *ещё*, цена $5.");
+  // a text without marks is stored and shown as before
+  ocr.edit("m", 3, "Просто текст,\nв две строки, 3 * 4.");
+  expect(ocr.pages("m", 3, 3)).toEqual([{ page: 3, text: "Просто текст,\nв две строки, 3 * 4.", edited: true }]);
+  expect(find(ocr, "строки")).toHaveLength(1);
+});
+
 test("pictures are kept with the book, named by page, and only a PNG of a sensible size is taken", () => {
   const ocr = fresh();
   ocr.start("b", 9, "rus");

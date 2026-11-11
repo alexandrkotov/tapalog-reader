@@ -3,9 +3,7 @@
  * the recognizer writes plain lines (a single line break is a line break) and the figures cut from the scan, while a person may
  * add bold, headings and formulas. These rules keep what the editor does to the text from showing: nothing here touches the page.
  */
-
-/** A `$` opens a formula as pandoc reads it when no space follows it, and closes one when no space comes before it and no digit after it; an opening one that meets another opening one before any end is a price, not a formula. */
-const SPACE = /\s/;
+import { scanDollars } from "../../shared/markup";
 
 /**
  * Escapes every single `$` that does not belong to a formula, so a price ("costs $5 and $6") is not drawn as one.
@@ -30,44 +28,10 @@ function protectParagraph(paragraph: string): string {
 }
 
 function protectLine(text: string): string {
-  // the single dollars of the text: not escaped, not part of a pair of them
-  const marks: number[] = [];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] !== "$") continue;
-    if (text[i + 1] === "$") {
-      i++;
-      continue;
-    }
-    if (text[i - 1] === "\\") continue;
-    marks.push(i);
-  }
-  const escape = new Set<number>();
-  for (let k = 0; k < marks.length; k++) {
-    const open = marks[k]!;
-    const next = text[open + 1];
-    if (next === undefined || SPACE.test(next)) {
-      escape.add(open);
-      continue;
-    }
-    let close = -1;
-    for (let j = k + 1; j < marks.length; j++) {
-      const at = marks[j]!;
-      const before = text[at - 1];
-      const after = text[at + 1];
-      const closes = before !== undefined && !SPACE.test(before) && !(after !== undefined && /\d/.test(after));
-      if (closes) {
-        close = j;
-        break;
-      }
-      // a dollar that opens a formula of its own (a space before, none after): the one before it had no end
-      if ((before === undefined || SPACE.test(before)) && after !== undefined && !SPACE.test(after)) break;
-    }
-    if (close < 0) escape.add(open);
-    else k = close; // a formula: both marks stay
-  }
-  if (!escape.size) return text;
+  const prices = new Set(scanDollars(text).prices);
+  if (!prices.size) return text;
   let out = "";
-  for (let i = 0; i < text.length; i++) out += escape.has(i) ? "\\$" : text[i];
+  for (let i = 0; i < text.length; i++) out += prices.has(i) ? "\\$" : text[i];
   return out;
 }
 

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { blocksOf, DEFAULT_STYLE, layoutBook, PAGE_FORMATS, pageFormatName, wrapLine, type BookText, type Item, type Measure, type PageFormat } from "./proofPdf";
+import { inlineRuns } from "../shared/markup";
+import { blocksOf, DEFAULT_STYLE, layoutBook, PAGE_FORMATS, pageFormatName, wrapLine, wrapRuns, type BookText, type Item, type Measure, type PageFormat } from "./proofPdf";
 
 /** Every character is half its size wide: a font that needs no file, so a line of 10 characters at size 10 is 50 points. */
 const measure: Measure = (text, size) => text.length * size * 0.5;
@@ -170,4 +171,61 @@ test("a heading goes to the next sheet together with a figure that does not fit 
   expect(pages).toHaveLength(2);
   expect(pages[1]!.items.map((i) => (i.kind === "text" ? `${i.role}:${i.text}` : "image"))).toEqual(["heading:Страница 2", "image"]);
   expect(pages[0]!.items.some((i) => i.kind === "text" && i.role === "heading" && i.text === "Страница 2")).toBe(false);
+});
+
+const laidText = (text: string) => layoutBook(book({ pages: [{ page: 1, text }] }), SHEET, measure).flatMap((p) => p.items.flatMap((i) => (i.kind === "text" ? [i] : [])));
+
+test("bold and italic words are set as their own pieces on a line, a space between two looks stays with the first", () => {
+  const lines = wrapRuns(inlineRuns("раз **два** три *четыре*"), 1000, 10, measure);
+  expect(lines).toHaveLength(1);
+  expect(lines[0]!.parts).toEqual([{ text: "раз " }, { text: "два ", bold: true }, { text: "три " }, { text: "четыре", italic: true }]);
+});
+
+test("runs are broken at the spaces and inside a word that is wider than the line, and no letter is lost", () => {
+  const lines = wrapRuns(inlineRuns("aaaa **bbbb cccc** dddd"), 50, 10, measure); // 10 characters to a line
+  for (const line of lines) expect(line.width).toBeLessThanOrEqual(50);
+  expect(lines.map((l) => l.parts.map((p) => p.text).join("")).join(" ").replace(/\s+/g, " ")).toBe("aaaa bbbb cccc dddd");
+  const long = wrapRuns(inlineRuns("**" + "x".repeat(33) + "**"), 50, 10, measure);
+  expect(long.map((l) => l.parts.map((p) => p.text).join("")).join("")).toBe("x".repeat(33));
+  expect(long.every((l) => l.parts.every((p) => p.bold))).toBe(true);
+  expect(wrapRuns([], 50, 10, measure)).toEqual([{ parts: [], width: 0 }]);
+});
+
+test("a heading is set larger and bold without its hashes, a quote without its sign, a list with a bullet or its number hanging", () => {
+  const items = laidText("## Глава\n\n> цитата\n\n- первый\n- второй\n\n3. третий");
+  const by = (text: string) => items.find((i) => i.text === text)!;
+  expect(by("Глава")).toMatchObject({ bold: true });
+  expect(by("Глава").size).toBeGreaterThan(DEFAULT_STYLE.body);
+  expect(by("цитата").role).toBe("quote");
+  expect(by("цитата").x).toBeGreaterThan(20);
+  expect(by("первый").x).toBeGreaterThan(20);
+  expect(items.filter((i) => i.text === "•")).toHaveLength(2);
+  expect(items.some((i) => i.text === "3.")).toBe(true);
+  expect(texts(items)).not.toContain("##");
+  expect(items.some((i) => /[#>]|\*\*/.test(i.text) )).toBe(false);
+});
+
+test("a formula is set as its LaTeX in italics, a block formula on a line of its own, a price stays a price", () => {
+  const items = laidText("Цена $5, а площадь $S=\\pi r^2$.\n\n$$\nE=mc^2\n$$");
+  const joined = items.map((i) => i.text).join("");
+  expect(joined).toContain("Цена $5, а площадь ");
+  const inline = items.find((i) => i.text === "S=\\pi r^2")!;
+  expect(inline.italic).toBe(true);
+  const block = items.find((i) => i.text === "E=mc^2")!;
+  expect(block.role).toBe("formula");
+  expect(items.some((i) => i.text.includes("$$"))).toBe(false);
+});
+
+test("a page full of marks still fits: every line stays inside the margins and the text runs on to new sheets", () => {
+  const text = Array.from({ length: 30 }, (_, i) => `### Часть ${i}\n\n**жирное ${words(4)}** и *курсив ${words(4)}* и $x_${i}$\n\n- ${words(10)}\n- ${words(10)}`).join("\n\n");
+  const pages = layoutBook(book({ pages: [{ page: 1, text }] }), SHEET, measure);
+  expect(pages.length).toBeGreaterThan(3);
+  for (const sheet of pages) {
+    for (const item of sheet.items) {
+      if (item.kind !== "text") continue;
+      expect(item.x + measure(item.text, item.size)).toBeLessThanOrEqual(280.01);
+      expect(item.y + item.size * DEFAULT_STYLE.leading).toBeLessThanOrEqual(280.01);
+    }
+  }
+  expect(pages.flatMap((p) => texts(p.items)).filter((t) => t.startsWith("Часть"))).toHaveLength(30);
 });

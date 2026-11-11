@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { strToU8, zipSync } from "fflate";
+import { plainText } from "../shared/markup";
 
 /** Recognized text of one page is cut here: a page of a book holds a few thousand characters, not a hundred thousand. */
 export const MAX_PAGE_CHARS = 100_000;
@@ -18,8 +19,12 @@ export function withoutImages(text: string): string {
   return text.replace(IMAGE_REF, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-/** Without the g flag: a regular expression with it remembers where it stopped, and the next search would begin there. */
-const hasImages = (text: string): boolean => new RegExp(IMAGE_REF.source).test(text);
+/** What the search reads of a page: no references to pictures, no marks of bold, italic and headings, and no formulas (their LaTeX is no words). */
+export const indexText = (text: string): string => plainText(withoutImages(text), "drop");
+
+/** What a plain text file holds of a page: the same, with the formulas written in LaTeX (without the dollars). */
+export const plainFileText = (text: string): string => plainText(withoutImages(text), "keep");
+
 
 /** The names of the pictures a text refers to. */
 export function imagesIn(text: string): string[] {
@@ -149,7 +154,7 @@ export function renderOcrText(opts: { title: string; pages: OcrPage[]; total: nu
   }
   for (const page of opts.pages) {
     if (!page.text) continue;
-    const text = md ? page.text : withoutImages(page.text);
+    const text = md ? page.text : plainFileText(page.text);
     if (!text) continue;
     out.push(md ? `## ${words.page} ${page.page}` : `[${words.page} ${page.page}]`, text);
   }
@@ -273,8 +278,8 @@ export class OcrText {
     const doc = this.db.query("SELECT pages FROM ocr_docs WHERE id = ?").get(id) as { pages: number } | null;
     if (!doc || !Number.isInteger(page) || page < 1 || page > doc.pages) return null;
     const full = cleanEditedText(raw);
-    const text = withoutImages(full);
-    const md = hasImages(full) ? full : null; // the index never sees the references to pictures
+    const text = indexText(full);
+    const md = text !== full ? full : null; // the index never sees the references to pictures, the marks and the formulas: a page that has them keeps its whole text beside it
     this.db.transaction(() => {
       const old = this.db.query("SELECT row, edited, orig, md, own FROM ocr_pages WHERE id = ? AND page = ?").get(id, page) as { row: number | null; edited: number; orig: string | null; md: string | null; own: number } | null;
       const orig = old?.edited ? old.orig : old ? (old.own ? (old.md ?? "") : this.textOf(old.row)) : null; // the first correction keeps what was read (or the PDF's own text)

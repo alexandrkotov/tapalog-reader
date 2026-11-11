@@ -128,6 +128,32 @@ e2e("when the library that writes the PDF cannot be fetched the export says so, 
   await page.close();
 });
 
+e2e("the marks of bold, headings, lists and formulas are not printed into the PDF: the words come out set as the marks say, a formula as its LaTeX, a price as it was typed", async () => {
+  const page = await ctx.newPage();
+  await page.goto(inst.url + "/#folder=Scans");
+  await page.waitForSelector(".card:has-text('export') .card-info");
+  await page.click(".card:has-text('export') .card-info");
+  await page.waitForSelector(".card-form");
+  await page.click(".card-proof");
+  await page.waitForSelector(".proof-row:nth-child(1) .proof-canvas");
+  await page.fill(textOf(1), "### Заголовок раздела\n\n**Жирный** и *курсивный* текст, цена $5, площадь $S=\\pi r^2$.\n\n- первый пункт\n- второй пункт\n\n> чужая мысль\n\n$$\nE=mc^2\n$$");
+  await page.waitForFunction((sel) => document.querySelector(sel)?.textContent === "Saved", state(1));
+  await page.click(".proof-pdf-open");
+  const { bytes } = await exported(page);
+  const pdf = await inspectPdf(bytes);
+  const pieces = pdf.pages.flatMap((p) => p.text);
+  const flat = pieces.join(" ").replace(/\s+/g, " ");
+  expect(flat).toContain("Заголовок раздела");
+  expect(flat).toContain("Жирный и курсивный текст, цена $5, площадь");
+  expect(pieces).toContain("S=\\pi r^2"); // a formula is a piece of its own, in italics
+  expect(flat).toContain("первый пункт");
+  expect(flat).toContain("чужая мысль");
+  expect(flat).toContain("E=mc^2");
+  expect(flat).toContain("• первый пункт");
+  for (const mark of ["**", "###", "$$", "$S", "r^2$", "> "]) expect(flat).not.toContain(mark);
+  await page.close();
+});
+
 e2e("a book with nothing to put into a PDF says so instead of making an empty file", async () => {
   const page = await ctx.newPage();
   await page.goto(inst.url + "/#folder=Scans");

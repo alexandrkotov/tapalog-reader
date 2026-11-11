@@ -5,6 +5,8 @@
  * down from the top edge of the sheet.
  */
 
+import { HEADING, inlineRuns, QUOTE, type Run } from "../shared/markup";
+
 /** A sheet and its margin, in points. */
 export interface PageFormat {
   width: number;
@@ -72,6 +74,10 @@ export function blocksOf(raw: string): Block[] {
   return blocks.filter((b) => b.kind === "figure" || b.lines.some((l) => l.trim()));
 }
 
+/** How much bigger than the body each level of a heading in the text is set, and how far a list or a quote stands in, in points. */
+const HEADING_SCALE = [1.6, 1.4, 1.25, 1.12, 1.05, 1];
+const LIST_INDENT = 16;
+
 /** Measures a piece of text set in the given size, in points. */
 export type Measure = (text: string, size: number) => number;
 
@@ -107,6 +113,76 @@ export function wrapLine(text: string, width: number, size: number, measure: Mea
   return out;
 }
 
+/** A line of runs, cut to the width: each piece with its look, and how wide the whole is. */
+export interface RunLine {
+  parts: { text: string; bold?: boolean; italic?: boolean }[];
+  width: number;
+}
+
+/**
+ * Breaks runs of text (see inlineRuns) into lines no wider than `width`, as wrapLine does for a plain string: at the spaces, and
+ * inside a word only when the word alone is wider. Neighbouring pieces with one look are joined; a space between two looks stays
+ * at the end of the first. Formulas are set as their LaTeX in italics. An empty text is one empty line.
+ */
+export function wrapRuns(runs: Run[], width: number, size: number, measure: Measure): RunLine[] {
+  type Atom = { text: string; bold?: boolean; italic?: boolean; spaceBefore: boolean };
+  const atoms: Atom[] = [];
+  let space = false;
+  for (const run of runs) {
+    const look = { ...(run.bold ? { bold: true } : {}), ...(run.italic || run.formula ? { italic: true } : {}) };
+    for (const piece of run.text.split(/(\s+)/)) {
+      if (!piece) continue;
+      if (/^\s+$/.test(piece)) space = true;
+      else {
+        atoms.push({ text: piece, ...look, spaceBefore: space });
+        space = false;
+      }
+    }
+  }
+  if (!atoms.length) return [{ parts: [], width: 0 }];
+  const lines: RunLine[] = [];
+  let current: { atoms: Atom[]; width: number } = { atoms: [], width: 0 };
+  const spaceWidth = measure(" ", size);
+  const close = () => {
+    if (!current.atoms.length) return;
+    const parts: RunLine["parts"] = [];
+    current.atoms.forEach((atom, i) => {
+      const text = (i > 0 && atom.spaceBefore ? " " : "") + atom.text;
+      const last = parts[parts.length - 1];
+      if (last && !!last.bold === !!atom.bold && !!last.italic === !!atom.italic) last.text += text;
+      else if (last && text.startsWith(" ")) {
+        last.text += " "; // the space stays with the piece before it
+        parts.push({ text: text.slice(1), ...(atom.bold ? { bold: true } : {}), ...(atom.italic ? { italic: true } : {}) });
+      } else parts.push({ text, ...(atom.bold ? { bold: true } : {}), ...(atom.italic ? { italic: true } : {}) });
+    });
+    lines.push({ parts, width: current.width });
+    current = { atoms: [], width: 0 };
+  };
+  for (const atom of atoms) {
+    let rest = atom.text;
+    let wide = measure(rest, size);
+    const gap = current.atoms.length && atom.spaceBefore ? spaceWidth : 0;
+    if (current.atoms.length && current.width + gap + wide > width) close();
+    while (wide > width && rest.length > 1) {
+      // a word wider than the line: as much of it as fits, the rest on the next
+      let cut = 1;
+      while (cut < rest.length && measure(rest.slice(0, cut + 1), size) <= width) cut++;
+      const head = { ...atom, text: rest.slice(0, cut), spaceBefore: current.atoms.length > 0 && atom.spaceBefore };
+      if (current.atoms.length) close();
+      current.atoms.push({ ...head, spaceBefore: false });
+      current.width = measure(head.text, size);
+      close();
+      rest = rest.slice(cut);
+      wide = measure(rest, size);
+    }
+    const before = current.atoms.length && atom.spaceBefore;
+    current.atoms.push({ ...atom, text: rest, spaceBefore: !!before });
+    current.width += (before ? spaceWidth : 0) + wide;
+  }
+  close();
+  return lines;
+}
+
 export interface BookText {
   title: string;
   /** Says how far the recognition got, when it is not whole. */
@@ -121,8 +197,9 @@ export interface BookText {
   missing: (alt: string) => string;
 }
 
-export type Role = "title" | "note" | "heading" | "body" | "missing";
-export type Item = { kind: "text"; x: number; y: number; text: string; size: number; role: Role } | { kind: "image"; x: number; y: number; width: number; height: number; name: string };
+export type Role = "title" | "note" | "heading" | "body" | "missing" | "quote" | "formula";
+/** A piece of text set at a place; `bold` and `italic` are there only when the text has that look (the font has no such letters: the writer thickens and slants the plain ones). */
+export type Item = { kind: "text"; x: number; y: number; text: string; size: number; role: Role; bold?: boolean; italic?: boolean } | { kind: "image"; x: number; y: number; width: number; height: number; name: string };
 export interface LaidPage {
   items: Item[];
 }
@@ -163,6 +240,65 @@ export function layoutBook(book: BookText, format: PageFormat, measure: Measure,
     return { width: ownWidth * shrink, height: ownHeight * shrink };
   };
 
+  /** Sets runs of text, wrapped inside `indent`, each line a piece for every look it has; `marker` hangs in front of the first line. */
+  const setRuns = (runs: Run[], o: { size: number; role: Role; indent?: number; marker?: string; center?: boolean }) => {
+    const indent = o.indent ?? 0;
+    const step = o.size * style.leading;
+    const lines = wrapRuns(runs, width - indent, o.size, measure);
+    lines.forEach((line, i) => {
+      if (!room(step) && y > top) newSheet();
+      let x = left + indent + (o.center ? (width - indent - line.width) / 2 : 0);
+      if (i === 0 && o.marker) current().items.push({ kind: "text", x: left + indent - measure(o.marker, o.size) - o.size * 0.4, y, text: o.marker, size: o.size, role: o.role });
+      for (const part of line.parts) {
+        if (part.text) current().items.push({ kind: "text", x, y, text: part.text, size: o.size, role: o.role, ...(part.bold ? { bold: true } : {}), ...(part.italic ? { italic: true } : {}) });
+        x += measure(part.text, o.size);
+      }
+      y += step;
+    });
+  };
+  /** The lines of a paragraph, each read for what it is: a heading, an item of a list, a quote, a block formula (`$$` … `$$`), or text with bold, italic and formulas in it. */
+  const setBlockLines = (lines: string[]) => {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const trimmed = line.trim();
+      if (trimmed.startsWith("$$")) {
+        // a block formula: on one line, or from a line of `$$` to the next
+        let latex = trimmed.slice(2);
+        let end = i;
+        if (!latex.endsWith("$$") || latex === "$$") {
+          const found: string[] = latex ? [latex] : [];
+          while (++end < lines.length && !lines[end]!.trim().endsWith("$$")) found.push(lines[end]!.trim());
+          if (end < lines.length) found.push(lines[end]!.trim().slice(0, -2));
+          latex = found.join(" ");
+        } else latex = latex.slice(0, -2);
+        i = Math.min(end, lines.length - 1);
+        gap(style.body * 0.4);
+        setRuns([{ text: latex.trim(), formula: true }], { size: style.body, role: "formula", center: true });
+        gap(style.body * 0.3);
+        continue;
+      }
+      const heading = HEADING.exec(line);
+      if (heading) {
+        const size = style.body * HEADING_SCALE[heading[1]!.length - 1]!;
+        if (!room(2.6 * size * style.leading) && y > top) newSheet(); // never alone at the foot of a sheet
+        gap(size * 0.4);
+        setRuns(inlineRuns(heading[2]!, { bold: true }), { size, role: "heading" });
+        continue;
+      }
+      const item = /^( *)([*+-]|\d{1,3}[.)])[ \t]+(.*)$/.exec(line);
+      if (item) {
+        const nest = Math.floor(item[1]!.length / 2);
+        setRuns(inlineRuns(item[3]!), { size: style.body, role: "body", indent: LIST_INDENT * (nest + 1), marker: /^\d/.test(item[2]!) ? item[2]! : "•" });
+        continue;
+      }
+      if (QUOTE.test(line)) {
+        setRuns(inlineRuns(line.replace(QUOTE, "")), { size: style.body, role: "quote", indent: LIST_INDENT });
+        continue;
+      }
+      setRuns(inlineRuns(line), { size: style.body, role: "body" });
+    }
+  };
+
   setLines(wrapLine(book.title, width, style.title, measure), style.title, "title");
   if (book.note) {
     gap(style.note);
@@ -186,7 +322,7 @@ export function layoutBook(book: BookText, format: PageFormat, measure: Measure,
     for (const block of blocks) {
       if (block.kind === "lines") {
         gap(style.body * style.paragraphGap);
-        for (const line of block.lines) setLines(wrapLine(line, width, style.body, measure), style.body, "body");
+        setBlockLines(block.lines);
         continue;
       }
       const box = figureBox(block.name);

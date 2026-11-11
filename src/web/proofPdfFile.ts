@@ -65,6 +65,8 @@ const FIGURE_DPI = DEFAULT_STYLE.figureDpi;
 /** A figure is stored as JPEG when that is this much smaller than the PNG (photographs and halftones); drawings stay lossless. */
 const JPEG_WINS = 0.4;
 const JPEG_QUALITY = 0.9;
+/** The outline that thickens bold letters, as a share of the type size. */
+const BOLD_STROKE = 0.03;
 
 /** What the font has no letter for is shown as a question mark rather than as an empty box, and what cannot be seen is dropped. */
 function drawable(text: string, known: Set<number>): string {
@@ -158,6 +160,8 @@ export async function buildBookPdf(book: PdfBook, opts: { format: PageFormatName
     body: rgb(0, 0, 0),
     note: rgb(0.4, 0.4, 0.4),
     missing: rgb(0.45, 0.45, 0.45),
+    quote: rgb(0.3, 0.3, 0.3),
+    formula: rgb(0, 0, 0),
   };
   for (const [index, sheet] of laid.entries()) {
     stop();
@@ -165,7 +169,11 @@ export async function buildBookPdf(book: PdfBook, opts: { format: PageFormatName
     const page = doc.addPage([format.width, format.height]);
     for (const item of sheet.items) {
       if (item.kind === "text") {
-        page.drawText(item.text, { x: item.x, y: format.height - item.y - item.size, size: item.size, font, color: colors[item.role] });
+        // the font has one weight and no slant: bold is the letters outlined as well as filled (still one piece of text, so it is selected and searched once), italic is slanted
+        const color = colors[item.role];
+        if (item.bold) page.pushOperators(lib.pushGraphicsState(), lib.setTextRenderingMode(lib.TextRenderingMode.FillAndOutline), lib.setLineWidth(item.size * BOLD_STROKE), lib.setStrokingColor(color));
+        page.drawText(item.text, { x: item.x, y: format.height - item.y - item.size, size: item.size, font, color, ...(item.italic ? { xSkew: lib.degrees(12) } : {}) });
+        if (item.bold) page.pushOperators(lib.popGraphicsState());
       } else {
         page.drawImage(prepared.get(item.name)!.image, { x: item.x, y: format.height - item.y - item.height, width: item.width, height: item.height });
       }

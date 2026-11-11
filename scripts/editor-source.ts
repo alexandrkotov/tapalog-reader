@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
-const sources = ["src/web/editor/bundle.ts", "src/web/editor/textRules.ts", "scripts/gen-editor-assets.ts"];
+const sources = ["src/web/editor/bundle.ts", "src/web/editor/textRules.ts", "src/shared/markup.ts", "scripts/gen-editor-assets.ts"];
 const packages = ["@milkdown/kit", "@milkdown/plugin-math", "katex"];
 
 /**
