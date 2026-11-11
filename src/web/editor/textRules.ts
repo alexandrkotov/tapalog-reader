@@ -3,7 +3,7 @@
  * the recognizer writes plain lines (a single line break is a line break) and the figures cut from the scan, while a person may
  * add bold, headings and formulas. These rules keep what the editor does to the text from showing: nothing here touches the page.
  */
-import { scanDollars } from "../../shared/markup";
+import { dropBreaks, scanDollars } from "../../shared/markup";
 
 /**
  * Escapes every single `$` that does not belong to a formula, so a price ("costs $5 and $6") is not drawn as one.
@@ -36,15 +36,15 @@ function protectLine(text: string): string {
 }
 
 /**
- * What the editor wrote, as the page's text: no closing line break, a break the editor marks with a backslash is a plain line
+ * What the editor wrote, as the page's text: no blank lines at either end (an empty paragraph is not text), no closing line break, a break the editor marks with a backslash is a plain line
  * break again (that is what a line break means in this text), and the signs the editor protected with a backslash so they would
  * not be read as marks (`3 \* 4`, `\[1]`, a price's `\$`) are plain again: the text is read by people, not by a Markdown program.
  */
 export function fromEditor(markdown: string): string {
-  return markdown.replace(/\\\n/g, "\n").replace(/\\([*_[\]$])/g, "$1").replace(/\n+$/, "");
+  return dropBreaks(markdown.replace(/\\\n/g, "\n").replace(/\\([*_[\]$])/g, "$1")).replace(/^\n+|\n+$/g, "");
 }
 
-/** The text as the editor is given it. */
+/** The text as the editor is given it (an empty paragraph, a line of `<br />` that older pages may hold, is not shown as one). */
 export function toEditor(text: string): string {
-  return protectDollars(text);
+  return protectDollars(dropBreaks(text));
 }

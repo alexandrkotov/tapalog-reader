@@ -7,6 +7,64 @@
 const SPACE = /\s/;
 
 /**
+ * An empty paragraph that the editor writes as a line of `<br />` (and that older pages may still hold): it carries nothing, so the
+ * line goes, and the blank lines around it become one.
+ */
+export function dropBreaks(text: string): string {
+  if (!/<br\s*\/?>/i.test(text)) return text;
+  return text.replace(/^[ \t]*<br\s*\/?>[ \t]*$/gim, "").replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * How big and how heavy a formula is set. LaTeX has no place for it besides its own commands, so it is kept in them: a size
+ * command first (`\Large`, `\huge`, `\Huge`), then the formula, all of it in `\boldsymbol{ … }` when it is bold. A formula that
+ * does not start like that is taken as it is: normal size, not bold.
+ */
+export const FORMULA_SIZES = ["", "\\Large", "\\huge", "\\Huge"] as const;
+export interface FormulaLook {
+  /** The LaTeX without the commands of the look. */
+  body: string;
+  /** 0 is the size of the text, 1 to 3 are bigger. */
+  size: number;
+  bold: boolean;
+}
+
+/** Whether the brace at `open` is closed by the last character of `text`, and by nothing before it. */
+function wrapsAll(text: string, open: number): boolean {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\\") i++;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return i === text.length - 1;
+  }
+  return false;
+}
+
+export function formulaLook(latex: string): FormulaLook {
+  let body = latex.trim();
+  let size = 0;
+  const first = /^(\\Large|\\huge|\\Huge)(?![A-Za-z])\s*/.exec(body);
+  if (first) {
+    size = FORMULA_SIZES.indexOf(first[1] as (typeof FORMULA_SIZES)[number]);
+    body = body.slice(first[0].length);
+  }
+  let bold = false;
+  const wrap = "\\boldsymbol{";
+  if (body.startsWith(wrap) && wrapsAll(body, wrap.length - 1)) {
+    bold = true;
+    body = body.slice(wrap.length, -1).trim();
+  }
+  return { body, size, bold };
+}
+
+/** The LaTeX of a formula with the commands of its look put back (the other way round of `formulaLook`). */
+export function withLook({ body, size, bold }: FormulaLook): string {
+  const core = bold && body ? `\\boldsymbol{${body}}` : body;
+  return size > 0 ? `${FORMULA_SIZES[size]} ${core}` : core;
+}
+
+/**
  * The dollar signs of a line, as pandoc reads them: a `$` opens a formula when no space follows it, and closes one when no space
  * comes before it and no digit after it; an opening one that meets another opening one before any end is a price, not a formula.
  * `formulas` are the [start, end) ranges of the formulas with their dollars, `prices` the places of the dollars that are no formulas
@@ -89,7 +147,8 @@ export function inlineRuns(line: string, base: { bold?: boolean; italic?: boolea
   let from = 0;
   for (const [start, end] of scanDollars(line).formulas) {
     runs.push(...marked(line.slice(from, start), base));
-    runs.push({ text: line.slice(start + 1, end - 1), formula: true });
+    const look = formulaLook(line.slice(start + 1, end - 1));
+    runs.push({ text: look.body, formula: true, ...(look.bold ? { bold: true } : {}) });
     from = end;
   }
   runs.push(...marked(line.slice(from), base));
@@ -107,7 +166,7 @@ const QUOTE = /^ {0,3}>[ \t]?/;
 
 /** Block formulas `$$ … $$` of a text, with the ranges they take (they may stretch over lines). */
 function blockFormulas(text: string): { start: number; end: number; latex: string }[] {
-  return [...text.matchAll(/\$\$([\s\S]*?)\$\$/g)].map((m) => ({ start: m.index, end: m.index + m[0].length, latex: m[1]!.trim() }));
+  return [...text.matchAll(/\$\$([\s\S]*?)\$\$/g)].map((m) => ({ start: m.index, end: m.index + m[0].length, latex: formulaLook(m[1]!).body }));
 }
 
 /**
@@ -115,7 +174,8 @@ function blockFormulas(text: string): { start: number; end: number; latex: strin
  * heading, no `>` before a quote. Formulas are dropped for a search (their LaTeX is no words) and written as their LaTeX
  * (without the dollars) for a text file. List signs stay, as in any plain text.
  */
-export function plainText(text: string, formulas: "drop" | "keep"): string {
+export function plainText(raw: string, formulas: "drop" | "keep"): string {
+  const text = dropBreaks(raw);
   let out = "";
   let from = 0;
   for (const block of blockFormulas(text)) {

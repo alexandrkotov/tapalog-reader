@@ -46,3 +46,10 @@ describe("what comes out of the editor", () => {
     expect(fromEditor(toEditor(text))).toBe(text);
   });
 });
+
+describe("an empty paragraph", () => {
+  test("the line of <br /> the editor writes for it is not kept, and one an older page holds is not shown", () => {
+    expect(fromEditor("раз\n\n<br />\n\nдва\n")).toBe("раз\n\nдва");
+    expect(toEditor("раз\n\n<br />\n\nдва")).toBe("раз\n\nдва");
+  });
+});

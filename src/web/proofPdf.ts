@@ -5,7 +5,7 @@
  * down from the top edge of the sheet.
  */
 
-import { HEADING, inlineRuns, QUOTE, type Run } from "../shared/markup";
+import { dropBreaks, formulaLook, HEADING, inlineRuns, QUOTE, type Run } from "../shared/markup";
 
 /** A sheet and its margin, in points. */
 export interface PageFormat {
@@ -56,7 +56,7 @@ export function blocksOf(raw: string): Block[] {
     if (lines.length) blocks.push({ kind: "lines", lines });
     lines = [];
   };
-  for (const paragraph of raw.replace(/\r\n?/g, "\n").replace(/\t/g, "    ").split(/\n[ \t]*\n+/)) {
+  for (const paragraph of dropBreaks(raw.replace(/\r\n?/g, "\n")).replace(/\t/g, "    ").split(/\n[ \t]*\n+/)) {
     for (const line of paragraph.split("\n")) {
       let from = 0;
       for (const match of line.matchAll(new RegExp(FIGURE))) {
@@ -273,7 +273,8 @@ export function layoutBook(book: BookText, format: PageFormat, measure: Measure,
         } else latex = latex.slice(0, -2);
         i = Math.min(end, lines.length - 1);
         gap(style.body * 0.4);
-        setRuns([{ text: latex.trim(), formula: true }], { size: style.body, role: "formula", center: true });
+        const look = formulaLook(latex);
+        setRuns([{ text: look.body, formula: true, ...(look.bold ? { bold: true } : {}) }], { size: style.body, role: "formula", center: true });
         gap(style.body * 0.3);
         continue;
       }

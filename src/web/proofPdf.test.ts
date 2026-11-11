@@ -229,3 +229,14 @@ test("a page full of marks still fits: every line stays inside the margins and t
   }
   expect(pages.flatMap((p) => texts(p.items)).filter((t) => t.startsWith("Часть"))).toHaveLength(30);
 });
+
+test("the look of a formula is not printed as LaTeX: a bold one is set bold, and an empty paragraph leaves no line", () => {
+  const items = laidText("Раз $\\Large \\boldsymbol{x^2}$ два.\n\n<br />\n\n$$\n\\huge \\boldsymbol{E=mc^2}\n$$\n\nКонец.");
+  const inline = items.find((i) => i.text.trim() === "x^2")!;
+  expect(inline.bold).toBe(true);
+  expect(inline.italic).toBe(true);
+  const block = items.find((i) => i.text === "E=mc^2")!;
+  expect(block.bold).toBe(true);
+  expect(items.some((i) => /boldsymbol|Large|huge|<br/.test(i.text))).toBe(false);
+  expect(blocksOf("а\n\n<br />\n\nб")).toEqual([{ kind: "lines", lines: ["а"] }, { kind: "lines", lines: ["б"] }]);
+});

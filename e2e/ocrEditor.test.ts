@@ -395,6 +395,28 @@ e2e("a formula is put in with a window that shows it as it is typed, edited by a
   await page.click(".modal.formula button:has-text('Apply')");
   await heldIs(3, "Перед формулой.$a_1$")();
 
+  // size and weight are chosen in the same window and written into the LaTeX; the field itself stays clean
+  await page.click(`${editor(3)} [data-type='math_inline']`);
+  await page.waitForSelector(".modal.formula");
+  expect(await page.inputValue(".formula-size")).toBe("0");
+  expect(await page.isChecked(".formula-bold")).toBe(false);
+  await page.selectOption(".formula-size", "2");
+  await page.check(".formula-bold");
+  expect(await page.inputValue(".formula-latex")).toBe("a_1");
+  await page.waitForSelector(".formula-preview .katex-html .mathbf, .formula-preview .katex-html .boldsymbol, .formula-preview .katex-html [class*='bold']");
+  await page.click(".modal.formula button:has-text('Apply')");
+  await heldIs(3, "Перед формулой.$\\huge \\boldsymbol{a_1}$")();
+  await page.waitForSelector(`${editor(3)} [data-type='math_inline'] .katex`);
+  await page.click(`${editor(3)} [data-type='math_inline']`);
+  await page.waitForSelector(".modal.formula");
+  expect(await page.inputValue(".formula-latex")).toBe("a_1"); // the look is read back out of the formula
+  expect(await page.inputValue(".formula-size")).toBe("2");
+  expect(await page.isChecked(".formula-bold")).toBe(true);
+  await page.selectOption(".formula-size", "0");
+  await page.uncheck(".formula-bold");
+  await page.click(".modal.formula button:has-text('Apply')");
+  await heldIs(3, "Перед формулой.$a_1$")();
+
   // a formula on a line of its own
   await page.click(`${editor(3)} p`);
   await page.keyboard.press("Control+End");
@@ -451,4 +473,23 @@ e2e("the editor is made only for the pages near the window, and a page left far 
   } finally {
     await own.stop();
   }
+});
+
+e2e("an empty paragraph made with Enter twice is not kept in the text as a line of <br />", async () => {
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await openProof(page);
+  await clickInto(page, `${editor(3)} p`);
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("до");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("после пустого");
+  await page.waitForFunction(async (sel) => (document.querySelector(sel) as HTMLTextAreaElement).value.endsWith("после пустого"), textarea(3));
+  const text = await page.inputValue(textarea(3));
+  expect(text).not.toContain("<br");
+  expect(text).toMatch(/[^\n]\n\nпосле пустого$/);
+  expect(await held(3)).not.toContain("<br");
+  expect(errors).toEqual([]);
+  await page.close();
 });

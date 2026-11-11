@@ -165,6 +165,9 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .formula-pieces { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .formula-preview { min-height: 56px; font-size: 1.3em; margin: 4px 0 10px; padding: 10px; display: flex; align-items: center; justify-content: center; overflow: auto; border: 1px dashed var(--border); border-radius: 6px; }
 .formula-actions { gap: 8px; }
+.formula-look { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 4px 0; }
+.formula-size-label { display: inline-flex; align-items: center; gap: 8px; }
+.formula-size { padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
 .proof-editor { position: relative; flex: 1 1 0; min-height: 0; overflow: auto; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); line-height: 1.5; }
 .proof-editor:focus-within { border-color: var(--accent); }
 .proof-editor.empty::before { content: attr(data-placeholder); position: absolute; left: 10px; top: 8px; color: var(--muted); pointer-events: none; }

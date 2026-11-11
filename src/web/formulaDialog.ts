@@ -1,6 +1,7 @@
 import { t } from "./i18n";
 import { renderFormula, type Formula } from "./pageEditor";
 import { el, openModal } from "./ui";
+import { formulaLook, withLook } from "../shared/markup";
 
 /** Pieces of LaTeX for people who do not write it by heart: a label, the text put at the cursor, and where the cursor goes in it (counted from its end). */
 const SNIPPETS: { label: string; tip: string; text: string; back: number }[] = [
@@ -31,18 +32,27 @@ export function askFormula(current: Formula & { editing?: boolean }): Promise<Fo
     };
     const modal = openModal(t(current.editing ? "formula.titleEdit" : "formula.title"), () => finish(null));
     modal.body.closest(".modal")?.classList.add("formula");
-    const field = el("textarea", { class: "formula-latex", value: current.latex, rows: 3, spellcheck: false, placeholder: "E = mc^2" });
+    // size and weight are written into the LaTeX itself (\Large, \boldsymbol{…}); the field shows the formula without them
+    const look = formulaLook(current.latex);
+    const field = el("textarea", { class: "formula-latex", value: look.body, rows: 3, spellcheck: false, placeholder: "E = mc^2" });
     field.setAttribute("aria-label", t("formula.latex"));
     const block = el("input", { type: "checkbox", checked: current.block });
+    const size = el("select", { class: "formula-size" }, ...(["formula.size.0", "formula.size.1", "formula.size.2", "formula.size.3"] as const).map((key, i) => el("option", { value: String(i), textContent: t(key), selected: i === look.size })));
+    size.setAttribute("aria-label", t("formula.size"));
+    const bold = el("input", { type: "checkbox", checked: look.bold, class: "formula-bold" });
+    const latexOf = () => withLook({ body: field.value.trim(), size: Number(size.value), bold: bold.checked });
     const preview = el("div", { class: "formula-preview" });
     const draw = () => {
-      const latex = field.value.trim();
-      preview.classList.toggle("empty", latex === "");
-      if (latex === "") preview.replaceChildren();
+      const latex = latexOf();
+      const empty = field.value.trim() === "";
+      preview.classList.toggle("empty", empty);
+      if (empty) preview.replaceChildren();
       else void renderFormula(preview, latex, block.checked).catch(() => (preview.textContent = latex));
     };
     field.addEventListener("input", draw);
     block.addEventListener("change", draw);
+    size.addEventListener("change", draw);
+    bold.addEventListener("change", draw);
     const pieces = el(
       "div",
       { class: "formula-pieces" },
@@ -66,7 +76,7 @@ export function askFormula(current: Formula & { editing?: boolean }): Promise<Fo
     const submit = () => {
       const latex = field.value.trim();
       if (latex === "") field.focus();
-      else finish({ latex, block: block.checked });
+      else finish({ latex: latexOf(), block: block.checked });
     };
     ok.addEventListener("click", submit);
     cancel.addEventListener("click", () => finish(null));
@@ -86,6 +96,7 @@ export function askFormula(current: Formula & { editing?: boolean }): Promise<Fo
       el("p", { class: "muted small", textContent: t("formula.hint") }),
       field,
       pieces,
+      el("div", { class: "formula-look" }, el("label", { class: "formula-size-label" }, t("formula.size"), size), el("label", { class: "choice" }, bold, t("formula.bold"))),
       el("label", { class: "choice" }, block, t("formula.block")),
       el("div", { class: "formula-preview-label muted small", textContent: t("formula.preview") }),
       preview,
