@@ -120,10 +120,15 @@ e2e("the plain text and the visual editor show one text: what is typed in one is
   const page = await ctx.newPage();
   const errors = watchErrors(page);
   await openProof(page);
-  expect(await page.getAttribute(".proof-source", "title")).toContain("plain text");
+  expect(await page.textContent(".proof-visual")).toBe("Visual editor");
+  expect(await page.textContent(".proof-source")).toBe("Markdown");
+  expect(await page.getAttribute(".proof-source", "title")).toContain("Markdown code");
+  expect(await page.getAttribute(".proof-visual", "aria-pressed")).toBe("true");
   expect(await page.getAttribute(".proof-source", "aria-pressed")).toBe("false");
   await page.click(".proof-source");
   expect(await page.getAttribute(".proof-source", "aria-pressed")).toBe("true");
+  expect(await page.getAttribute(".proof-visual", "aria-pressed")).toBe("false");
+  await page.click(".proof-source"); // the mode that is on stays on
   expect(await page.isVisible(textarea(3))).toBe(true);
   expect(await page.isVisible(editor(3))).toBe(false);
   expect(await page.inputValue(textarea(2))).toBe("строка один\nстрока два\nстрока три\n\n## Итог");
@@ -131,7 +136,7 @@ e2e("the plain text and the visual editor show one text: what is typed in one is
   await heldIs(3, "**третья** страница")();
 
   // back to the visual editor: the text typed there is shown as it reads
-  await page.click(".proof-source");
+  await page.click(".proof-visual");
   await page.waitForSelector(`${editor(3)} strong`);
   expect(await page.textContent(`${editor(3)} strong`)).toBe("третья");
 
@@ -141,7 +146,7 @@ e2e("the plain text and the visual editor show one text: what is typed in one is
   await page.waitForSelector(".modal.proof", { state: "detached" });
   await openProofAgain(page);
   expect(await page.isVisible(textarea(3))).toBe(true);
-  await page.click(".proof-source"); // visual again for the other tests
+  await page.click(".proof-visual"); // visual again for the other tests
   expect(errors).toEqual([]);
   await page.close();
 });
@@ -210,11 +215,18 @@ e2e("the tools above the text format the paragraph the cursor is in, and are off
   await page.click(".proof-tool-bullet"); // the same button again does not undo it; the list stays a list
   await page.click(`${editor(3)} p`, { clickCount: 3 });
 
-  // in the plain text there are no tools
-  await page.click(".proof-source");
-  expect(await page.isVisible(".proof-tools")).toBe(false);
+  // in the Markdown view the tools stay where they are (nothing below them jumps) and cannot be used
+  const before = await page.$eval(".proof-pages", (s) => s.getBoundingClientRect().top);
   await page.click(".proof-source");
   expect(await page.isVisible(".proof-tools")).toBe(true);
+  for (const tool of ["undo", "redo", "bold", "italic", "code", "heading", "bullet", "ordered", "quote", "formula", "formula-block"]) expect(await page.isDisabled(`.proof-tool-${tool}`)).toBe(true);
+  expect(await page.$eval(".proof-pages", (s) => s.getBoundingClientRect().top)).toBe(before);
+  await page.click(".proof-visual");
+  expect(await page.isVisible(".proof-tools")).toBe(true);
+  expect(await page.$eval(".proof-pages", (s) => s.getBoundingClientRect().top)).toBe(before);
+  await page.waitForSelector(editor(3));
+  await page.click(`${editor(3)} p`);
+  expect(await page.isDisabled(".proof-tool-bold")).toBe(false); // and they work again in the editor
   expect(errors).toEqual([]);
   await page.close();
 });
@@ -298,6 +310,48 @@ e2e("the tools stand over the column of the text, not over the scan, in the usua
   expect(Math.abs(tools.left - pages.left)).toBeLessThan(6); // one column: the tools are at the left, over both
   expect(errors).toEqual([]);
   await page.close();
+});
+
+e2e("a hint of a button is drawn by the page in the colours of its theme, light on a light page and dark on a dark one, and the browser's own is kept away", async () => {
+  for (const scheme of ["light", "dark"] as const) {
+    const themed = await browser.newContext({ viewport: { width: 1300, height: 800 }, colorScheme: scheme });
+    await themed.addCookies(await ctx.cookies());
+    const page = await themed.newPage();
+    const errors = watchErrors(page);
+    await page.addInitScript(() => localStorage.removeItem("theme"));
+    await openProof(page);
+    await page.hover(".proof-source");
+    await page.waitForSelector(".tip:not([hidden])");
+    expect(await page.textContent(".tip")).toContain("Markdown code");
+    expect(await page.getAttribute(".proof-source", "title")).toBeNull(); // the browser has nothing of its own to show
+    const colours = await page.evaluate(() => {
+      const tip = document.querySelector(".tip") as HTMLElement;
+      const body = getComputedStyle(document.body);
+      const tipStyle = getComputedStyle(tip);
+      const light = (css: string) => {
+        const m = css.match(/\d+(\.\d+)?/g)!.map(Number);
+        return (m[0]! * 299 + m[1]! * 587 + m[2]! * 114) / 1000 > 128;
+      };
+      return { pageLight: light(body.backgroundColor), tipLight: light(tipStyle.backgroundColor) };
+    });
+    expect(colours.tipLight).toBe(colours.pageLight); // the hint is of the page's theme
+    expect(colours.pageLight).toBe(scheme === "light");
+    const tipBox = await page.$eval(".tip", (e) => e.getBoundingClientRect().toJSON());
+    expect(tipBox.left).toBeGreaterThanOrEqual(0);
+    expect(tipBox.right).toBeLessThanOrEqual(1300);
+    await page.mouse.move(5, 5); // away: the hint goes and the title is back for a screen reader
+    await page.waitForSelector(".tip", { state: "hidden" });
+    expect(await page.getAttribute(".proof-source", "title")).toContain("Markdown code");
+    // a button that cannot be pressed yet has its hint too
+    await page.hover(".proof-tool-bold");
+    await page.waitForSelector(".tip:not([hidden])");
+    expect(await page.textContent(".tip")).toBe("Bold (Ctrl+B)");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".modal.proof", { state: "detached" });
+    expect(await page.$(".tip")).toBeNull(); // nothing is left behind when the window is closed
+    expect(errors).toEqual([]);
+    await themed.close();
+  }
 });
 
 e2e("a formula is put in with a window that shows it as it is typed, edited by a click on it, and taken out; Esc leaves only that window", async () => {

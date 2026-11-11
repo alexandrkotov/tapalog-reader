@@ -68,7 +68,9 @@ e2e("the window for checking the text can be made almost as big as the screen an
   near(usual.w, 1400);
   near(usual.h, 0.88 * VIEW.height);
   near(usual.x + usual.w / 2, VIEW.width / 2);
-  expect(await page.getAttribute(".modal-expand", "title")).toBe("Make the window bigger");
+  // while the pointer is on a button the page's own hint has the text of its title, and the title itself is off (see tooltip.ts)
+  const hint = () => page.$eval(".modal-expand", (e) => e.getAttribute("title") ?? e.getAttribute("data-tip"));
+  expect(await hint()).toBe("Make the window bigger");
   expect(await page.getAttribute(".modal-expand", "aria-pressed")).toBe("false");
   const before = await canvasWidth(page);
 
@@ -79,7 +81,7 @@ e2e("the window for checking the text can be made almost as big as the screen an
   near(big.y, GAP);
   near(big.w, VIEW.width - 2 * GAP);
   near(big.h, VIEW.height - 2 * GAP);
-  expect(await page.getAttribute(".modal-expand", "title")).toBe("Back to the usual size");
+  expect(await hint()).toBe("Back to the usual size");
   expect(await page.getAttribute(".modal-expand", "aria-pressed")).toBe("true");
   expect(await page.isVisible(".modal-backdrop.sizable")).toBe(true);
   // the scans are drawn again for the room they have now, so they stay sharp

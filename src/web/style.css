@@ -145,11 +145,17 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 /* the text of a page is shown by the visual editor (class "visual" on the list) or as the plain text in the textarea */
 .proof-pages.visual .proof-text, .proof-pages:not(.visual) .proof-editor { display: none; }
 .proof-toolrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding-right: var(--bar, 4px); }
-.proof-toolrow[hidden] { display: none; }
 .proof-toolrow > .proof-tools { grid-column: 2; }
 .proof-tools { display: flex; flex-wrap: wrap; gap: 4px; }
 .proof-tool-redo { margin-right: 8px; }
-.proof-tools[hidden] { display: none; }
+/* two buttons that are one switch: the view of the text */
+.proof-mode { display: inline-flex; }
+.proof-mode .btn { border-radius: 0; }
+.proof-mode .btn:first-child { border-radius: 6px 0 0 6px; }
+.proof-mode .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+/* the hints of the buttons in a window, in the colours of the page's theme (see tooltip.ts) */
+.tip { position: fixed; z-index: 60; max-width: min(360px, calc(100vw - 16px)); padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-bg); color: var(--text); font-size: 13px; line-height: 1.35; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); pointer-events: none; }
+.tip[hidden] { display: none; }
 .proof-tool { min-width: 32px; }
 .proof-tool-bold { font-weight: 700; }
 .proof-tool-italic { font-style: italic; }

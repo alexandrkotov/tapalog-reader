@@ -5,6 +5,7 @@ import { figureScale, MAX_ATTEMPTS, MAX_PNG_BYTES, scrollStep } from "./proofFig
 import { askFormula } from "./formulaDialog";
 import { createPageEditor, type Format, type PageEditor } from "./pageEditor";
 import { pdfDocumentOptions } from "./readers/pdfAssets";
+import { themedHints } from "./tooltip";
 import { api, ApiError, el, formatBytes, openModal, store } from "./ui";
 
 interface PageItem {
@@ -88,6 +89,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   /** The window's size (it can be stretched), the watch on the list's width and the wait before the scans are drawn again for it. */
   let sizing: Resizable | null = null;
   let sizeWatch: ResizeObserver | null = null;
+  let stopHints: (() => void) | null = null;
   let sharpenTimer: ReturnType<typeof setTimeout> | undefined;
   const slots = new Map<number, Slot>();
   const unsaved = () => [...slots.values()].some((s) => s.inflight || s.text.value !== s.sent);
@@ -110,6 +112,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     pdfAbort?.abort();
     observer?.disconnect();
     sizeWatch?.disconnect();
+    stopHints?.();
     clearTimeout(sharpenTimer);
     sizing?.dispose();
     void task?.destroy();
@@ -123,6 +126,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   const modal = openModal(t("proof.title", { title: book.title }), finish);
   const box = modal.body.closest<HTMLElement>(".modal");
   box?.classList.add("proof");
+  stopHints = box ? themedHints(box) : null; // the hints of the buttons follow the theme of the page, which the browser's own do not
   if (box) sizing = makeResizable(box, { key: "tapalog.proofSize", expandLabel: t("proof.expand"), restoreLabel: t("proof.restoreSize"), scroller: () => modal.body.querySelector<HTMLElement>(".proof-pages") });
   const say = (text: string) => modal.body.replaceChildren(el("p", { class: "muted", textContent: text }));
   say(t("card.loading"));
@@ -341,7 +345,10 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     hintTimer = setTimeout(() => (hint.textContent = t("proof.figure.hint")), 3500);
   };
   // the text of a page is edited as it is shown (bold, headings, formulas, the figures in place) or as the plain text it is kept as; remembered like the size of the window
+  const visualButton = el("button", { type: "button", class: "btn small proof-visual", textContent: t("proof.visual"), title: t("proof.visualHint") });
   const sourceButton = el("button", { type: "button", class: "btn small proof-source", textContent: t("proof.source"), title: t("proof.sourceHint") });
+  const modeSwitch = el("span", { class: "proof-mode", role: "group" }, visualButton, sourceButton);
+  modeSwitch.setAttribute("aria-label", t("proof.mode"));
   let visual = store.get("tapalog.proofEditor") !== "source";
   // the tools act on the page whose editor the cursor was last in
   let active: Slot | null = null;
@@ -378,26 +385,30 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
   }
   // the tools stand over the column of the text, in the same two columns as the pages
   const toolRow = el("div", { class: "proof-toolrow" }, el("span", { class: "proof-toolgap" }), tools);
+  // in the Markdown view the tools stay where they are, so nothing below them jumps, and cannot be used
   const showTools = () => {
-    toolRow.hidden = !visual;
-    tools.hidden = !visual;
     for (const button of toolButtons) button.disabled = !(visual && active?.editor);
   };
   const showMode = () => {
     showTools();
     scroller.classList.toggle("visual", visual);
+    visualButton.classList.toggle("primary", visual);
+    visualButton.setAttribute("aria-pressed", String(visual));
     sourceButton.classList.toggle("primary", !visual);
     sourceButton.setAttribute("aria-pressed", String(!visual));
   };
-  sourceButton.addEventListener("click", () => {
-    visual = !visual;
+  const chooseMode = (next: boolean) => {
+    if (next === visual) return;
+    visual = next;
     store.set("tapalog.proofEditor", visual ? "visual" : "source");
     showMode();
     for (const slot of slots.values()) {
       if (visual && wanted.has(slot.n)) void mountEditor(slot);
       if (!visual) unmountEditor(slot);
     }
-  });
+  };
+  visualButton.addEventListener("click", () => chooseMode(true));
+  sourceButton.addEventListener("click", () => chooseMode(false));
   /** Sets the text of a page from outside the editor (a page taken back, a figure taken out), and the editor with it. */
   function setText(slot: Slot, value: string): void {
     slot.text.value = value;
@@ -521,7 +532,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     const row = scroller.children[Math.min(Math.max(n, 1), list.pages) - 1] as HTMLElement | undefined;
     if (row) scroller.scrollTo({ top: row.offsetTop });
   });
-  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, sourceButton, fitButton, figureButton, ...downloads, zipButton, pdfButton)), toolRow, pdfPanel, hint, scroller);
+  modal.body.replaceChildren(el("div", { class: "proof-bar" }, stats, el("label", { class: "proof-jump small muted" }, t("proof.goto"), goto), el("span", { class: "proof-actions" }, modeSwitch, fitButton, figureButton, ...downloads, zipButton, pdfButton)), toolRow, pdfPanel, hint, scroller);
   for (const image of list.images) {
     const slot = slots.get(image.page);
     if (slot) addThumb(slot, image.name);
