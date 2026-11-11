@@ -12,6 +12,20 @@ declare module "pdfjs-dist/build/pdf.min.mjs" {
 }
 declare module "*.css";
 declare module "foliate-js/view.js";
+declare module "foliate-js/comic-book.js" {
+  export function makeComicBook(loader: unknown, file: { name: string }): unknown;
+}
+declare module "foliate-js/vendor/zip.js" {
+  export function configure(options: { useWebWorkers?: boolean }): void;
+  export class ZipReader {
+    constructor(reader: unknown);
+    getEntries(): Promise<never>;
+  }
+  export class BlobWriter {
+    constructor(type?: string);
+  }
+  export class TextWriter {}
+}
 declare module "foliate-js/overlayer.js" {
   export const Overlayer: { highlight: unknown };
 }

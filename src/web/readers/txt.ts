@@ -1,6 +1,8 @@
 import { t } from "../i18n";
 import { addPlainText, type PrintJob } from "../print";
 import { decodeText } from "./decode";
+import { fetchBlob } from "./download";
+import type { Loading } from "./loading";
 
 /**
  * A "view" of a plain-text file: the character at the top of the window and, optionally,
@@ -18,6 +20,8 @@ export interface TxtOptions {
   view?: TxtView | null;
   onView(view: TxtView): void;
   onError(error: Error): void;
+  /** Tells how much of the file has come, while it is on its way. */
+  loading?: Loading;
 }
 
 export interface TxtReader {
@@ -267,9 +271,8 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
 
   // ---------- open ----------
   try {
-    const res = await fetch(options.url, { credentials: "include" });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    text = decodeText(new Uint8Array(await res.arrayBuffer()));
+    text = decodeText(new Uint8Array(await (await fetchBlob(options.url, (p) => options.loading?.update(p))).arrayBuffer()));
+    options.loading?.opening();
     if (destroyed) return { destroy() {}, getView: () => ({ v: 1, offset: 0 }), getLabel: () => "", getPassage: () => null, printJob: () => ({ choices: [], render: async () => undefined }) };
     const initial = cleanView(options.view, text.length);
     mark = initial.range;

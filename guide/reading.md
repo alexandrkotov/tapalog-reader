@@ -28,6 +28,12 @@ The PDF reader is pdf.js, loaded on demand; it works for scans too (JBIG2 and JP
 
 EPUB, FB2, MOBI/AZW3 and CBZ comics open in [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT, loaded on demand): contents, pages or continuous scroll, text size, arrow keys. A passage selected with **Mark** is highlighted, and the address bar holds the position and the mark (as EPUB CFIs, so they survive another window or text size). Books are third-party content: the page's Content-Security-Policy stops scripts and inline handlers inside an EPUB from running, and links in a book open only if they are http(s) or mailto
 
+## While a book is loading
+
+A book that takes a moment to arrive (a big file, a phone, a share link through the tunnel) is never a blank page: after a short wait a bar appears in the reader's area with how much has come, for example "Loading: 12.3 MB of 87.0 MB (14%)", and "Opening the book…" once the file is here. It goes away when the first page is on screen. PDF, EPUB, FB2, MOBI and text files are counted as they download (a PDF is fetched in pieces by pdf.js, so its figure is what it has asked for so far); a catalog or a plugin's reader shows the bar without numbers until it is ready. The file is not changed and nothing is stored for this.
+
+A **CBZ comic is not downloaded whole**: the reader asks the server for the list of pages (it is at the end of the file) and for the page on screen with its neighbours, in pieces of about 1 MB (`Range` requests, which the program already answers, also through a share link and the tunnel). A hundred-megabyte comic opens after a few megabytes, and each page costs its own size; the last twelve pieces are kept, so turning back is free. While a page is still coming, a small note at the foot of the area says "Loading the page… N MB". If a server answers with the whole file instead (a proxy that drops `Range`), the comic is downloaded as before, with the bar counting it. Printing a whole comic still reads every page.
+
 ## Text files
 
 Encoding detected automatically (UTF-8, UTF-16 with BOM, Windows-1251, Windows-1252), text size, **Mark** a passage; the address bar holds the top line and the mark as character offsets, so a link reproduces them in any window

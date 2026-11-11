@@ -13,6 +13,7 @@ import { mountThumbs, type Thumbs } from "./thumbs";
 import { fileOf, offsetFor, printedOf } from "./printed";
 import { rectToPage, rectToScreen, toPage, toScreen } from "./rotation";
 import type { PageView, ReaderHandle, Rect } from "./types";
+import type { Loading } from "./loading";
 
 /** pdf.js' own padding around the page column; "zoom 1" is the page width that leaves exactly this. */
 const SCROLLBAR_PADDING = 40;
@@ -58,6 +59,8 @@ export interface PdfOptions {
   display?: Display;
   onDisplay?(display: Display): void;
   onError(error: Error): void;
+  /** Tells how much of the file has come; the reader takes it away when the first page is laid out. */
+  loading?: Loading;
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -612,7 +615,9 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
   // ---------- open the document ----------
 
   const task = pdfjsLib.getDocument(pdfDocumentOptions(options.url));
+  task.onProgress = ({ loaded, total }: { loaded: number; total?: number }) => options.loading?.update({ loaded, total: total && total >= loaded ? total : null });
   task.onPassword = (update: (password: string) => void, reason: number) => {
+    options.loading?.done(); // the question is asked over the page
     const entered = prompt(reason === 2 ? t("pdf.passwordAgain") : t("pdf.password"));
     if (entered === null) options.onError(new Error(t("pdf.passwordNeeded")));
     else update(entered);
@@ -624,6 +629,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     else pdfViewer.currentScaleValue = "page-width";
   };
   eventBus.on("pagesinit", () => {
+    options.loading?.done();
     pageCount.textContent = `/ ${pdfViewer.pagesCount}`;
     pageInput.max = String(pdfViewer.pagesCount);
     showNumbers(pdfViewer.currentPageNumber);
@@ -652,7 +658,10 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       pdfViewer.setDocument(doc);
       linkService.setDocument(doc, null);
     })
-    .catch((err: unknown) => options.onError(err instanceof Error ? err : new Error(String(err))));
+    .catch((err: unknown) => {
+      options.loading?.done();
+      options.onError(err instanceof Error ? err : new Error(String(err)));
+    });
 
   /**
    * A printout is made of pictures of the pages (or of one rectangle of one page), because that

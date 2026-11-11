@@ -221,6 +221,19 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .reader-bar .path { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reader-host { flex: 1; min-height: 0; position: relative; }
 .reader-host > * { position: absolute; inset: 0; display: block; }
+/* the bar while a book is on its way: over whatever the reader has put into its area, in the middle */
+.reader-host > .reader-loading { z-index: 5; display: flex; align-items: center; justify-content: center; background: var(--bg); padding: 0 16px; }
+.reader-loading[hidden] { display: none; }
+.loading-box { width: min(420px, 100%); text-align: center; }
+.loading-text { margin-bottom: 10px; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.loading-track { position: relative; height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.loading-fill { height: 100%; width: 0; border-radius: 4px; background: var(--accent); transition: width .2s linear; }
+.loading-track.indeterminate .loading-fill { position: absolute; width: 40%; transition: none; animation: loading-slide 1.2s ease-in-out infinite; }
+@keyframes loading-slide { from { left: -40%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .loading-track.indeterminate .loading-fill { animation: none; left: 30%; } }
+/* the note at the foot while a page of a comic is still coming */
+.reader-host > .reader-busy { inset: auto 0 14px 0; margin: 0 auto; width: max-content; max-width: calc(100% - 32px); z-index: 4; padding: 6px 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel-bg); color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.reader-busy[hidden] { display: none; }
 
 .message { margin: auto; max-width: 440px; padding: 24px; text-align: center; color: var(--muted); }
 .message h2 { color: var(--text); margin: 0 0 8px; }

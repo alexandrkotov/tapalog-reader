@@ -10,6 +10,7 @@ import type { TextView } from "./book";
 import type { TxtView } from "./txt";
 import type { Display } from "../display";
 import { mountPlugin, pluginError, pluginFor } from "./plugins";
+import { showLoading, type Loading } from "./loading";
 
 /** What the shell needs from whichever reader shows a book. */
 export interface Reader {
@@ -49,8 +50,24 @@ export const hasShareableView = (ext: string): boolean => VIEW_FORMATS.has(ext) 
 const TEXT_FORMATS = new Set(["epub", "fb2", "mobi", "cbz"]);
 
 
-/** Mounts the right reader for the book's format into `host`. */
+/**
+ * Mounts the right reader for the book's format into `host`. While the book is on its way a bar over it tells how much has
+ * come (and, once the file is here, that it is being opened), so a slow line never looks like a hung page.
+ */
 export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<Reader> {
+  const loading = showLoading(host);
+  try {
+    const reader = await mountFormat(host, spec, loading);
+    // a PDF takes the bar away itself, when its first page is laid out, and a catalog when its viewer has the file
+    if (spec.ext !== "pdf" && spec.ext !== "ecatm") loading.done();
+    return reader;
+  } catch (err) {
+    loading.done();
+    throw err;
+  }
+}
+
+async function mountFormat(host: HTMLElement, spec: ReaderSpec, loading: Loading): Promise<Reader> {
   if (spec.ext === "ecatm") {
     const viewer = mountViewerInShadow(host, {
       mode: "reader",
@@ -64,9 +81,12 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
         if (type === "view") spec.onView?.(detail);
       },
     });
-    void viewer.openUrl(spec.fileUrl, { fetchInit: { credentials: "include" }, view: (spec.view as EcatmView | null) ?? undefined }).catch((err: unknown) => {
-      spec.onError(t("catalog.error"), err instanceof Error ? err.message : String(err));
-    });
+    void viewer
+      .openUrl(spec.fileUrl, { fetchInit: { credentials: "include" }, view: (spec.view as EcatmView | null) ?? undefined })
+      .catch((err: unknown) => {
+        spec.onError(t("catalog.error"), err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => loading.done());
     const stopTheme = onTheme(() => viewer.setTheme(isDark() ? "dark" : "light"));
     return { destroy: () => (stopTheme(), viewer.destroy()), getView: () => viewer.getView() };
   }
@@ -81,6 +101,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       display: spec.display ?? {},
       onDisplay: (d) => spec.onDisplay?.(d),
       onError: (err) => spec.onError(t("pdf.error"), err.message),
+      loading,
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), printJob: () => reader.printJob() };
   }
@@ -92,6 +113,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       view: spec.view as TxtView | null,
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
+      loading,
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), getPassage: () => reader.getPassage(), printJob: () => reader.printJob() };
   }
@@ -105,6 +127,7 @@ export async function mountReader(host: HTMLElement, spec: ReaderSpec): Promise<
       view: spec.view as TextView | null,
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
+      loading,
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), getPassage: () => reader.getPassage(), printJob: () => reader.printJob() };
   }

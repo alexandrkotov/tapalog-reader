@@ -65,7 +65,7 @@ export function pdf(pages: number): Uint8Array {
 export const NOTES_PHRASE = "Тихая гавань и серебряный мост";
 export const notes = () => `Заметки\n\n${NOTES_PHRASE}.\n\n${Array.from({ length: 30 }, (_, i) => words(i, 40)).join("\n\n")}`;
 
-function png(width: number, height: number, [r, g, b]: [number, number, number]): Uint8Array {
+export function png(width: number, height: number, [r, g, b]: [number, number, number]): Uint8Array {
   const row = new Uint8Array(1 + width * 3);
   for (let x = 0; x < width; x++) row.set([r, g, b], 1 + x * 3);
   const raw = new Uint8Array(row.length * height);

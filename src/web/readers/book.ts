@@ -4,6 +4,9 @@ import { t } from "../i18n";
 import { addHtmlSection, type PrintJob } from "../print";
 import { isDark, onTheme } from "../theme";
 import { mountThumbs, type Thumbs } from "./thumbs";
+import { fetchBlob } from "./download";
+import { showBusy, type Loading } from "./loading";
+import { openComic, type RangedComic } from "./rangeZip";
 
 /**
  * A "view" of reflowable text (EPUB, FB2, MOBI): where the reader is, and optionally a
@@ -27,6 +30,8 @@ export interface BookOptions {
   view?: TextView | null;
   onView(view: TextView): void;
   onError(error: Error): void;
+  /** Tells how much of the file has come, while it is on its way. */
+  loading?: Loading;
 }
 
 export interface BookReader {
@@ -70,7 +75,8 @@ interface FoliateView extends HTMLElement {
   book: { toc?: TocItem[]; sections?: BookSection[] };
   lastLocation: Location | null;
   isFixedLayout: boolean;
-  open(book: File): Promise<void>;
+  /** Takes a file (the text engine reads the format) or a book it has been given already made. */
+  open(book: File | unknown): Promise<void>;
   close(): void;
   init(options: { lastLocation?: string | null; showTextStart?: boolean }): Promise<void>;
   goTo(target: string | number): Promise<unknown>;
@@ -384,11 +390,17 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   root.addEventListener("keydown", onKey);
 
   // ---------- open ----------
+  const busy = showBusy(host);
+  let ranged: RangedComic | null = null;
   try {
-    const res = await fetch(options.url, { credentials: "include" });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    const file = new File([await res.blob()], `book.${options.ext}`, { type: MIME[options.ext] ?? "" });
-    await view.open(file);
+    let source: unknown;
+    if (options.ext === "cbz") {
+      // a comic is read in pieces: its list of pages and the page on screen, the rest as the reader turns to it
+      ranged = await openComic(options.url, `book.${options.ext}`, { onProgress: (p) => options.loading?.update(p), onBusy: (pending, bytes) => busy.report(pending, bytes) });
+      source = ranged.book ?? ranged.file;
+    } else source = new File([await fetchBlob(options.url, (p) => options.loading?.update(p))], `book.${options.ext}`, { type: MIME[options.ext] ?? "" });
+    options.loading?.opening();
+    await view.open(source);
     if (destroyed) return { destroy() {}, getView: () => null, getLabel: () => "", getPassage: () => null, printJob };
     applyFlow();
     setFont(fontPct);
@@ -450,6 +462,8 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
       stopTheme();
       if (timer) clearTimeout(timer);
       thumbs?.destroy();
+      ranged?.dispose();
+      busy.destroy();
       try {
         view.close();
       } catch {
