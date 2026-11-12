@@ -370,6 +370,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     ["bold", "B", "proof.tool.bold"],
     ["italic", "I", "proof.tool.italic"],
     ["code", "‹›", "proof.tool.code"],
+    ["codeblock", "{ }", "proof.tool.codeblock"],
     ["heading", "H", "proof.tool.heading"],
     ["bullet", "•", "proof.tool.bullet"],
     ["ordered", "1.", "proof.tool.ordered"],
@@ -423,6 +424,7 @@ export async function openProof(book: { id: string; title: string }, opts: { cha
     try {
       const editor = await createPageEditor(slot.host, started, {
         askFormula: (current) => askFormula({ ...current, editing: true }),
+        codeStrings: { plain: t("code.plain"), find: t("code.find"), label: t("code.lang"), none: t("code.none") },
         resolveImage: (src) => (/^images\/p\d+-\d+\.png$/.test(src) ? `${base}/${src}` : src),
         onChange: (text) => {
           slot.text.value = text;

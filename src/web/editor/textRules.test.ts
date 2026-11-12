@@ -53,3 +53,14 @@ describe("an empty paragraph", () => {
     expect(toEditor("раз\n\n<br />\n\nдва")).toBe("раз\n\nдва");
   });
 });
+
+describe("blocks of code", () => {
+  const code = "```bash\nls \\\n  -l  # 3 * 4 = [x] \\$HOME\necho \"$5 and $6\"\n```";
+
+  test("what is inside a block goes to the editor and comes back exactly as it was", () => {
+    expect(toEditor(code)).toBe(code); // no dollar is escaped
+    expect(fromEditor(code)).toBe(code); // no backslash is taken out, no line is joined
+    expect(fromEditor("Текст\n\n" + code + "\n\nещё \\* и $x$\n")).toBe("Текст\n\n" + code + "\n\nещё * и $x$");
+    expect(toEditor("цена $5\n\n" + code)).toBe("цена \\$5\n\n" + code);
+  });
+});

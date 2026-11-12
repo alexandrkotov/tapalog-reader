@@ -5,7 +5,7 @@
  * down from the top edge of the sheet.
  */
 
-import { dropBreaks, formulaLook, HEADING, inlineRuns, QUOTE, type Run } from "../shared/markup";
+import { dropBreaks, formulaLook, HEADING, inlineRuns, QUOTE, splitFences, type Run } from "../shared/markup";
 
 /** A sheet and its margin, in points. */
 export interface PageFormat {
@@ -39,8 +39,8 @@ export interface Style {
 
 export const DEFAULT_STYLE: Style = { body: 11, title: 20, heading: 12, note: 9, leading: 1.4, paragraphGap: 0.7, figureGap: 8, figureDpi: 200 };
 
-/** A part of the text of a page: lines as they were typed, or a reference to a figure. */
-export type Block = { kind: "lines"; lines: string[] } | { kind: "figure"; name: string; alt: string };
+/** A part of the text of a page: lines as they were typed, a block of code (lines kept as they are), or a reference to a figure. */
+export type Block = { kind: "lines"; lines: string[] } | { kind: "code"; lines: string[] } | { kind: "figure"; name: string; alt: string };
 
 /** `![Fig. 8.1](images/p008-1.png)`: only the figures this program cuts are meant, never a link to somewhere else. */
 const FIGURE = /!\[([^\]\n]*)\]\(images\/(p\d{3,5}-\d{1,4}\.png)\)/g;
@@ -56,20 +56,28 @@ export function blocksOf(raw: string): Block[] {
     if (lines.length) blocks.push({ kind: "lines", lines });
     lines = [];
   };
-  for (const paragraph of dropBreaks(raw.replace(/\r\n?/g, "\n")).replace(/\t/g, "    ").split(/\n[ \t]*\n+/)) {
-    for (const line of paragraph.split("\n")) {
-      let from = 0;
-      for (const match of line.matchAll(new RegExp(FIGURE))) {
-        const before = line.slice(from, match.index).trim();
-        if (before) lines.push(before);
-        flush();
-        blocks.push({ kind: "figure", name: match[2]!, alt: match[1]! });
-        from = match.index + match[0].length;
-      }
-      const rest = from ? line.slice(from).trim() : line.trimEnd();
-      if (rest || !from) lines.push(rest);
+  const text = dropBreaks(raw.replace(/\r\n?/g, "\n")).replace(/\t/g, "    ");
+  for (const stretch of splitFences(text)) {
+    if (stretch.code) {
+      flush();
+      blocks.push({ kind: "code", lines: stretch.body.split("\n") });
+      continue;
     }
-    flush();
+    for (const paragraph of stretch.raw.replace(/^\n+|\n+$/g, "").split(/\n[ \t]*\n+/)) {
+      for (const line of paragraph.split("\n")) {
+        let from = 0;
+        for (const match of line.matchAll(new RegExp(FIGURE))) {
+          const before = line.slice(from, match.index).trim();
+          if (before) lines.push(before);
+          flush();
+          blocks.push({ kind: "figure", name: match[2]!, alt: match[1]! });
+          from = match.index + match[0].length;
+        }
+        const rest = from ? line.slice(from).trim() : line.trimEnd();
+        if (rest || !from) lines.push(rest);
+      }
+      flush();
+    }
   }
   return blocks.filter((b) => b.kind === "figure" || b.lines.some((l) => l.trim()));
 }
@@ -117,6 +125,38 @@ export function wrapLine(text: string, width: number, size: number, measure: Mea
 export interface RunLine {
   parts: { text: string; bold?: boolean; italic?: boolean }[];
   width: number;
+}
+
+/** Breaks one line of code to the width: at spaces (which stay as typed) and inside a word only when the word alone is wider. */
+export function wrapCode(text: string, width: number, size: number, measure: Measure): string[] {
+  if (!text) return [""];
+  const out: string[] = [];
+  let line = "";
+  const put = (piece: string) => {
+    if (measure(line + piece, size) <= width) {
+      line += piece;
+      return;
+    }
+    if (/^\s+$/.test(piece)) {
+      // the break falls on spaces: they stay at the end of the line they were on, or go if there is nothing to hold them
+      if (line) out.push(line.trimEnd());
+      line = "";
+      return;
+    }
+    if (line) out.push(line.trimEnd());
+    line = "";
+    // a word wider than the line is cut where it no longer fits
+    for (const ch of piece) {
+      if (line && measure(line + ch, size) > width) {
+        out.push(line);
+        line = "";
+      }
+      line += ch;
+    }
+  };
+  for (const piece of text.split(/(\s+)/)) if (piece) put(piece);
+  if (line) out.push(line);
+  return out;
 }
 
 /**
@@ -197,9 +237,9 @@ export interface BookText {
   missing: (alt: string) => string;
 }
 
-export type Role = "title" | "note" | "heading" | "body" | "missing" | "quote" | "formula";
+export type Role = "title" | "note" | "heading" | "body" | "missing" | "quote" | "formula" | "code";
 /** A piece of text set at a place; `bold` and `italic` are there only when the text has that look (the font has no such letters: the writer thickens and slants the plain ones). */
-export type Item = { kind: "text"; x: number; y: number; text: string; size: number; role: Role; bold?: boolean; italic?: boolean } | { kind: "image"; x: number; y: number; width: number; height: number; name: string };
+export type Item = { kind: "text"; x: number; y: number; text: string; size: number; role: Role; bold?: boolean; italic?: boolean } | { kind: "image"; x: number; y: number; width: number; height: number; name: string } | { kind: "box"; x: number; y: number; width: number; height: number };
 export interface LaidPage {
   items: Item[];
 }
@@ -255,6 +295,41 @@ export function layoutBook(book: BookText, format: PageFormat, measure: Measure,
       }
       y += step;
     });
+  };
+  /**
+   * A block of code: every line as typed (the spaces at its start keep their width, a long line breaks where a space is or, failing that,
+   * inside a word) on a grey ground, one ground for each sheet the block stands on. The letters are those of the text: the font has no
+   * fixed width, so the columns do not line up as in an editor, and the colours of the editor are not carried over.
+   */
+  const setCode = (codeLines: string[]) => {
+    const size = style.body * 0.9;
+    const step = size * style.leading;
+    const pad = 5;
+    const column = size * 0.6;
+    let sheet = current();
+    let from = y;
+    const closeGround = (to: number) => {
+      if (to > from) sheet.items.unshift({ kind: "box", x: left - pad, y: from - pad / 2, width: width + 2 * pad, height: to - from + pad });
+    };
+    const trimmed = [...codeLines];
+    while (trimmed.length && !trimmed[trimmed.length - 1]!.trim()) trimmed.pop();
+    while (trimmed.length && !trimmed[0]!.trim()) trimmed.shift();
+    for (const line of trimmed) {
+      const text = line.trimEnd();
+      const indent = Math.min(text.length - text.trimStart().length, 40) * column;
+      for (const piece of wrapCode(text.trimStart(), width - 2 * pad - indent, size, measure)) {
+        if (!room(step + pad) && y > top) {
+          closeGround(y);
+          newSheet();
+          sheet = current();
+          from = y;
+        }
+        if (piece) current().items.push({ kind: "text", x: left + indent, y, text: piece, size, role: "code" });
+        y += step;
+      }
+    }
+    closeGround(y);
+    gap(pad);
   };
   /** The lines of a paragraph, each read for what it is: a heading, an item of a list, a quote, a block formula (`$$` … `$$`), or text with bold, italic and formulas in it. */
   const setBlockLines = (lines: string[]) => {
@@ -321,6 +396,11 @@ export function layoutBook(book: BookText, format: PageFormat, measure: Measure,
       setLines([book.pageLabel(page.page)], style.heading, "heading");
     }
     for (const block of blocks) {
+      if (block.kind === "code") {
+        gap(style.body * style.paragraphGap);
+        setCode(block.lines);
+        continue;
+      }
       if (block.kind === "lines") {
         gap(style.body * style.paragraphGap);
         setBlockLines(block.lines);

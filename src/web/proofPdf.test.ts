@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { inlineRuns } from "../shared/markup";
-import { blocksOf, DEFAULT_STYLE, layoutBook, PAGE_FORMATS, pageFormatName, wrapLine, wrapRuns, type BookText, type Item, type Measure, type PageFormat } from "./proofPdf";
+import { blocksOf, DEFAULT_STYLE, layoutBook, PAGE_FORMATS, pageFormatName, wrapCode, wrapLine, wrapRuns, type BookText, type Item, type Measure, type PageFormat } from "./proofPdf";
 
 /** Every character is half its size wide: a font that needs no file, so a line of 10 characters at size 10 is 50 points. */
 const measure: Measure = (text, size) => text.length * size * 0.5;
@@ -239,4 +239,37 @@ test("the look of a formula is not printed as LaTeX: a bold one is set bold, and
   expect(block.bold).toBe(true);
   expect(items.some((i) => /boldsymbol|Large|huge|<br/.test(i.text))).toBe(false);
   expect(blocksOf("а\n\n<br />\n\nб")).toEqual([{ kind: "lines", lines: ["а"] }, { kind: "lines", lines: ["б"] }]);
+});
+
+test("a block of code is kept whole in the blocks, set line by line on a ground of its own, and never read for marks", () => {
+  const text = "Перед.\n\n```python\ndef f(x):\n\n    return **x** * $5\n```\n\nПосле.";
+  expect(blocksOf(text)).toEqual([
+    { kind: "lines", lines: ["Перед."] },
+    { kind: "code", lines: ["def f(x):", "", "    return **x** * $5"] },
+    { kind: "lines", lines: ["После."] },
+  ]);
+  const sheets = layoutBook(book({ pages: [{ page: 1, text }] }), SHEET, measure);
+  const items = sheets.flatMap((p) => p.items);
+  const ret = items.find((i) => i.kind === "text" && i.text === "return **x** * $5") as Extract<Item, { kind: "text" }>;
+  expect(ret.role).toBe("code");
+  const def = items.find((i) => i.kind === "text" && i.text === "def f(x):") as Extract<Item, { kind: "text" }>;
+  expect(ret.x).toBeGreaterThan(def.x); // the spaces at the start of a line keep their width
+  const ground = items.find((i) => i.kind === "box");
+  expect(ground).toBeDefined();
+  expect(items.some((i) => i.kind === "text" && /```|python/.test(i.text))).toBe(false);
+});
+
+test("a long block of code goes over to the next sheet with a ground on each, and a long line breaks inside the margins", () => {
+  const lines = Array.from({ length: 40 }, (_, i) => `line_${i} = compute(${"argument_".repeat(i % 5 === 0 ? 12 : 1)})`);
+  const sheets = layoutBook(book({ pages: [{ page: 1, text: "```\n" + lines.join("\n") + "\n```" }] }), SHEET, measure);
+  expect(sheets.length).toBeGreaterThan(1);
+  for (const sheet of sheets) {
+    expect(sheet.items.some((i) => i.kind === "box")).toBe(true);
+    for (const item of sheet.items) {
+      if (item.kind === "box") expect(item.y + item.height).toBeLessThanOrEqual(SHEET.height - SHEET.margin + 6);
+      if (item.kind === "text" && item.role === "code") expect(item.x + measure(item.text, item.size)).toBeLessThanOrEqual(SHEET.width - SHEET.margin + 0.01);
+    }
+  }
+  expect(wrapCode("a  b", 100, 10, measure)).toEqual(["a  b"]);
+  expect(wrapCode("x".repeat(30), 50, 10, measure).every((l) => measure(l, 10) <= 50)).toBe(true);
 });

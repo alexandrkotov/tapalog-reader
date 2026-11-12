@@ -7,7 +7,9 @@ import { defaultValueCtx, Editor, editorViewCtx, rootCtx, serializerCtx } from "
 import type { Ctx } from "@milkdown/kit/ctx";
 import { history, redoCommand, undoCommand } from "@milkdown/kit/plugin/history";
 import {
+  codeBlockSchema,
   commonmark,
+  createCodeBlockCommand,
   hardbreakSchema,
   imageSchema,
   toggleEmphasisCommand,
@@ -19,11 +21,13 @@ import {
   wrapInHeadingCommand,
   wrapInOrderedListCommand,
 } from "@milkdown/kit/preset/commonmark";
+import { exitCode } from "@milkdown/kit/prose/commands";
 import type { Node } from "@milkdown/kit/prose/model";
 import { Plugin, Selection } from "@milkdown/kit/prose/state";
 import { $prose, $view, callCommand, insert, replaceAll } from "@milkdown/kit/utils";
 import { katexOptionsCtx, math, mathBlockSchema, mathInlineSchema } from "@milkdown/plugin-math";
 import katex from "katex";
+import { codeBlockView, codeColours, type CodeStrings } from "./codeBlocks";
 import { fromEditor, toEditor } from "./textRules";
 
 /** A formula as it is asked for and edited: LaTeX, and whether it stands in a paragraph of its own. */
@@ -33,7 +37,7 @@ export interface Formula {
 }
 
 /** What the toolbar can do to the text at the cursor. */
-export type Format = "bold" | "italic" | "code" | "heading" | "bullet" | "ordered" | "quote";
+export type Format = "bold" | "italic" | "code" | "codeblock" | "heading" | "bullet" | "ordered" | "quote";
 
 export interface EditorOptions {
   /** Where the picture written as `images/p008-1.png` really is. */
@@ -42,6 +46,8 @@ export interface EditorOptions {
   onChange: (text: string) => void;
   /** Asks for a formula (a click on one that is there edits it); `null` leaves it as it is, `"delete"` takes it out. */
   askFormula: (current: Formula) => Promise<Formula | "delete" | null>;
+  /** The words in the corner of a block of code. */
+  codeStrings: CodeStrings;
 }
 
 export interface PageEditor {
@@ -101,9 +107,17 @@ async function create(root: HTMLElement, text: string, options: EditorOptions): 
           });
           return true;
         },
-        // a line break in this text is a plain one, not the "hard break" that is written with a backslash
         handleKeyDown: (view, event) => {
-          if (event.key !== "Enter" || !event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false;
+          if (event.key !== "Enter" || event.altKey) return false;
+          if (view.state.selection.$from.parent.type.name === "code_block") {
+            // in a block of code Enter is a new line of the code, Shift+Enter the same, and Ctrl+Enter leaves the block
+            if (event.ctrlKey || event.metaKey) return exitCode(view.state, view.dispatch);
+            if (!event.shiftKey) return false;
+            view.dispatch(view.state.tr.insertText("\n").scrollIntoView());
+            return true;
+          }
+          // a line break in this text is a plain one, not the "hard break" that is written with a backslash
+          if (!event.shiftKey || event.ctrlKey || event.metaKey) return false;
           view.dispatch(view.state.tr.replaceSelectionWith(hardbreakSchema.type(ctx).create({ isInline: true })).scrollIntoView());
           return true;
         },
@@ -140,6 +154,10 @@ async function create(root: HTMLElement, text: string, options: EditorOptions): 
     return { dom: br };
   });
 
+  // a block of code has the language in its corner and is coloured
+  const codeBlocks = $view(codeBlockSchema.node, () => codeBlockView(() => options.codeStrings));
+  const colours = $prose(() => codeColours());
+
   const made = await Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, root);
@@ -151,6 +169,8 @@ async function create(root: HTMLElement, text: string, options: EditorOptions): 
     .use(math)
     .use(pictures)
     .use(breaks)
+    .use(codeBlocks)
+    .use(colours)
     .use(watch)
     .create();
   editor = made;
@@ -187,6 +207,11 @@ async function create(root: HTMLElement, text: string, options: EditorOptions): 
           // a heading of the third level (the pages' own titles are above it), or a plain paragraph again
           const inHeading = ctx.get(editorViewCtx).state.selection.$from.parent.type.name === "heading";
           return callCommand(inHeading ? turnIntoTextCommand.key : wrapInHeadingCommand.key, inHeading ? undefined : 3)(ctx);
+        }
+        if (format === "codeblock") {
+          // a block of code, or a plain paragraph again
+          const inCode = ctx.get(editorViewCtx).state.selection.$from.parent.type.name === "code_block";
+          return callCommand(inCode ? turnIntoTextCommand.key : createCodeBlockCommand.key)(ctx);
         }
         const commands = { bold: toggleStrongCommand, italic: toggleEmphasisCommand, code: toggleInlineCodeCommand, bullet: wrapInBulletListCommand, ordered: wrapInOrderedListCommand, quote: wrapInBlockquoteCommand };
         return callCommand(commands[format].key)(ctx);

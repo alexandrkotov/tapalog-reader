@@ -478,6 +478,7 @@ e2e("the editor is made only for the pages near the window, and a page left far 
 e2e("an empty paragraph made with Enter twice is not kept in the text as a line of <br />", async () => {
   const page = await ctx.newPage();
   const errors = watchErrors(page);
+  await ctx.request.put(`${inst.url}/api/admin/ocr/${id}/edit/3`, { data: { text: "Страница три" }, headers: { Origin: inst.url } }); // a known text, whatever the tests before left
   await openProof(page);
   await clickInto(page, `${editor(3)} p`);
   await page.keyboard.press("Control+End");
@@ -490,6 +491,62 @@ e2e("an empty paragraph made with Enter twice is not kept in the text as a line 
   expect(text).not.toContain("<br");
   expect(text).toMatch(/[^\n]\n\nпосле пустого$/);
   expect(await held(3)).not.toContain("<br");
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+e2e("a block of code is made with a button, its language chosen from a list that can be searched, coloured, and kept in the text as a fence", async () => {
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await ctx.request.put(`${inst.url}/api/admin/ocr/${id}/edit/3`, { data: { text: "Страница три" }, headers: { Origin: inst.url } }); // a known text, whatever the tests before left
+  await openProof(page);
+  await clickInto(page, `${editor(3)} p`);
+  await page.keyboard.press("Control+End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("x = 1");
+  expect(await page.getAttribute(".proof-tool-codeblock", "title")).toContain("Block of code");
+  await page.click(".proof-tool-codeblock");
+  await page.waitForSelector(`${editor(3)} .code-block`);
+  expect(await page.textContent(`${editor(3)} .code-lang`)).toBe("Plain text");
+
+  // the list: a search narrows it, Enter takes the first, and the language goes into the fence
+  await page.click(`${editor(3)} .code-lang`);
+  await page.waitForSelector(".code-pop .code-find");
+  expect(await page.locator(".code-pop .code-item").count()).toBeGreaterThan(20);
+  await page.fill(".code-find", "visual");
+  expect(await page.locator(".code-pop .code-item").allTextContents()).toEqual(["Visual Basic"]);
+  await page.fill(".code-find", "py");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".code-pop", { state: "detached" });
+  expect(await page.textContent(`${editor(3)} .code-lang`)).toBe("Python");
+  await page.waitForFunction((sel) => (document.querySelector(sel) as HTMLTextAreaElement).value.endsWith("```python\nx = 1\n```"), textarea(3));
+
+  // Enter is a new line of the code, and the code is coloured by what it is
+  await page.click(`${editor(3)} pre code`);
+  await page.keyboard.press("Control+End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("def f(): return 'a'  # note");
+  await page.waitForSelector(`${editor(3)} .code-block .tok-keyword`);
+  await page.waitForSelector(`${editor(3)} .code-block .tok-string`);
+  await page.waitForSelector(`${editor(3)} .code-block .tok-comment`);
+  expect(await page.locator(`${editor(3)} .code-block`).count()).toBe(1);
+  await page.waitForFunction((sel) => (document.querySelector(sel) as HTMLTextAreaElement).value.endsWith("```python\nx = 1\ndef f(): return 'a'  # note\n```"), textarea(3));
+  const keyword = await page.evaluate((sel) => getComputedStyle(document.querySelector(sel + " .code-block .tok-keyword")!).color, editor(3));
+  const body = await page.evaluate((sel) => getComputedStyle(document.querySelector(sel + " .code-block")!).color, editor(3));
+  expect(keyword).not.toBe(body);
+
+  // Ctrl+Enter leaves the block, and the text goes on below it
+  await page.keyboard.press("Control+Enter");
+  await page.keyboard.type("после кода");
+  await heldIs(3, (await page.inputValue(textarea(3))))();
+  expect(await page.inputValue(textarea(3))).toMatch(/```python\nx = 1\ndef f\(\): return 'a' {2}# note\n```\n\nпосле кода$/);
+
+  // the Markdown view holds the same fence, and a block the editor is given with a language it does not list keeps the name
+  await page.click(".proof-source");
+  await page.fill(textarea(3), "до\n\n```klingon\nqapla'\n```\n\nпосле");
+  await page.click(".proof-visual");
+  await page.waitForFunction((sel) => document.querySelector(sel + " .code-lang")?.textContent === "klingon", editor(3));
+  expect(await page.locator(`${editor(3)} .code-block span[class^='tok-']`).count()).toBe(0);
   expect(errors).toEqual([]);
   await page.close();
 });

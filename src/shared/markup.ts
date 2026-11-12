@@ -6,13 +6,69 @@
 
 const SPACE = /\s/;
 
+/** A stretch of a text: ordinary lines, or a block of code between fences (``` or ~~~). `raw` is the stretch exactly as it stands in the text. */
+export interface Stretch {
+  code: boolean;
+  raw: string;
+  /** For code: the language named after the opening fence (empty when none), and the lines between the fences. */
+  lang: string;
+  body: string;
+}
+
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+/**
+ * Cuts a text into stretches of ordinary lines and blocks of code. A block is opened by a line of three or more backticks (or
+ * tildes) with the language after them and closed by a line of at least as many of the same sign; one that is never closed runs to the
+ * end, as in CommonMark. Inside a block nothing is a mark: no `**`, no `$`, no `<br />`. Joined with "\n", the `raw` of the stretches
+ * give the text back exactly.
+ */
+export function splitFences(text: string): Stretch[] {
+  const lines = text.split("\n");
+  const out: Stretch[] = [];
+  let plain: string[] = [];
+  const flush = () => {
+    if (plain.length) out.push({ code: false, raw: plain.join("\n"), lang: "", body: "" });
+    plain = [];
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const open = FENCE_OPEN.exec(lines[i]!);
+    if (!open || (open[1]![0] === "`" && open[2]!.includes("`"))) {
+      plain.push(lines[i]!);
+      continue;
+    }
+    flush();
+    const sign = open[1]![0]!;
+    const need = open[1]!.length;
+    const close = new RegExp(`^ {0,3}\\${sign}{${need},}[ \\t]*$`);
+    const raw = [lines[i]!];
+    const body: string[] = [];
+    while (++i < lines.length) {
+      raw.push(lines[i]!);
+      if (close.test(lines[i]!)) break;
+      body.push(lines[i]!);
+    }
+    out.push({ code: true, raw: raw.join("\n"), lang: open[2]!.trim().split(/\s+/)[0] ?? "", body: body.join("\n") });
+  }
+  flush();
+  return out;
+}
+
+/** Applies `change` to the lines outside blocks of code only. */
+export function outsideCode(text: string, change: (plain: string) => string): string {
+  if (!text.includes("```") && !text.includes("~~~")) return change(text);
+  return splitFences(text)
+    .map((s) => (s.code ? s.raw : change(s.raw)))
+    .join("\n");
+}
+
 /**
  * An empty paragraph that the editor writes as a line of `<br />` (and that older pages may still hold): it carries nothing, so the
- * line goes, and the blank lines around it become one.
+ * line goes, and the blank lines around it become one. Code is left as it is.
  */
 export function dropBreaks(text: string): string {
   if (!/<br\s*\/?>/i.test(text)) return text;
-  return text.replace(/^[ \t]*<br\s*\/?>[ \t]*$/gim, "").replace(/\n{3,}/g, "\n\n");
+  return outsideCode(text, (plain) => plain.replace(/^[ \t]*<br\s*\/?>[ \t]*$/gim, "").replace(/\n{3,}/g, "\n\n"));
 }
 
 /**
@@ -176,6 +232,12 @@ function blockFormulas(text: string): { start: number; end: number; latex: strin
  */
 export function plainText(raw: string, formulas: "drop" | "keep"): string {
   const text = dropBreaks(raw);
+  // a block of code is words as they are typed (the fences and the name of the language are no words)
+  const pieces = splitFences(text).map((s) => (s.code ? s.body : plainStretch(s.raw, formulas)));
+  return pieces.join("\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function plainStretch(text: string, formulas: "drop" | "keep"): string {
   let out = "";
   let from = 0;
   for (const block of blockFormulas(text)) {
@@ -183,8 +245,7 @@ export function plainText(raw: string, formulas: "drop" | "keep"): string {
     out += formulas === "keep" ? block.latex : "";
     from = block.end;
   }
-  out += plainLines(text.slice(from), formulas);
-  return out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return out + plainLines(text.slice(from), formulas);
 }
 
 function plainLines(text: string, formulas: "drop" | "keep"): string {

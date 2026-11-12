@@ -3,13 +3,17 @@
  * the recognizer writes plain lines (a single line break is a line break) and the figures cut from the scan, while a person may
  * add bold, headings and formulas. These rules keep what the editor does to the text from showing: nothing here touches the page.
  */
-import { dropBreaks, scanDollars } from "../../shared/markup";
+import { dropBreaks, outsideCode, scanDollars } from "../../shared/markup";
 
 /**
  * Escapes every single `$` that does not belong to a formula, so a price ("costs $5 and $6") is not drawn as one.
  * `$$` blocks and a `$` already escaped are left as they are.
  */
 export function protectDollars(text: string): string {
+  return outsideCode(text, protectPlain);
+}
+
+function protectPlain(text: string): string {
   return text
     .split(/(\n[ \t]*\n+)/)
     .map((part, i) => (i % 2 ? part : protectParagraph(part)))
@@ -41,7 +45,8 @@ function protectLine(text: string): string {
  * not be read as marks (`3 \* 4`, `\[1]`, a price's `\$`) are plain again: the text is read by people, not by a Markdown program.
  */
 export function fromEditor(markdown: string): string {
-  return dropBreaks(markdown.replace(/\\\n/g, "\n").replace(/\\([*_[\]$])/g, "$1")).replace(/^\n+|\n+$/g, "");
+  const plain = (text: string) => text.replace(/\\\n/g, "\n").replace(/\\([*_[\]$])/g, "$1");
+  return dropBreaks(outsideCode(markdown, plain)).replace(/^\n+|\n+$/g, ""); // a block of code is kept exactly as it was written
 }
 
 /** The text as the editor is given it (an empty paragraph, a line of `<br />` that older pages may hold, is not shown as one). */

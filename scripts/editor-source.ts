@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
-const sources = ["src/web/editor/bundle.ts", "src/web/editor/textRules.ts", "src/shared/markup.ts", "scripts/gen-editor-assets.ts"];
-const packages = ["@milkdown/kit", "@milkdown/plugin-math", "katex"];
+const sources = ["src/web/editor/bundle.ts", "src/web/editor/codeBlocks.ts", "src/web/editor/textRules.ts", "src/shared/markup.ts", "scripts/gen-editor-assets.ts"];
+const packages = ["@milkdown/kit", "@milkdown/plugin-math", "katex", "@codemirror/legacy-modes"];
 
 /**
  * A fingerprint of what the built editor in assets/editor/ is made from: its sources and the versions of the libraries in it.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dropBreaks, formulaLook, inlineRuns, plainText, scanDollars, withLook } from "./markup";
+import { dropBreaks, formulaLook, inlineRuns, plainText, scanDollars, splitFences, withLook } from "./markup";
 
 describe("the dollars of a line", () => {
   test("a formula and a price are told apart", () => {
@@ -91,5 +91,34 @@ describe("an empty paragraph", () => {
   test("plain text for the index and for a file does not hold it", () => {
     expect(plainText("раз\n\n<br />\n\nдва", "drop")).toBe("раз\n\nдва");
     expect(plainText("раз\n\n<br />\n\nдва", "keep")).toBe("раз\n\nдва");
+  });
+});
+
+describe("blocks of code", () => {
+  const page = "Текст с **жирным**.\n\n```python\nx = 1  # **не жирное**\n\nprint(\"$5\")\n```\n\nКонец $a$.";
+
+  test("a block is told from the lines around it, with its language, and the pieces give the text back", () => {
+    const parts = splitFences(page);
+    expect(parts.map((p) => p.code)).toEqual([false, true, false]);
+    expect(parts[1]).toMatchObject({ lang: "python", body: 'x = 1  # **не жирное**\n\nprint("$5")' });
+    expect(parts.map((p) => p.raw).join("\n")).toBe(page);
+    expect(splitFences("```\nbez yazyka\n```")[0]).toMatchObject({ code: true, lang: "" });
+    expect(splitFences("~~~js\nx\n~~~")[0]).toMatchObject({ code: true, lang: "js", body: "x" });
+  });
+
+  test("a fence is closed by one of the same sign and at least the same length, and one left open runs to the end", () => {
+    expect(splitFences("````\n```\nвнутри\n```\n````\nпосле")).toHaveLength(2);
+    expect(splitFences("```js\nне закрыт\nещё строка")[0]).toMatchObject({ code: true, body: "не закрыт\nещё строка" });
+    expect(splitFences("a ```не fence``` b")).toHaveLength(1);
+    expect(splitFences("``` с `обратной` кавычкой")[0]!.code).toBe(false);
+  });
+
+  test("nothing in a block is a mark: the plain text keeps its code as it is and drops only the fences", () => {
+    expect(plainText(page, "drop")).toBe('Текст с жирным.\n\nx = 1  # **не жирное**\n\nprint("$5")\n\nКонец .');
+    expect(plainText(page, "keep")).toBe('Текст с жирным.\n\nx = 1  # **не жирное**\n\nprint("$5")\n\nКонец a.');
+  });
+
+  test("a line of <br /> in code stays, and outside it goes", () => {
+    expect(dropBreaks("а\n\n<br />\n\nб\n\n```html\n<br />\n```")).toBe("а\n\nб\n\n```html\n<br />\n```");
   });
 });

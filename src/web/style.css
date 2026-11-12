@@ -7,6 +7,7 @@
   --accent: #2459d6;
   --hover: #e8ebf0;
   --selected: #dbe6fb;
+  --tok-keyword: #a626a4; --tok-string: #2a7a2a; --tok-number: #a4570c; --tok-comment: #6a737d; --tok-type: #1f6fb2; --tok-name: #c2410c; --tok-meta: #7c5a00;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -19,6 +20,7 @@
     --accent: #7aa2ff;
     --hover: #262c35;
     --selected: #243656;
+    --tok-keyword: #d69cf0; --tok-string: #8fd18f; --tok-number: #f0b27a; --tok-comment: #8b95a1; --tok-type: #7ab8f0; --tok-name: #f09a6a; --tok-meta: #d9c177;
     color-scheme: dark;
   }
 }
@@ -31,6 +33,7 @@
   --accent: #7aa2ff;
   --hover: #262c35;
   --selected: #243656;
+  --tok-keyword: #d69cf0; --tok-string: #8fd18f; --tok-number: #f0b27a; --tok-comment: #8b95a1; --tok-type: #7ab8f0; --tok-name: #f09a6a; --tok-meta: #d9c177;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -183,6 +186,26 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .proof-editor .ProseMirror code { padding: 0 4px; border-radius: 4px; background: var(--hover); font-size: 0.92em; }
 .proof-editor .ProseMirror pre { margin: 0 0 0.6em; padding: 8px 10px; border-radius: 6px; background: var(--hover); overflow: auto; }
 .proof-editor .ProseMirror pre code { padding: 0; background: none; }
+.proof-editor .ProseMirror .code-block { position: relative; margin: 0 0 0.6em; border-radius: 6px; background: var(--hover); }
+.proof-editor .ProseMirror .code-block pre { margin: 0; padding: 26px 10px 8px; background: none; font: 0.92em/1.45 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; }
+.code-head { position: absolute; top: 3px; right: 6px; left: 6px; display: flex; justify-content: flex-end; user-select: none; }
+.code-lang { padding: 1px 8px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--muted); font: 12px system-ui, sans-serif; cursor: pointer; }
+.code-lang:hover, .code-lang:focus-visible { border-color: var(--border); background: var(--bg); color: var(--text); }
+.code-pop { position: absolute; top: 24px; right: 0; z-index: 20; width: 200px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-bg); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); }
+.code-find { width: 100%; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: 13px system-ui, sans-serif; }
+.code-find:focus { outline: none; border-color: var(--accent); }
+.code-list { max-height: 220px; overflow-y: auto; margin-top: 4px; display: flex; flex-direction: column; }
+.code-item { padding: 4px 8px; border: 0; border-radius: 5px; background: none; color: var(--text); font: 13px system-ui, sans-serif; text-align: left; cursor: pointer; }
+.code-item:hover, .code-item.on { background: var(--hover); }
+.code-item.current { color: var(--accent); font-weight: 600; }
+.code-none { padding: 6px 8px; color: var(--muted); font-size: 13px; }
+.tok-keyword { color: var(--tok-keyword); }
+.tok-string { color: var(--tok-string); }
+.tok-number { color: var(--tok-number); }
+.tok-comment { color: var(--tok-comment); font-style: italic; }
+.tok-type { color: var(--tok-type); }
+.tok-name { color: var(--tok-name); }
+.tok-meta { color: var(--tok-meta); }
 .proof-editor .ProseMirror hr { border: 0; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .proof-editor .ProseMirror img { max-width: 100%; height: auto; vertical-align: middle; border-radius: 4px; }
 .proof-editor .ProseMirror img.ProseMirror-selectednode { outline: 2px solid var(--accent); }

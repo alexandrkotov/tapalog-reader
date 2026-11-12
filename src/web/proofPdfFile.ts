@@ -162,6 +162,7 @@ export async function buildBookPdf(book: PdfBook, opts: { format: PageFormatName
     missing: rgb(0.45, 0.45, 0.45),
     quote: rgb(0.3, 0.3, 0.3),
     formula: rgb(0, 0, 0),
+    code: rgb(0.1, 0.1, 0.1),
   };
   for (const [index, sheet] of laid.entries()) {
     stop();
@@ -174,6 +175,8 @@ export async function buildBookPdf(book: PdfBook, opts: { format: PageFormatName
         if (item.bold) page.pushOperators(lib.pushGraphicsState(), lib.setTextRenderingMode(lib.TextRenderingMode.FillAndOutline), lib.setLineWidth(item.size * BOLD_STROKE), lib.setStrokingColor(color));
         page.drawText(item.text, { x: item.x, y: format.height - item.y - item.size, size: item.size, font, color, ...(item.italic ? { xSkew: lib.degrees(12) } : {}) });
         if (item.bold) page.pushOperators(lib.popGraphicsState());
+      } else if (item.kind === "box") {
+        page.drawRectangle({ x: item.x, y: format.height - item.y - item.height, width: item.width, height: item.height, color: rgb(0.93, 0.94, 0.95) });
       } else {
         page.drawImage(prepared.get(item.name)!.image, { x: item.x, y: format.height - item.y - item.height, width: item.width, height: item.height });
       }
