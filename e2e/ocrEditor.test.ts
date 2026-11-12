@@ -550,3 +550,41 @@ e2e("a block of code is made with a button, its language chosen from a list that
   expect(errors).toEqual([]);
   await page.close();
 });
+
+e2e("every undo takes back something the person can see: the empty paragraph that Enter made does not cost a click, and Enter in an empty paragraph makes no more of them", async () => {
+  await ctx.request.put(`${inst.url}/api/admin/ocr/${id}/edit/3`, { data: { text: "Страница три" }, headers: { Origin: inst.url } });
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await openProof(page);
+  // the script of the editor is asked for with the program's version, so an old copy kept by the browser is never run beside a new page
+  expect(await page.evaluate(() => document.querySelector<HTMLScriptElement>("script[data-editor='js']")?.getAttribute("src"))).toMatch(/^\/editor\/editor\.js\?v=\d+\.\d+\.\d+/);
+  await clickInto(page, `${editor(3)} p`);
+  await page.keyboard.press("Control+End");
+  for (const word of ["аааа", "бббб", "вввв"]) {
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(650); // a new change of the history, as a person pauses
+    await page.keyboard.type(word);
+    await page.waitForTimeout(650);
+  }
+  expect(await page.inputValue(textarea(3))).toBe("Страница три\n\nаааа\n\nбббб\n\nвввв");
+  await page.click(".proof-tool-undo");
+  expect(await page.inputValue(textarea(3))).toBe("Страница три\n\nаааа\n\nбббб");
+  await page.click(".proof-tool-undo"); // not a click for the empty paragraph that is left: the next word goes
+  expect(await page.inputValue(textarea(3))).toBe("Страница три\n\nаааа");
+  await page.keyboard.press("Control+z"); // the keys do the same
+  expect(await page.inputValue(textarea(3))).toBe("Страница три");
+  await page.click(".proof-tool-redo");
+  expect(await page.inputValue(textarea(3))).toBe("Страница три\n\nаааа");
+  await page.keyboard.press("Control+Shift+Z");
+  expect(await page.inputValue(textarea(3))).toBe("Страница три\n\nаааа\n\nбббб");
+
+  // Enter in an empty paragraph does nothing, so no gaps that the saved text would not have
+  await page.keyboard.press("Control+End");
+  for (let i = 0; i < 4; i++) await page.keyboard.press("Enter");
+  const empty = await page.evaluate((sel) => [...document.querySelectorAll(sel + " > p")].filter((p) => !p.textContent).length, editor(3));
+  expect(empty).toBe(1);
+  await page.keyboard.type("гггг");
+  expect(await page.inputValue(textarea(3))).toBe("Страница три\n\nаааа\n\nбббб\n\nгггг");
+  expect(errors).toEqual([]);
+  await page.close();
+});

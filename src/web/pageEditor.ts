@@ -1,3 +1,4 @@
+import { versioned } from "./aboutWindow";
 import type { EditorOptions, Format, Formula, PageEditor } from "./editor/bundle";
 
 export type { EditorOptions, Format, Formula, PageEditor };
@@ -16,24 +17,29 @@ let loading: Promise<Factory> | null = null;
 
 /** The editor, fetched once; when that fails the next try fetches again. */
 function loadEditor(): Promise<Factory> {
-  loading ??= new Promise<Factory>((resolve, reject) => {
-    const style = document.createElement("link");
-    style.rel = "stylesheet";
-    style.href = "/editor/katex.css";
-    document.head.append(style);
-    const script = document.createElement("script");
-    script.src = "/editor/editor.js";
-    script.onload = () => {
-      const found = (globalThis as unknown as { TapalogEditor?: Factory }).TapalogEditor;
-      if (found) resolve(found);
-      else reject(new Error("the editor did not start"));
-    };
-    script.onerror = () => reject(new Error("the editor could not be loaded"));
-    document.head.append(script);
-  }).catch((e: unknown) => {
+  loading ??= (async () => {
+    const [css, js] = await Promise.all([versioned("/editor/katex.css"), versioned("/editor/editor.js")]);
+    return new Promise<Factory>((resolve, reject) => {
+      const style = document.createElement("link");
+      style.rel = "stylesheet";
+      style.href = css;
+      style.dataset.editor = "css";
+      document.head.append(style);
+      const script = document.createElement("script");
+      script.src = js;
+      script.dataset.editor = "js";
+      script.onload = () => {
+        const found = (globalThis as unknown as { TapalogEditor?: Factory }).TapalogEditor;
+        if (found) resolve(found);
+        else reject(new Error("the editor did not start"));
+      };
+      script.onerror = () => reject(new Error("the editor could not be loaded"));
+      document.head.append(script);
+    });
+  })().catch((e: unknown) => {
     loading = null;
-    document.querySelector('link[href="/editor/katex.css"]')?.remove();
-    document.querySelector('script[src="/editor/editor.js"]')?.remove();
+    document.querySelector('link[data-editor="css"]')?.remove();
+    document.querySelector('script[data-editor="js"]')?.remove();
     throw e;
   });
   return loading;

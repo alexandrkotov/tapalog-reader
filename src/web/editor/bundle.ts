@@ -22,6 +22,7 @@ import {
   wrapInOrderedListCommand,
 } from "@milkdown/kit/preset/commonmark";
 import { exitCode } from "@milkdown/kit/prose/commands";
+import { redoDepth, undoDepth } from "@milkdown/kit/prose/history";
 import type { Node } from "@milkdown/kit/prose/model";
 import { Plugin, Selection } from "@milkdown/kit/prose/state";
 import { $prose, $view, callCommand, insert, replaceAll } from "@milkdown/kit/utils";
@@ -76,6 +77,20 @@ function formulaNode(ctx: Ctx, { latex, block }: Formula): Node {
 
 const textOf = (ctx: Ctx): string => fromEditor(ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc));
 
+/**
+ * One step back (or forth) in the history, as far as the person can tell: a step that leaves the text of the page as it was (an empty
+ * paragraph made or taken away, which the text does not keep) is not one they see, so it goes on to the next that changes the text.
+ */
+function stepHistory(ctx: Ctx, redo: boolean): void {
+  const view = ctx.get(editorViewCtx);
+  const before = textOf(ctx);
+  const command = redo ? redoCommand : undoCommand;
+  while ((redo ? redoDepth : undoDepth)(view.state) > 0) {
+    callCommand(command.key)(ctx);
+    if (textOf(ctx) !== before) break;
+  }
+}
+
 async function create(root: HTMLElement, text: string, options: EditorOptions): Promise<PageEditor> {
   let quiet = true; // nothing is reported while the editor is being filled
   let editor: Editor | null = null;
@@ -108,7 +123,16 @@ async function create(root: HTMLElement, text: string, options: EditorOptions): 
           return true;
         },
         handleKeyDown: (view, event) => {
+          // Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y go back and forth by the changes a person sees, as the buttons do
+          if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.isComposing && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")) {
+            const redo = event.key.toLowerCase() === "y" || event.shiftKey;
+            stepHistory(ctx, redo);
+            return true;
+          }
           if (event.key !== "Enter" || event.altKey) return false;
+          const { $from, empty } = view.state.selection;
+          // an empty paragraph of its own is not kept in the text, so Enter in one makes no more of them (they would only show as gaps that are gone when the page is opened again)
+          if (empty && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.isComposing && $from.depth === 1 && $from.parent.type.name === "paragraph" && $from.parent.content.size === 0) return true;
           if (view.state.selection.$from.parent.type.name === "code_block") {
             // in a block of code Enter is a new line of the code, Shift+Enter the same, and Ctrl+Enter leaves the block
             if (event.ctrlKey || event.metaKey) return exitCode(view.state, view.dispatch);
@@ -226,11 +250,11 @@ async function create(root: HTMLElement, text: string, options: EditorOptions): 
       });
     },
     undo: () => {
-      made.action(callCommand(undoCommand.key));
+      made.action((ctx) => stepHistory(ctx, false));
       made.action((ctx) => ctx.get(editorViewCtx).focus());
     },
     redo: () => {
-      made.action(callCommand(redoCommand.key));
+      made.action((ctx) => stepHistory(ctx, true));
       made.action((ctx) => ctx.get(editorViewCtx).focus());
     },
     focus: () => made.action((ctx) => ctx.get(editorViewCtx).focus()),

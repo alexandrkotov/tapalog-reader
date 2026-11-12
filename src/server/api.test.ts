@@ -1036,6 +1036,23 @@ test("the visual editor of the text is served from a fixed list, to anybody, wit
   expect((await fetch(`${lan}/editor/`)).status).toBe(404);
 });
 
+test("the scripts of the editor and of the PDF library are asked about before each use, so an upgraded program never runs beside an old copy", async () => {
+  for (const url of [`${lan}/editor/editor.js`, `${lan}/editor/katex.css`, `${lan}/pdflib/pdf-lib.min.js`]) {
+    const first = await fetch(url);
+    expect(first.status).toBe(200);
+    expect(first.headers.get("cache-control")).toBe("no-cache");
+    const etag = first.headers.get("etag");
+    expect(etag).toMatch(/^W\/"/);
+    await first.arrayBuffer();
+    const again = await fetch(url, { headers: { "If-None-Match": etag! } });
+    expect(again.status).toBe(304);
+    expect((await again.arrayBuffer()).byteLength).toBe(0);
+    expect((await fetch(url, { headers: { "If-None-Match": 'W/"another"' } })).status).toBe(200);
+  }
+  // the letters of KaTeX are the same in every version: kept for a day
+  expect((await fetch(`${lan}/editor/fonts/KaTeX_Main-Regular.woff2`)).headers.get("cache-control")).toContain("max-age=86400");
+});
+
 test("the engine that reads pictures is served from a fixed list, to anybody, with no way to reach other files", async () => {
   for (const [name, type, least] of [["worker.min.js", "text/javascript", 10_000], ["tesseract.min.js", "text/javascript", 10_000], ["core/tesseract-core-simd-lstm.wasm.js", "text/javascript", 1_000_000], ["lang/rus.traineddata.gz", "application/octet-stream", 1_000_000], ["lang/eng.traineddata.gz", "application/octet-stream", 1_000_000]] as const) {
     const res = await fetch(`${lan}/ocr/${name}`);

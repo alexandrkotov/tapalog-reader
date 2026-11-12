@@ -1,4 +1,5 @@
 import fontUrl from "@ecm/viewer-engine/fonts/DejaVuSans.ttf";
+import { versioned } from "./aboutWindow";
 import type FontkitModule from "@pdf-lib/fontkit";
 import type * as PdfLibModule from "pdf-lib";
 import type { PDFDocument, PDFFont, PDFImage } from "pdf-lib";
@@ -18,10 +19,11 @@ type Fontkit = typeof FontkitModule;
 
 let loading: Promise<{ lib: PdfLib; fontkit: Fontkit }> | null = null;
 
-function addScript(name: string): Promise<void> {
-  return new Promise((resolve, reject) => {
+async function addScript(name: string): Promise<void> {
+  const src = await versioned(`/pdflib/${name}`);
+  await new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `/pdflib/${name}`;
+    script.src = src;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error(`${name} could not be loaded`));
     document.head.append(script);

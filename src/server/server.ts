@@ -129,12 +129,25 @@ function serveOcrAsset(req: Request): Response {
   return new Response(Bun.file(path), { headers: { "Content-Type": type, "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" } });
 }
 
+/**
+ * A file of the program's own that the page fetches by name and that changes with the program: the browser keeps it but asks before
+ * each use whether it is still the same (`ETag`, then 304 with no body). A copy kept for a day by name alone would go on running
+ * beside a newer page after the program is upgraded.
+ */
+function revalidated(req: Request, path: string, type: string): Response {
+  const file = Bun.file(path);
+  const etag = `W/"${VERSION}-${file.size}-${Math.floor(file.lastModified)}"`;
+  const headers = { "Content-Type": type, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache", ETag: etag };
+  if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
+  return new Response(file, { headers });
+}
+
 /** The scripts that write a PDF in the browser: pdf-lib and its font reader (see scripts/gen-pdflib-assets.ts). */
 function servePdflibAsset(req: Request): Response {
   const name = decodeURIComponent(new URL(req.url).pathname.slice("/pdflib/".length));
   const path = Object.hasOwn(PDFLIB_ASSETS, name) ? PDFLIB_ASSETS[name] : undefined; // a fixed list again
   if (!path) return notFound();
-  return new Response(Bun.file(path), { headers: { "Content-Type": "text/javascript", "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" } });
+  return revalidated(req, path, "text/javascript");
 }
 
 /** The visual editor of the text of a page: one script, a style sheet and fonts (see scripts/gen-editor-assets.ts). */
@@ -142,8 +155,8 @@ function serveEditorAsset(req: Request): Response {
   const name = decodeURIComponent(new URL(req.url).pathname.slice("/editor/".length));
   const path = Object.hasOwn(EDITOR_ASSETS, name) ? EDITOR_ASSETS[name] : undefined; // a fixed list again
   if (!path) return notFound();
-  const type = name.endsWith(".js") ? "text/javascript" : name.endsWith(".css") ? "text/css" : "font/woff2";
-  return new Response(Bun.file(path), { headers: { "Content-Type": type, "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" } });
+  if (name.endsWith(".woff2")) return new Response(Bun.file(path), { headers: { "Content-Type": "font/woff2", "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400" } }); // the letters of KaTeX do not change with the program
+  return revalidated(req, path, name.endsWith(".js") ? "text/javascript" : "text/css");
 }
 
 const param = (req: Bun.BunRequest, name: string) => req.params[name] ?? "";

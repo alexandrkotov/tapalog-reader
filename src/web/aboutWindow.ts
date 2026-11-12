@@ -23,6 +23,18 @@ export function aboutInfo(): Promise<About> {
   return known;
 }
 
+/**
+ * The address of a file of the program that the page adds by name (the editor, the PDF library) with the program's version after it,
+ * so that after an upgrade the browser asks for the new file instead of running the old copy it kept under the same address.
+ */
+export async function versioned(url: string): Promise<string> {
+  try {
+    return `${url}?v=${encodeURIComponent((await aboutInfo()).version)}`;
+  } catch {
+    return url;
+  }
+}
+
 const link = (href: string, text: string) => el("a", { href, textContent: text, target: "_blank", rel: "noopener noreferrer" });
 
 /** The text a reader pastes into a report of a problem. */
