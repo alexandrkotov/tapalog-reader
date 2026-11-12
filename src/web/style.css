@@ -666,3 +666,5 @@ textarea.card-input { resize: vertical; }
 .tag-manage-input { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
 .tag-manage-row .btn { height: 28px; font-size: 12px; }
 .tag-manage-status[hidden] { display: none; }
+/* the words a search found, marked on the page of the book it led to (see readers/foundMarks.ts) */
+::highlight(tapalog-found) { background-color: rgba(255, 208, 0, 0.55); color: inherit; }

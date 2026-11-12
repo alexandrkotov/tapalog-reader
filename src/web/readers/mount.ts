@@ -38,6 +38,8 @@ export interface ReaderSpec {
   display?: Display;
   onDisplay?(display: Display): void;
   onError(title: string, text: string): void;
+  /** Words a search found: marked on the page the book opens at (formats that have text to mark). */
+  find?: string[];
 }
 
 /** Built-in formats whose readers report a view the user can share. */
@@ -102,6 +104,7 @@ async function mountFormat(host: HTMLElement, spec: ReaderSpec, loading: Loading
       onDisplay: (d) => spec.onDisplay?.(d),
       onError: (err) => spec.onError(t("pdf.error"), err.message),
       loading,
+      find: spec.find,
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), printJob: () => reader.printJob() };
   }
@@ -114,6 +117,7 @@ async function mountFormat(host: HTMLElement, spec: ReaderSpec, loading: Loading
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
       loading,
+      find: spec.find,
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), getPassage: () => reader.getPassage(), printJob: () => reader.printJob() };
   }
@@ -128,6 +132,7 @@ async function mountFormat(host: HTMLElement, spec: ReaderSpec, loading: Loading
       onView: (v) => spec.onView?.(v),
       onError: (err) => spec.onError(t("book.error"), err.message),
       loading,
+      find: spec.find,
     });
     return { destroy: () => reader.destroy(), getView: () => reader.getView(), getLabel: () => reader.getLabel(), getPassage: () => reader.getPassage(), printJob: () => reader.printJob() };
   }

@@ -1,9 +1,10 @@
+import { findParam } from "./found";
 import type { Filters } from "./shelfView";
 
 /** The addresses of the page of search results and of a place in a book: no DOM here, so they are tested alone. */
 
-/** `#book=…&view=…`: the book opened at that place. */
-export const placeHash = (id: string, view: unknown) => `#book=${id}${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`;
+/** `#book=…&view=…&find=…`: the book opened at that place, with the words a search found marked there. */
+export const placeHash = (id: string, view: unknown, find: string[] = []) => `#book=${id}${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}${find.length ? `&find=${encodeURIComponent(findParam(find))}` : ""}`;
 
 /** The address of a search: the words and the filters that are on. */
 export function searchHash(query: string, filters: Filters): string {

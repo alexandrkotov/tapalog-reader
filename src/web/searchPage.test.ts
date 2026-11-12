@@ -16,3 +16,11 @@ test("a place in a book is a link that opens the book at that place", () => {
   expect(hash.startsWith("#book=abc&view=")).toBe(true);
   expect(JSON.parse(decodeURIComponent(hash.split("view=")[1]!))).toEqual({ v: 1, page: 4 });
 });
+
+test("the words a search found go with the link, in the address, and only when there are some", () => {
+  expect(placeHash("abc", null, ["пентод"])).toBe(`#book=abc&find=${encodeURIComponent("пентод")}`);
+  const hash = placeHash("abc", { v: 1, page: 4 }, ["поменять", "местами"]);
+  expect(new URLSearchParams(hash.slice(1)).get("find")).toBe("поменять местами");
+  expect(JSON.parse(new URLSearchParams(hash.slice(1)).get("view")!)).toEqual({ v: 1, page: 4 });
+  expect(placeHash("abc", { v: 1, page: 4 }, [])).not.toContain("find");
+});

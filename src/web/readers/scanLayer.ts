@@ -19,6 +19,8 @@ export interface ScanTextOptions {
   /** How far the reader has turned the pages, clockwise, in degrees. */
   turn(): number;
   pageCount(): number;
+  /** Called when the words of page `n` are on it (the element is the page), so something can be done with them (marked). */
+  onLayer?(n: number, pageEl: HTMLElement): void;
 }
 
 export interface ScanText {
@@ -110,6 +112,7 @@ export function createScanText(options: ScanTextOptions): ScanText {
     const have = layers.get(n);
     if (have?.key === key) {
       if (have.el.parentElement !== div) div.append(have.el);
+      options.onLayer?.(n, div);
       return;
     }
     const token = (building.get(n) ?? 0) + 1;
@@ -124,6 +127,7 @@ export function createScanText(options: ScanTextOptions): ScanText {
       layers.get(n)?.el.remove();
       layers.set(n, { el, key: keyOf(n) });
       target.append(el);
+      options.onLayer?.(n, target);
     });
   }
 

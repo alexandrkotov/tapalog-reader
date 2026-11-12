@@ -1,5 +1,6 @@
 import "foliate-js/view.js";
 import { Overlayer } from "foliate-js/overlayer.js";
+import { termPattern } from "../found";
 import { t } from "../i18n";
 import { addHtmlSection, type PrintJob } from "../print";
 import { isDark, onTheme } from "../theme";
@@ -32,6 +33,8 @@ export interface BookOptions {
   onError(error: Error): void;
   /** Tells how much of the file has come, while it is on its way. */
   loading?: Loading;
+  /** Words a search found: marked in the sections as they are drawn. */
+  find?: string[];
 }
 
 export interface BookReader {
@@ -97,6 +100,10 @@ const MIME: Record<string, string> = {
 };
 const VIEW_DEBOUNCE_MS = 250;
 const MARK_COLOR = "#ffb300";
+/** The words a search found. */
+const FOUND_COLOR = "#ffd000";
+/** No section is marked in more than this many places. */
+const FOUND_LIMIT = 200;
 const FONT_STEP = 10;
 const FONT_MIN = 70;
 const FONT_MAX = 250;
@@ -352,6 +359,39 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     e.preventDefault();
   }
 
+  // ---------- the words a search found ----------
+  // each section is read for them as it is drawn; the places are kept as CFIs, which the text engine draws as it does the passage marked by hand
+  const foundPattern = termPattern(options.find ?? []);
+  const foundBy = new Map<number, string[]>();
+  const foundValues = new Set<string>();
+  function findIn(doc: Document, index: number): void {
+    if (!foundPattern || foundBy.has(index)) return;
+    const cfis: string[] = [];
+    const walker = doc.createTreeWalker(doc.body ?? doc.documentElement, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node && cfis.length < FOUND_LIMIT; node = walker.nextNode()) {
+      const text = node.nodeValue ?? "";
+      if (!text.trim()) continue;
+      for (const m of text.matchAll(foundPattern)) {
+        const range = doc.createRange();
+        range.setStart(node, m.index);
+        range.setEnd(node, m.index + m[0].length);
+        try {
+          const cfi = view.getCFI(index, range);
+          cfis.push(cfi);
+          foundValues.add(cfi);
+        } catch {
+          /* a place that has no address is left unmarked */
+        }
+        if (cfis.length >= FOUND_LIMIT) break;
+      }
+    }
+    foundBy.set(index, cfis);
+    void paintFound(index);
+  }
+  async function paintFound(index: number): Promise<void> {
+    for (const cfi of foundBy.get(index) ?? []) await view.addAnnotation({ value: cfi }).catch(() => undefined);
+  }
+
   // ---------- events ----------
   view.addEventListener("relocate", (e) => {
     const loc = (e as CustomEvent<Location>).detail;
@@ -362,6 +402,7 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
   });
   view.addEventListener("load", (e) => {
     const { doc, index } = (e as CustomEvent<{ doc: Document; index: number }>).detail;
+    findIn(doc, index);
     doc.addEventListener("keydown", onKey);
     doc.addEventListener("selectionchange", () => {
       const sel = doc.getSelection();
@@ -375,11 +416,13 @@ export async function mountBook(host: HTMLElement, options: BookOptions): Promis
     });
   });
   view.addEventListener("create-overlay", (e) => {
-    if (mark && markIndex === (e as CustomEvent<{ index: number }>).detail.index) void paintMark();
+    const { index } = (e as CustomEvent<{ index: number }>).detail;
+    if (mark && markIndex === index) void paintMark();
+    void paintFound(index);
   });
   view.addEventListener("draw-annotation", (e) => {
-    const { draw } = (e as CustomEvent<{ draw: (fn: unknown, opts: unknown) => void }>).detail;
-    draw(Overlayer.highlight, { color: MARK_COLOR });
+    const { draw, annotation } = (e as CustomEvent<{ draw: (fn: unknown, opts: unknown) => void; annotation: { value: string } }>).detail;
+    draw(Overlayer.highlight, { color: foundValues.has(annotation.value) ? FOUND_COLOR : MARK_COLOR });
   });
   // Links inside a book are the book's author's, not ours: never let one run script in this origin.
   view.addEventListener("external-link", (e) => {

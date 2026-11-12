@@ -11,7 +11,8 @@ import { setTheme, themeMode, type ThemeMode } from "./theme";
 import { countTags, parseTags, tagsHash, toggleTag, withAllTags } from "./tags";
 import { shelfBarEl } from "./shelfBar";
 import { openTagManager } from "./tagManager";
-import { searchHash } from "./searchAddress";
+import { markedWords, wordsOf } from "./found";
+import { placeHash, searchHash } from "./searchAddress";
 import { searchPageEl, type FoundBook } from "./searchPage";
 import { filterBooks, formatsOf, isFiltering, NO_FILTERS, parsePrefs, sortBooks, type Filters, type Prefs } from "./shelfView";
 import { offerTour, startTour, type TourStep } from "./tour";
@@ -718,7 +719,7 @@ toggleEl.addEventListener("click", () => setPanel(Boolean(panelEl.hidden)));
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let searchAbort: AbortController | undefined;
 /** What Enter and the arrow keys walk through: file-name hits, then places inside books. */
-let entries: { book: Book; view?: unknown }[] = [];
+let entries: { book: Book; view?: unknown; find?: string[] }[] = [];
 let activeHit = -1;
 /** An arrow key chose a hit of the quick list: Enter then jumps to it; without that Enter opens the page of results. */
 let arrowed = false;
@@ -741,16 +742,16 @@ function snippetNode(snippet: string): HTMLElement {
 function showHits(names: Book[], content: ContentBook[] | null, query: string): void {
   entries = [];
   resultsEl.replaceChildren();
-  const row = (book: Book, view: unknown, ...extra: (Node | string)[]) => {
+  const row = (book: Book, view: unknown, find: string[], ...extra: (Node | string)[]) => {
     const li = el("li", { class: entries.length === 0 ? "active" : "", role: "option" }, thumb(book, "sm"), badge(book.ext), el("span", { class: "name", textContent: book.title }), ...extra);
     li.dataset.index = String(entries.length);
-    entries.push({ book, view });
+    entries.push({ book, view, find });
     return li;
   };
-  for (const book of names) resultsEl.append(row(book, undefined, el("span", { class: "path", textContent: book.path })));
+  for (const book of names) resultsEl.append(row(book, undefined, [], el("span", { class: "path", textContent: book.path })));
   if (content?.length) {
     resultsEl.append(el("li", { class: "group", textContent: t("search.inContents") }));
-    for (const book of content) for (const hit of book.hits) resultsEl.append(row(book, hit.view, snippetNode(hit.snippet)));
+    for (const book of content) for (const hit of book.hits) resultsEl.append(row(book, hit.view, markedWords(hit.snippet), snippetNode(hit.snippet)));
   }
   activeHit = entries.length ? 0 : -1;
   if (!entries.length && content !== null) resultsEl.append(el("li", { class: "empty", textContent: t("search.none", { q: query }) }));
@@ -767,10 +768,10 @@ function openResultsPage(): void {
   location.hash = searchHash(q, NO_FILTERS);
 }
 
-function pickHit(entry: { book: Book; view?: unknown }): void {
+function pickHit(entry: { book: Book; view?: unknown; find?: string[] }): void {
   resultsEl.hidden = true;
   searchEl.blur();
-  location.hash = `#book=${entry.book.id}${entry.view ? `&view=${encodeURIComponent(JSON.stringify(entry.view))}` : ""}`;
+  location.hash = placeHash(entry.book.id, entry.view, entry.find);
   setPanel(true);
   reveal(entry.book);
 }
@@ -855,7 +856,7 @@ function message(title: string, text: string, ...extra: Node[]): void {
 }
 
 /** The shape of a view depends on the book's format: EcatmView for catalogs, PageView for paged documents. */
-function parseHash(): { book: string | null; folder: string | null; view: unknown; tags: string[] | null; search: string | null; filters: Filters } {
+function parseHash(): { book: string | null; folder: string | null; view: unknown; find: string[]; tags: string[] | null; search: string | null; filters: Filters } {
   const params = new URLSearchParams(location.hash.slice(1));
   let view: unknown = null;
   try {
@@ -866,13 +867,13 @@ function parseHash(): { book: string | null; folder: string | null; view: unknow
   }
   const search = params.get("search")?.trim() || null;
   const filters: Filters = { format: params.get("format") ?? "", tag: (params.get("tag") ?? "").toLowerCase(), author: params.get("author") ?? "" };
-  return { book: params.get("book"), folder: params.get("folder"), view, tags: params.has("tags") ? parseTags(params.get("tags")) : null, search, filters };
+  return { book: params.get("book"), folder: params.get("folder"), view, find: wordsOf(params.get("find")), tags: params.has("tags") ? parseTags(params.get("tags")) : null, search, filters };
 }
 
 const writeView = (book: Book, view: unknown) => history.replaceState(null, "", `#book=${book.id}&view=${encodeURIComponent(JSON.stringify(view))}`);
 
 /** Shows a reader in the main area under a title bar. `bar` adds buttons at its right end. */
-function showReader(spec: { name: string; ext: string; path?: string; fileUrl: string; view: unknown; onView?: (view: unknown) => void; display?: Display; onDisplay?: (display: Display) => void; bar?: (current: () => Reader | null) => HTMLElement[] }): void {
+function showReader(spec: { name: string; ext: string; path?: string; fileUrl: string; view: unknown; find?: string[]; onView?: (view: unknown) => void; display?: Display; onDisplay?: (display: Display) => void; bar?: (current: () => Reader | null) => HTMLElement[] }): void {
   const token = ++openToken;
   reader?.destroy();
   reader = null;
@@ -905,7 +906,7 @@ function showReader(spec: { name: string; ext: string; path?: string; fileUrl: s
  * What a book opens at: a view named by the link or bookmark that was followed, else where this reader
  * left off, else the start. (A link that carries a view is the author's choice and always wins.)
  */
-async function openBook(book: Book, linked: unknown, seq: number): Promise<void> {
+async function openBook(book: Book, linked: unknown, seq: number, find: string[] = []): Promise<void> {
   currentId = book.id;
   renderTree();
   const signedIn = !!me?.user;
@@ -930,6 +931,7 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
     path: book.path,
     fileUrl: `/api/file/${book.id}`,
     view,
+    find,
     onView: (v) => (writeView(book, v), mine.view(v)),
     display,
     onDisplay: (d) => saveDisplay(signedIn, book.id, d),
@@ -944,7 +946,7 @@ async function openBook(book: Book, linked: unknown, seq: number): Promise<void>
 
 function route(): void {
   const seq = ++routeSeq;
-  const { book, folder, view, tags, search, filters } = parseHash();
+  const { book, folder, view, find, tags, search, filters } = parseHash();
   if (!book) {
     if (!books.length) {
       currentId = null;
@@ -958,7 +960,7 @@ function route(): void {
   }
   const found = booksById.get(book);
   if (!found) return message(t("book.missing.title"), t("book.missing.text"));
-  void openBook(found, view, seq);
+  void openBook(found, view, seq, find);
   reveal(found);
 }
 addEventListener("hashchange", () => {

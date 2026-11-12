@@ -136,3 +136,15 @@ e2e("a page the recognizer read without frames, and a page written by hand, have
   expect(errors).toEqual([]);
   await page.close();
 });
+
+e2e("the words a search found are marked over a recognized scan too, on the words that were laid over the picture", async () => {
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(`${inst.url}/#book=${id}&find=${encodeURIComponent("схема строка")}`);
+  await page.waitForSelector(".pdf-scroll .page .ocr-word");
+  await page.waitForFunction(() => ((CSS as unknown as { highlights: Map<string, Set<Range>> }).highlights.get("tapalog-found")?.size ?? 0) > 0);
+  const words = await page.evaluate(() => [...(CSS as unknown as { highlights: Map<string, Set<Range>> }).highlights.get("tapalog-found")!].map((r) => r.toString()).sort());
+  expect(words).toEqual(["схема", "строка"].sort());
+  expect(errors).toEqual([]);
+  await page.close();
+});

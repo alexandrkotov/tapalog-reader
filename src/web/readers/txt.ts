@@ -2,6 +2,7 @@ import { t } from "../i18n";
 import { addPlainText, type PrintJob } from "../print";
 import { decodeText } from "./decode";
 import { fetchBlob } from "./download";
+import { createFoundMarks, type FoundMarks } from "./foundMarks";
 import type { Loading } from "./loading";
 
 /**
@@ -22,6 +23,8 @@ export interface TxtOptions {
   onError(error: Error): void;
   /** Tells how much of the file has come, while it is on its way. */
   loading?: Loading;
+  /** Words a search found: marked in the text. */
+  find?: string[];
 }
 
 export interface TxtReader {
@@ -270,6 +273,7 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
   onResize.observe(scroller);
 
   // ---------- open ----------
+  let found: FoundMarks | null = null;
   try {
     text = decodeText(new Uint8Array(await (await fetchBlob(options.url, (p) => options.loading?.update(p))).arrayBuffer()));
     options.loading?.opening();
@@ -277,6 +281,8 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
     const initial = cleanView(options.view, text.length);
     mark = initial.range;
     render();
+    found = createFoundMarks(options.find);
+    found?.add("text", body);
     setFont(fontPct);
     // Layout has to settle before the offset can be turned into a scroll position.
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -294,6 +300,7 @@ export async function mountTxt(host: HTMLElement, options: TxtOptions): Promise<
       if (timer) clearTimeout(timer);
       document.removeEventListener("selectionchange", onSelection);
       onResize.disconnect();
+      found?.clear();
       root.remove();
     },
     getView: currentView,

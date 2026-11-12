@@ -6,6 +6,7 @@ import { addPageImage, type PrintJob } from "../print";
 import type { Crop, Display } from "../display";
 import { clipToCrop, cropFor, intoCrop, outOfCrop, rectIntoCrop, rectOutOfCrop } from "./crop";
 import { createCropEditor } from "./cropEditor";
+import { createFoundMarks } from "./foundMarks";
 import { bookIdOf, createScanText, type ScanText } from "./scanLayer";
 import { readerMode, setReaderMode } from "../readerMode";
 import { pdfDocumentOptions } from "./pdfAssets";
@@ -61,6 +62,8 @@ export interface PdfOptions {
   onError(error: Error): void;
   /** Tells how much of the file has come; the reader takes it away when the first page is laid out. */
   loading?: Loading;
+  /** Words a search found: marked on the pages as they are drawn. */
+  find?: string[];
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -273,6 +276,13 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
     info.view = [Math.min(a[0]!, b[0]!), Math.min(a[1]!, b[1]!), Math.max(a[0]!, b[0]!), Math.max(a[1]!, b[1]!)];
   }
 
+  // the words a search found, marked on a page when its text (or the words laid over a scan) is there
+  const found = createFoundMarks(options.find);
+  eventBus.on("textlayerrendered", (e: { pageNumber: number }) => {
+    const div = pdfViewer.getPageView(e.pageNumber - 1)?.div;
+    if (div) found?.add(e.pageNumber, div);
+  });
+
   // ---------- the words of a recognized scan ----------
 
   // laid over the picture in no colour, so that they can be selected and copied; a book that was never recognized asks for nothing more than the list of its pages
@@ -290,6 +300,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
         },
         turn: () => turn,
         pageCount: () => pdfViewer.pagesCount,
+        onLayer: (n, div) => found?.add(n, div),
       })
     : null;
 
@@ -724,6 +735,7 @@ export async function mountPdf(host: HTMLElement, options: PdfOptions): Promise<
       removeEventListener("keydown", onKey);
       cropEditor.destroy();
       scanText?.destroy();
+      found?.clear();
       resizes.disconnect();
       setFocus(false);
       void task.destroy();

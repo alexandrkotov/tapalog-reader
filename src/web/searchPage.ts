@@ -1,6 +1,7 @@
 import { t } from "./i18n";
 import { shelfBarEl } from "./shelfBar";
 import { DEFAULT_PREFS, type Filters } from "./shelfView";
+import { markedWords } from "./found";
 import { filterParams, placeHash } from "./searchAddress";
 import type { TagInfo } from "./tags";
 import { badge, el } from "./ui";
@@ -117,7 +118,7 @@ export function searchPageEl(spec: SearchPageSpec): HTMLElement {
       places.replaceChildren(
         ...list.map((hit) => {
           const label = placeLabel(hit.loc, hit.share);
-          return el("li", {}, el("a", { class: "found-hit", href: placeHash(book.id, hit.view) }, ...(label ? [el("span", { class: "found-where", textContent: label })] : []), spec.snippet(hit.snippet)));
+          return el("li", {}, el("a", { class: "found-hit", href: placeHash(book.id, hit.view, markedWords(hit.snippet)) }, ...(label ? [el("span", { class: "found-where", textContent: label })] : []), spec.snippet(hit.snippet)));
         }),
       );
     fill(book.hits);
