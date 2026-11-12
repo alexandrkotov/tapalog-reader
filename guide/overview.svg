@@ -2,9 +2,6 @@
         <title id="dg-t">Diagram: readers, the one program file, the books folder, the data folder, the administrator's browser and plugins</title>
         <style>
     svg { --bg: #ffffff; --surface: #ffffff; --surface-2: #e9eeec; --fg: #13201f; --muted: #546664; --line: #d3dbd9; --hub: #0f766e; --hub-tint: #dff1ee; --scan: #b45309; --plug: #6d28d9; }
-    @media (prefers-color-scheme: dark) {
-      svg { --bg: #131f1e; --surface: #131f1e; --surface-2: #1b2b29; --fg: #e5eeec; --muted: #94a9a6; --line: #263634; --hub: #2dd4bf; --hub-tint: #12302d; --scan: #f2b252; --plug: #bba2ff; }
-    }
     text { font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; fill: var(--fg); font-size: 13px; }
     .t { font-weight: 700; font-size: 16px; }
     .m { fill: var(--muted); font-size: 12.5px; }
