@@ -29,6 +29,7 @@ async function openProof(page: Page): Promise<void> {
   await page.click(".card-proof");
   await page.waitForFunction(() => document.querySelectorAll(".proof-row").length === 3);
   await page.waitForSelector(".proof-row:nth-child(1) .proof-canvas");
+  await page.waitForSelector(".proof-row:nth-child(2) .proof-canvas"); // pages are drawn one after another, a slow machine has not reached the second yet
 }
 
 /** The size of a picture kept with the book. */
