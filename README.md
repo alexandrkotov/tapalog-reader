@@ -33,7 +33,7 @@ Early, but everything below works. Each line leads to the page that describes it
 - Accounts, share links with a QR code, internet access through a Cloudflare tunnel, backup and restore, English, Russian and Ukrainian, light and dark themes
 
 **Plugins** — [guide/plugins.md](guide/plugins.md)
-- Readers for other formats, added as a folder next to the program
+- Readers for other formats, added as a folder next to the program; a ready DjVu reader is in its own repository, [tapalog-reader-djvu](https://github.com/alexandrkotov/tapalog-reader-djvu)
 
 One file, no installation: the web page is inside the executable. It runs on Windows, Linux and macOS.
 
